@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game 9 - Deckbuilder | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="game" data-id="g09" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Publishable game 9 · 2D · Roguelike deckbuilder</div>
+    <h1>Deckbuilder</h1>
+    <p class="lead">A landscape run of fights, shops, and relics. You spend energy to play a small deck, read enemy intents, and climb a branching map. Quit mid-fight and Continue puts the same hand back. The project is <code>C:\GodotProjects\deckbuilder</code>, copied from the Ship Kit, package <code>com.yourname.deckbuilder</code>.</p>
+    <div class="chips"><span class="chip blue">Days 24–26</span><span class="chip green">CardData, Control drag-and-drop, SaveManager</span></div>
+  </header>
+
+  <h2 id="design">Game design</h2>
+  <p>One run is one map. You start at 70 HP and 99 gold with Strike ×5, Defend ×4, and Bash ×1. Each room is a button. Only rooms connected to the one you just cleared are enabled. A combat spends 3 energy a turn and draws 5 cards. Block clears at the start of that fighter's turn. Weak multiplies outgoing damage by 0.75, Vulnerable multiplies incoming damage by 1.5, both floored, and both tick down at the end of the afflicted fighter's turn. Strength is a flat bonus and does not tick down.</p>
+  <p>Mouse or touch: drag a card onto your panel (skills and powers) or onto an enemy (attacks, including Cleave, which hits every living enemy). End Turn is a button. Pause is the Ship Kit <code>pause</code> action. There is no movement input.</p>
+  <p>You win the run by beating the Ash Titan (86 HP) and taking or skipping the boss card reward. You lose when HP hits 0. The run slot is deleted either way. Best floor (1-based row of the room you were in) stays in the profile.</p>
+  <table>
+    <tr><th>Room</th><th>What you get</th></tr>
+    <tr><td>Combat</td><td>20 gold, then 3 card choices or Skip</td></tr>
+    <tr><td>Elite (Blue Slaver, 48 HP)</td><td>40 gold, a random relic you do not own, then the same card reward</td></tr>
+    <tr><td>Boss</td><td>25 gold, a relic, a card reward, then the run-complete screen</td></tr>
+    <tr><td>Shop</td><td>Up to 3 cards at 50, one relic at 140, remove one deck card for 75</td></tr>
+    <tr><td>Rest</td><td>Heal <code>floor(max HP × 0.30)</code>, capped at missing HP. 21 at 70 max. At full HP the button leaves</td></tr>
+    <tr><td>Treasure</td><td>A random relic, or 50 gold if you own all five</td></tr>
+    <tr><td>Duo</td><td>Two Jaw Worms (42 HP each). The rest on that row skips it</td></tr>
+  </table>
+  <p>Damage for one hit is <code>base + attacker Strength</code>, then ×0.75 if the attacker has Weak, then ×1.5 if the target has Vulnerable, each product floored. Block absorbs before HP. Bloodletting's 3 HP loss ignores Block. Bash applies Vulnerable after its own hit.</p>
+  <table>
+    <tr><th>Card</th><th>Cost</th><th>Effect</th></tr>
+    <tr><td>Strike</td><td>1</td><td>6 damage</td></tr>
+    <tr><td>Defend</td><td>1</td><td>5 Block</td></tr>
+    <tr><td>Bash</td><td>2</td><td>8 damage, 2 Vulnerable</td></tr>
+    <tr><td>Pommel Strike</td><td>1</td><td>9 damage, draw 1</td></tr>
+    <tr><td>Iron Wave</td><td>1</td><td>5 damage, 5 Block</td></tr>
+    <tr><td>Clothesline</td><td>2</td><td>12 damage, 2 Weak</td></tr>
+    <tr><td>Shrug It Off</td><td>1</td><td>8 Block, draw 1</td></tr>
+    <tr><td>Anger</td><td>0</td><td>6 damage, add a copy to the discard pile for this fight only</td></tr>
+    <tr><td>Bloodletting</td><td>0</td><td>Lose 3 HP, gain 2 energy</td></tr>
+    <tr><td>Cleave</td><td>1</td><td>8 damage to all enemies</td></tr>
+    <tr><td>Inflame</td><td>1</td><td>2 Strength, Exhaust</td></tr>
+    <tr><td>True Grit</td><td>1</td><td>7 Block, exhaust a random other card in hand</td></tr>
+  </table>
+  <table>
+    <tr><th>Relic</th><th>Hook</th></tr>
+    <tr><td>Burning Blood</td><td>Heal 6 after a won fight</td></tr>
+    <tr><td>Vajra</td><td>+1 Strength at combat start</td></tr>
+    <tr><td>Anchor</td><td>+10 Block on turn 1, applied after Block is cleared</td></tr>
+    <tr><td>Bag of Preparation</td><td>Draw 7 on turn 1</td></tr>
+    <tr><td>Orichalcum</td><td>If you end the turn at 0 Block, gain 6 Block before the enemy acts</td></tr>
+  </table>
+
+  <h2 id="scope">Scope: what "done" means</h2>
+  <p>Store-ready means the Ship Kit shell plus a run you can leave and resume, in English, Spanish, and German, exported for Windows and Android. Stretch goals stay off this list.</p>
+  <ul class="checklist">
+    <li>Main menu Play opens the map. Continue resumes <code>user://saves/run.json</code>, including a fight in progress.</li>
+    <li>Play while a slot exists asks before replacing it.</li>
+    <li>Drag-and-drop combat: energy, draw, discard, exhaust, intents, the twelve cards, two enemies when the room says so.</li>
+    <li>Rewards, shop, rest, treasure, five relics, Ash Titan.</li>
+    <li>Best floor stored with <code>SaveManager.set_value("deck_best_floor", n)</code> and <code>flush()</code>. Loaded values that JSON turned into floats are cast with <code>int()</code>.</li>
+    <li>Settings still change Master, Music, and SFX, fullscreen, and locale. <code>DECK_</code> keys resolve in <code>en</code>, <code>es</code>, and <code>de</code>.</li>
+    <li>Pause and credits work. <code>licenses/THIRD_PARTY.txt</code> states that cards and enemies are Godot <code>ColorRect</code> and <code>Label</code> nodes.</li>
+    <li>1280×720, stretch mode <code>canvas_items</code>, aspect <code>expand</code>, Mobile renderer, handheld orientation landscape.</li>
+    <li>Android unique name <code>com.yourname.deckbuilder</code>. Windows release export and an Android debug install, using the Day 16 export steps.</li>
+  </ul>
+
+  <h2 id="architecture">Architecture</h2>
+  <p>Autoloads stay the Ship Kit five, in this order: <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, <code>SceneRouter</code>. <code>SceneRouter.GAME_SCENE</code> is <code>res://game/game.tscn</code>. The main scene stays <code>res://ui/main_menu.tscn</code>. No new autoload.</p>
+  <pre class="scene-tree">Game (Control)                    [game.gd]
+├── %MapScreen                    [map_screen.gd]
+├── %Combat                       [combat.gd]
+│   └── hand, enemy row, drop panel
+├── %RewardScreen
+├── %ShopScreen
+├── %RestScreen
+├── %ResultScreen
+├── %Confirm (Panel)
+└── PauseMenu                     (Ship Kit scene)</pre>
+  <p><code>Battle</code> is a <code>RefCounted</code> owned by <code>Combat</code>. It does not draw. <code>CardData</code>, <code>IntentStep</code>, <code>EnemyData</code>, and <code>RelicData</code> are <code>Resource</code> files. <code>CardInstance</code> exists only inside a fight. <code>Database</code> loads by explicit <code>res://</code> path so an export does not depend on <code>DirAccess.get_files_at</code>.</p>
+  <table>
+    <tr><th>Type</th><th>Responsibility</th></tr>
+    <tr><td><code>MapCatalog</code></td><td>14 rooms, edges, enemy id lists. Not saved.</td></tr>
+    <tr><td><code>game.gd</code></td><td>HP, gold, deck ids, relics, which screen is pending, offers, <code>save_slot(&amp;"run", …)</code></td></tr>
+    <tr><td><code>Battle</code></td><td>Piles, energy, damage formula, intents, four combat relic hooks, <code>to_dictionary</code> / <code>from_dictionary</code></td></tr>
+    <tr><td><code>CardView</code></td><td><code>_get_drag_data</code> and <code>set_drag_preview</code></td></tr>
+    <tr><td><code>DropZone</code>, <code>EnemyView</code></td><td><code>_can_drop_data</code> tests, <code>_drop_data</code> emits the uid</td></tr>
+    <tr><td><code>HandView</code></td><td>Centers cards. Not a container, so the hover tween can own <code>position:y</code></td></tr>
+  </table>
+  <p>The run dictionary stores ints and strings only: hp, gold, seed, RNG state, deck, relics, cleared ids, open ids, pending screen name, reward and shop offers, and a <code>combat</code> dictionary while it is the player's turn. <code>load_slot</code> returns that dictionary. Continue sets <code>SaveManager.set_value("deck_continue", true)</code>, flushes, then <code>SceneRouter.go_to</code>. The game consumes that flag immediately.</p>
+
+  <h2 id="assets">Assets and credits</h2>
+  <p>Default art is engine nodes. Attack cards are a red <code>ColorRect</code>, skills blue, powers green, with a <code>Label</code> for the name, cost, type, and rules. Enemies are a tinted <code>ColorRect</code> plus labels. Map rooms are <code>Button</code> nodes and <code>draw_line</code>. No sprite filenames are required, and none are invented here.</p>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>Verify on the official page; steps and zip layouts change. Optional clicks only: <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a>, search "Interface Sounds", choose a short click by listening, import the file you actually downloaded, and play it with <code>Audio.play_sfx</code>. Do not guess a filename from memory.</p></div>
+  <p>Paste into <code>res://licenses/THIRD_PARTY.txt</code> (the credits screen already reads the Ship Kit license files):</p>
+  <pre class="plain">Deckbuilder draws cards and enemies with Godot ColorRect and Label nodes. No external sprite pack is required.
+
+Godot Engine, see GODOT_LICENSE.txt and GODOT_COPYRIGHT.txt.</pre>
+  <p>If you added a Kenney sound, add one more line: <code>Kenney Interface Sounds, CC0, https://kenney.nl/assets</code>. Ship Kit already ships <code>GODOT_LICENSE.txt</code> and <code>GODOT_COPYRIGHT.txt</code>. Leave them in the export.</p>
+
+  <h2 id="days">Where you build it</h2>
+  <ul>
+    <li><a href="../days/day24.html">Day 24</a>: project settings, twelve <code>CardData</code> resources, four enemies, piles, energy, the turn state machine, a button hand so the rules are playable.</li>
+    <li><a href="../days/day25.html">Day 25</a>: card <code>Control</code>, hand layout, drag and drop, targeting, status text, hit and hover tweens. <code>battle.gd</code> stays put.</li>
+    <li><a href="../days/day26.html">Day 26</a>: branching map, rewards, relics, shop, rest, save and resume, balance numbers, locale check, Windows and Android reminder via <a href="../days/day16.html">Day 16</a>.</li>
+  </ul>
+
+  <h2 id="stretch">Stretch goals</h2>
+  <ul>
+    <li>A second boss pattern, or a room that offers a card upgrade (+3 damage or +3 Block) instead of a new card.</li>
+    <li>Potion slots: one consumable from the shop, saved as a string id on the run.</li>
+    <li>Seed entry on the menu so two players can climb the same offers. The RNG state is already in the slot.</li>
+    <li>A fan of rotated cards in <code>HandView</code>, and a short screen shake on the player panel using <code>scale</code> rather than moving a container child.</li>
+    <li>Controller focus: End Turn and map buttons already take focus; add a "play highlighted card" action later if you outgrow drag-only play.</li>
+  </ul>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

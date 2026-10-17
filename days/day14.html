@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 14 - Catch-up, debugging, profiling, best practices | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day14" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 1 · Day 14 · Buffer</div>
+    <h1>Catch-up, debugging, profiling, best practices</h1>
+    <p class="lead">No new game today. You find out which of the five training projects actually run, break the dungeon on purpose with the debugger, read the profiler and the monitors, and write down the rules you will keep when Part 2 starts.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:25</td><td><strong>Triage.</strong> Boot days 1 through 13. Fix only errors that stop F5.</td></tr>
+    <tr><td>0:25 – 1:05</td><td><strong>Debugger.</strong> Breakpoint, stack, evaluator, Remote scene tree. Then remove every breakpoint.</td></tr>
+    <tr><td>1:05 – 1:15</td><td><strong>Break.</strong></td></tr>
+    <tr><td>1:15 – 1:50</td><td><strong>Profiler and monitors.</strong> Frame time, Visual Profiler, Monitors, Video RAM.</td></tr>
+    <tr><td>1:50 – 2:20</td><td><strong>Best-practice notes</strong> tied to the five games, not a second textbook.</td></tr>
+    <tr><td>2:20 – 2:45</td><td><strong>Git</strong> on the dungeon project, using the editor's ignore files.</td></tr>
+    <tr><td>2:45 – 3:00</td><td><strong>Retrospective, quiz, Part 2 preview.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>3 h</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Have a written pass or fail for each training game, and a dungeon project that still runs after the debug session.</li>
+    <li>Stop on a gutter breakpoint and on a <code>breakpoint</code> line, read a local in the Stack Trace, and evaluate an expression.</li>
+    <li>Record one frame-time reading from the Profiler and one FPS reading from Monitors.</li>
+    <li>State, in your own notes, when this course uses an autoload and when a scene should own its nodes.</li>
+    <li>Have a git commit of <code>g05-torchlight-dungeon</code> that does not contain the <code>.godot</code> cache.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Godot 4.x standard is the same build you used for Days 1 to 13.</li>
+    <li>The dungeon project from Days 12 and 13 is the main specimen. If it does not boot, the triage block is where you repair the parse error. The debugger steps assume <code>enemy.gd</code> and <code>player.gd</code> exist.</li>
+    <li>You need a terminal. PowerShell is enough. Git for Windows is only required for the last build block.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>A breakpoint is a pause you asked for</h3>
+  <p>The Debugger bottom panel is not the Output panel. Output shows <code>print</code> and errors while the game keeps running. The debugger stops the process. A red dot in the script gutter is an editor breakpoint. It survives editor restarts even if you forgot to save. The <code>breakpoint</code> keyword is a line of GDScript, so it travels with the file and would ship if you leave it in. Today you will use both, and you will delete both before the git commit.</p>
+  <p>While stopped, the Stack Trace tab shows the call stack and the locals. The Evaluator tab is a small expression box for the same paused frame. Continue, Step Over, and Step Into sit in the debugger toolbar. Step Into enters a function call. Step Over runs the line and stays in the current function.</p>
+  <h3>Remote is the running tree</h3>
+  <p>With the game running from the editor, the Scene dock gains <kbd class="ui">Remote</kbd> and <kbd class="ui">Local</kbd>. Remote is the live tree. Changing a property there changes the running game and is thrown away when you stop. Local is the scene on disk. The overview of debugging tools is explicit about this split. Do not edit gameplay on Remote and expect <kbd>Ctrl</kbd>+<kbd>S</kbd> to keep it.</p>
+  <h3>Two profilers, plus monitors</h3>
+  <p>The Profiler tab measures frame time, physics time, and idle time, including your scripts. It stays off until you press Start, because measuring has a cost. Frame time includes rendering. Physics time is <code>_physics_process</code> and physics nodes. Idle time is <code>_process</code> and idle timers. The reference frame at 60 physics ticks per second is 16.66 ms. The Visual Profiler is only the CPU time spent on rendering tasks. It does not include script or physics. Monitors are the running graphs (FPS, memory, node count). They keep history even if the tab was closed during play, so you can open them afterwards. Video RAM lists resources by path.</p>
+
+  <h2 id="build-1">Block 1: Triage of days 1 to 13</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <p>Five training games, five folders. Day 1's sandbox counts too. You are not rebuilding missing features today. You are answering one question per project: does <kbd>F5</kbd> reach a playable window without a script error?</p>
+  <table>
+    <tr><th>Days</th><th>Project folder</th><th>Done means</th><th>Page</th></tr>
+    <tr><td>1–2</td><td><code>C:\GodotProjects\g00-sandbox</code></td><td>A scene runs with F6. This folder is a scratch pad, not a game.</td><td>Editor tour lives in the reference pages.</td></tr>
+    <tr><td>3–4</td><td><code>C:\GodotProjects\g01-dodger</code></td><td>You move, creeps spawn, a hit ends the run, a score is visible.</td><td><a href="../games/g01-arcade-dodger.html">Dodger</a></td></tr>
+    <tr><td>5–7</td><td><code>C:\GodotProjects\g02-cave-runner</code></td><td>You run, jump, and change rooms without falling through the level.</td><td><a href="../games/g02-metroidvania-platformer.html">Cave Runner</a></td></tr>
+    <tr><td>8–9</td><td><code>C:\GodotProjects\g03-bastion-defense</code></td><td>A wave follows the path and a tower can be placed.</td><td><a href="../games/g03-tower-defense.html">Bastion Defense</a></td></tr>
+    <tr><td>10–11</td><td><code>C:\GodotProjects\g04-arena-brawler-3d</code></td><td>Third-person movement in the arena, one enemy, one attack.</td><td><a href="../games/g04-arena-brawler-3d.html">Arena Brawler 3D</a></td></tr>
+    <tr><td>12–13</td><td><code>C:\GodotProjects\g05-torchlight-dungeon</code></td><td>Torch, shot, one door, minimap, escape or death.</td><td><a href="../games/g05-dungeon-crawler-3d.html">Torchlight Dungeon</a></td></tr>
+  </table>
+  <ol class="steps">
+    <li><strong>Open a scratch note.</strong> In PowerShell: <kbd>New-Item</kbd> is typed as a command, not as a Godot menu. Create the folder and the file.</li>
+  </ol>
+<script type="text/x-code" data-lang="shell" data-file="PowerShell">
+New-Item -ItemType Directory -Force -Path C:\GodotProjects\notes | Out-Null
+notepad C:\GodotProjects\notes\day14-triage.txt
+</script>
+  <ol class="steps">
+    <li><strong>Write six headings</strong> in that file: sandbox, dodger, cave, bastion, arena, dungeon. Under each you will write <code>boots</code> or <code>blocked</code> plus one sentence.</li>
+    <li><strong>Boot the sandbox.</strong> Project Manager, open <code>C:\GodotProjects\g00-sandbox</code> if it exists. Press <kbd>F6</kbd> on any scene. If the folder was never created, write <code>blocked: no folder</code> and move on. Do not spend the triage block recreating Day 1.</li>
+    <li><strong>Boot Dodger.</strong> Open <code>g01-dodger</code>. Press <kbd>F5</kbd>. If Godot asks for a main scene, pick the scene you used as the game root on Day 4 and continue. Close with <kbd>F8</kbd>. One sentence in the note.</li>
+    <li><strong>Boot Cave Runner, Bastion, and the arena</strong> the same way, one project at a time. <kbd>F8</kbd> between them. A missing animation or a quiet bus is not a blocker. A red parser error in Output is a blocker.</li>
+    <li><strong>Boot the dungeon last.</strong> Open <code>g05-torchlight-dungeon</code>. <kbd>F5</kbd>. You need this one running for the rest of the day. If Output shows a parser error, click it. Godot jumps to the line. Fix that line only, save, <kbd>F5</kbd> again.</li>
+    <li><strong>Stop the survey at 25 minutes.</strong> Unfinished features (no minimap, no second key, no high score) go under a heading <code>later</code> in the note. They are not today's build. Part 2 does not require you to reopen them.</li>
+  </ol>
+  <div class="checkpoint"><p><code>day14-triage.txt</code> has a line for each project. The dungeon runs with <kbd>F5</kbd> and the Output panel is clear of script errors. If the dungeon folder is missing, stop and finish Day 12's project-creation steps before the debugger block. The later exercises edit <code>enemy.gd</code> and <code>player.gd</code> in that project.</p></div>
+
+  <h2 id="build-2">Block 2: Debugger exercises on the dungeon</h2>
+  <p>Stay in <code>g05-torchlight-dungeon</code>. These steps add a stop, prove you can see data, then remove the stop. The game you commit must not contain a breakpoint.</p>
+  <ol class="steps">
+    <li><strong>Gutter breakpoint.</strong> Open <code>res://enemies/enemy.gd</code>. Find the line <code>velocity.x = dir.x * SPEED</code> inside <code>_chase</code>. Click the gutter immediately left of the line number. A red dot appears. Hovering the gutter first shows a faint dot. Clicking makes it solid. That dot is stored by the editor, not by the file.</li>
+    <li><strong>Hit it.</strong> Press <kbd>F5</kbd>. Walk toward EnemyA until it can see you. The game freezes. The bottom panel switches to <kbd class="ui">Debugger</kbd>, tab <kbd class="ui">Stack Trace</kbd>. A green arrow sits on that line in the script editor.</li>
+    <li><strong>Read the stack.</strong> In Stack Trace, select the top frame (<code>_chase</code>). In the variables tree, find <code>dir</code> and <code>SPEED</code>. SPEED should be <code>2.6</code>. <code>dir</code> is a Vector3 whose Y is 0. If the tree is empty, you selected a frame above the script. Click the frame whose file is <code>enemy.gd</code>.</li>
+    <li><strong>Evaluator.</strong> Open the <kbd class="ui">Evaluator</kbd> tab in the Debugger panel. The docs describe it as a REPL that runs while the process is interrupted. Type <code>global_position</code> and confirm. You should see a position near EnemyA, around <code>(7, 1, 7)</code> if you have not led it far. Type <code>SPEED * 2.0</code>. The result is <code>5.2</code>. Evaluator expressions use Godot's expression language, so do not paste a whole function.</li>
+    <li><strong>Step and continue.</strong> Press <kbd class="ui">Step Over</kbd> once. The green arrow moves to the next line. Press <kbd class="ui">Continue</kbd>. The enemy walks again. It will hit the same breakpoint on the next physics frame. Press Continue three more times so you believe it, then press <kbd>F8</kbd> to stop the game. Leaving it broken and clicking around the editor is how you lose the panel.</li>
+    <li><strong>Remove the gutter dot.</strong> Click the red dot again so it disappears. Save nothing related to it. The file on disk did not change.</li>
+    <li><strong>Keyword breakpoint, then delete it.</strong> Open <code>res://player/player.gd</code>. Inside <code>_fire</code>, on the line after <code>ammo_in_mag -= 1</code>, add a line that is only the keyword:</li>
+  </ol>
+<script type="text/x-code" data-lang="gdscript" data-file="temporary line inside _fire, delete before you commit">
+    breakpoint
+</script>
+  <ol class="steps">
+    <li><strong>Fire once.</strong> Save the script. <kbd>F5</kbd>. Click the left mouse button. The debugger stops inside <code>_fire</code>. In Stack Trace, <code>ammo_in_mag</code> is <code>7</code> (it was 8, you already decremented). In Evaluator type <code>ammo_reserve</code>. It is <code>24</code> if you have not reloaded. Press Continue, then <kbd>F8</kbd>.</li>
+    <li><strong>Delete the keyword.</strong> Remove the <code>breakpoint</code> line. Save <code>player.gd</code>. Search the script editor with <kbd>Ctrl</kbd>+<kbd>F</kbd> for <code>breakpoint</code>. Zero hits in <code>player.gd</code> and <code>enemy.gd</code>. A keyword breakpoint is committed if you leave it, and the next person who runs the project stops on every shot.</li>
+    <li><strong>Errors tab.</strong> Open <kbd class="ui">Debugger &gt; Errors</kbd>. It lists errors and warnings from the session. A clean run shows nothing new. The docs note that GDScript warning categories can be turned down under <kbd class="menu">Project &gt; Project Settings &gt; Debug &gt; GDScript</kbd>. Leave those defaults. Hiding warnings is not a fix.</li>
+    <li><strong>Remote tree.</strong> <kbd>F5</kbd> again and do not pause on a breakpoint. Click the game window, then click back on the editor. At the top of the <kbd class="ui">Scene</kbd> dock, click <kbd class="ui">Remote</kbd>. Expand the tree to <code>Main/Player/Head/SpotLight3D</code>. In the Inspector set <kbd class="ui">Light Energy</kbd> to <code>20</code>. The torch in the game window flares. Click <kbd class="ui">Local</kbd>. The saved energy is still about 5, because the script overwrites it every frame anyway and Remote edits are not the scene file. Press <kbd>F8</kbd>.</li>
+  </ol>
+  <div class="checkpoint"><p>Search both scripts for the word <code>breakpoint</code> and find none. The gutter on <code>velocity.x = dir.x * SPEED</code> has no red dot. <kbd>F5</kbd>, shoot once, and the game does not freeze. Remote is gone from the Scene dock after <kbd>F8</kbd>, which is normal: those tabs exist only while a session is running. If the game still stops, a second red dot is on another line. Check the script editor gutter from top to bottom.</p></div>
+
+  <h2 id="build-3">Block 3: Profiler, Visual Profiler, monitors</h2>
+  <ol class="steps">
+    <li><strong>Start the script profiler.</strong> <kbd>F5</kbd>. Focus the editor. Bottom panel, <kbd class="ui">Debugger</kbd>, tab <kbd class="ui">Profiler</kbd>. Click <kbd class="ui">Start</kbd>. The profiler does not run by itself. Autostart exists and is not remembered across editor sessions. Leave it off so you do not pay the cost tomorrow without noticing.</li>
+    <li><strong>Play for twenty seconds.</strong> Click the game. Sprint, turn, shoot two rounds, open the pause menu, resume. Focus the editor and click <kbd class="ui">Stop</kbd> on the Profiler tab. Do not press <kbd>F8</kbd> yet. Stopping the profiler keeps the capture. Stopping the game is the next step, after you have read the numbers.</li>
+    <li><strong>Read frame time.</strong> The graph's main rows are frame time, physics frame, idle time, and physics time. Physics frame is the budget, 16.66 ms when physics is 60 Hz. Frame time is the whole picture, rendering included. Click a tall spike on the graph. The left-hand list jumps to that frame. Scroll until you see script functions. You should find <code>_physics_process</code> on the player or the enemy if they ran that frame. Write the peak frame time, in milliseconds, into <code>day14-triage.txt</code> under a heading <code>profiler</code>.</li>
+    <li><strong>Clear is not required.</strong> The <kbd class="ui">Clear</kbd> button drops the capture. The <kbd class="ui">Measure</kbd> dropdown changes which series is drawn. Leave Measure on the default unless you are hunting one counter. Press <kbd>F8</kbd> now.</li>
+    <li><strong>Visual Profiler.</strong> <kbd>F5</kbd>. <kbd class="ui">Debugger &gt; Visual Profiler</kbd>. Click <kbd class="ui">Start</kbd>. Look around the dungeon for about ten seconds, including a pause. Click <kbd class="ui">Stop</kbd>. The categories are rendering tasks. The docs are blunt: this tab does not include scripting or physics. A slow <code>_physics_process</code> will not show up here. That is what the previous tab was for. On Forward+, shadow-casting lights show up as real categories. You have one shadowed SpotLight3D. Write one category name you actually see into the note. Press <kbd>F8</kbd>.</li>
+    <li><strong>Monitors after the fact.</strong> Run <kbd>F5</kbd>, play for ten seconds, press <kbd>F8</kbd>. Then open <kbd class="ui">Debugger &gt; Monitors</kbd>. The graphs still have data. The debugger page says monitors keep history even if the tab was not visible during play. Find FPS and the node or object count. Write the FPS number into the note. If the graph is flat at the top, click it and read the scale rather than guessing.</li>
+    <li><strong>Video RAM.</strong> With a session just finished, or during a new <kbd>F5</kbd>, open <kbd class="ui">Debugger &gt; Video RAM</kbd>. The list is resources by path: meshes, materials, viewport textures. The total sits at the top right of that tab. Confirm <code>mesh_library</code> or a BoxMesh path appears. Press <kbd>F8</kbd> if the game is still running.</li>
+  </ol>
+  <div class="callout docs"><span class="callout-title">What to ignore on a dungeon this small</span>
+    <p>The 3D performance page talks about occlusion culling, transparency sort cost, and mesh LOD. Your GridMap is a handful of opaque boxes. Automatic instancing on Forward+ already batches MeshInstance3D nodes that share a mesh and an opaque material, which is why the library materials had to live on the mesh resource. You do not add occluders today. You do turn an extra shadow off if a later level grows: the torch is the only shadow-casting light on purpose.</p></div>
+  <div class="checkpoint"><p>The note contains a frame-time number, one Visual Profiler category, and an FPS number. The dungeon still reaches the first room with <kbd>F5</kbd>. If the Profiler list stays empty, Start was clicked before the game was running, or you pressed Clear. Run, then Start, then play, then Stop.</p></div>
+
+  <h2 id="build-4">Block 4: Rules you are keeping, then git</h2>
+  <p>These are the best-practice pages, applied to the games you already built. Read them as decisions, not as new systems to code.</p>
+  <ol class="steps">
+    <li><strong>Scenes own their nodes.</strong> The scene organization page wants a scene to carry what it needs, and to take outside information from its parent. The enemy scene owns its mesh, its agent, and its Health child. <code>main.gd</code> does not reach into the capsule to invent a second health variable. Dodger's mob scene and the tower scene in Bastion are the same shape. If a script starts with a chain of <code>get_parent().get_parent()</code>, the scene is borrowing a job that belongs higher up, or the parent should have passed a reference.</li>
+    <li><strong>Autoloads are for wide scope, and you have used none.</strong> The autoload page's warning is global state: one object that every scene can break. A <code>class_name</code> such as <code>Health</code> shares behavior without a singleton. Static functions share helpers that do not need per-instance data. The dungeon keeps the key list on <code>Main</code>, the scene root, which is the "owner" option that page describes. Part 2 adds five autoloads because settings, saves, and scene changes outlive a single scene. Their names are <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, and <code>SceneRouter</code>, in that order. You will not create them today.</li>
+    <li><strong>Prefer the node that already does the job.</strong> RayCast3D for a beam you want to see in the editor. <code>intersect_ray</code> for a shot that exists for one physics frame. NavigationAgent3D instead of a hand-rolled grid search on a map that already has a NavigationMesh. AudioStreamPlayer on the player for footsteps, not a project-wide sound singleton, for the reason the autoload page uses a coin sound as its example.</li>
+    <li><strong>One folder per concern.</strong> <code>player</code>, <code>enemies</code>, <code>props</code>, <code>ui</code>, <code>components</code>, <code>library</code>. The project organization guidance is the same idea as the Ship Kit folders you will see on Day 15. Do not start a <code>scripts</code> folder that mixes all of them.</li>
+    <li><strong>Data that must survive a restart is a file, and JSON floats are floats.</strong> Best time is <code>user://torchlight_best.json</code>. You already cast with <code>int()</code> on load. ConfigFile, which Dodger can use for a high score, does not have that particular trap. Pick one format per game and stick to it.</li>
+    <li><strong>Generate ignore files before the first commit.</strong> Stay in the dungeon project. Menu bar: <kbd class="menu">Project &gt; Version Control &gt; Generate Version Control Metadata</kbd>. Godot writes <code>.gitignore</code> and <code>.gitattributes</code> in the project root. The version-control page says this is the same pair the Project Manager writes when you pick Git at creation. If you already chose Git on Day 12, the files exist and the menu is a harmless no-op or a confirm. Keep them. They exclude <code>.godot/</code>, which is cache, and imported translation binaries.</li>
+    <li><strong>Commit with PowerShell.</strong> Close any running game (<kbd>F8</kbd>). In a terminal:</li>
+  </ol>
+<script type="text/x-code" data-lang="shell" data-file="PowerShell">
+cd C:\GodotProjects\g05-torchlight-dungeon
+git init
+git add .
+git status
+git commit -m "Playable torchlight dungeon"
+</script>
+  <div class="callout external"><span class="callout-title">External resource (not in the Godot docs)</span>
+    <p>If PowerShell says <code>git</code> is not recognized, install Git for Windows from <a href="https://git-scm.com" target="_blank" rel="noopener">https://git-scm.com</a> and open a new terminal. Verify the steps on that site. Installers change. If <code>git commit</code> refuses because a name and email are unset, follow the message Git prints. This course does not walk through global git settings.</p></div>
+  <div class="callout note"><span class="callout-title">Line endings</span>
+    <p>The version-control docs discuss Windows clients rewriting LF to CRLF and marking files dirty. The generated <code>.gitattributes</code> is the project's answer. Do not "fix" dirty files by deleting <code>.godot</code> from disk while the editor is open. That folder is a cache the editor rebuilds.</p></div>
+  <div class="checkpoint"><p><code>git status</code> after the commit prints a clean working tree, or only files you chose not to add. <code>git status</code> before the commit must not list <code>.godot/</code> as a new folder. If it does, <code>.gitignore</code> is missing. Run the Version Control menu again, then <code>git status</code>. Also search the project for <code>breakpoint</code> one last time. A clean commit that freezes on every shot is not clean.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Editing on Remote and saving Local.</strong> They are different trees. A light energy you typed while Remote was selected dies with the session.</li>
+    <li><strong>Leaving <code>breakpoint</code> in <code>_fire</code>.</strong> Gutter dots are editor state. The keyword is source. The git commit will publish the keyword.</li>
+    <li><strong>Judging scripts from the Visual Profiler.</strong> That tab is draw-call CPU time. Script cost is the Profiler tab, under script functions, after you click a frame.</li>
+    <li><strong>Autostart left on.</strong> The checkbox is session-only, but within the session every <kbd>F5</kbd> pays the profiler cost and the game feels worse than it is.</li>
+    <li><strong>Committing <code>.godot</code>.</strong> It is large, it changes every import, and the official ignore list starts with it.</li>
+    <li><strong>Using today to restart a game from Day 3.</strong> Triage records the gap. It does not schedule an eight-hour rebuild. Part 2 has its own projects.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, about 20 min)</h2>
+  <div class="challenge">
+    <h3>One monitor number you explain</h3>
+    <p>Run the dungeon, stand still for five seconds, then sprint and spin for five seconds. Open Monitors and find a counter that moved. In <code>day14-triage.txt</code>, name the counter and write why it moved. FPS, process time, and physics time are all fair. Do not add a custom performance monitor. The debugger page links that as a separate topic. You are only reading the built-in graphs.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>A red dot in the script gutter and a <code>breakpoint</code> line differ because:</p>
+      <ul>
+        <li>Only the keyword can stop the game</li>
+        <li>The keyword is saved in the script and will be committed. The gutter dot is editor state</li>
+        <li>The gutter dot only works on <code>_process</code></li>
+        <li>The keyword is removed automatically when you press Continue</li>
+      </ul>
+      <p class="explain">The debugging overview says gutter breakpoints persist in the editor even across restarts, and the keyword persists in the file, including across machines in version control.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>You changed SpotLight3D energy while the Scene dock said Remote. After F8, Local still shows the old value. What happened?</p>
+      <ul>
+        <li>Remote edits the running process. They are not written to the scene file</li>
+        <li>Forward+ ignores Inspector edits</li>
+        <li>Energy is read-only while volumetric fog is on</li>
+        <li>You edited the MeshLibrary by accident</li>
+      </ul>
+      <p class="explain">The overview calls Remote the place to inspect or change parameters in the running project. Local is the saved scene. The torch script also writes energy every frame, so a Remote value would flicker even during the session.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>Frame time on the Profiler is high, but physics time and the script list look cheap. Where does the profiler page tell you to look next?</p>
+      <ul>
+        <li>A missing <code>.gitignore</code></li>
+        <li>The Input Map</li>
+        <li>Rendering. Frame time includes it. Particles and visual effects are the example the page gives</li>
+        <li>The autoload list, which is empty</li>
+      </ul>
+      <p class="explain">The profiler docs say frame time includes rendering, and a spike with fast scripts can be a visual effect. The Visual Profiler is the follow-up for draw-call cost, and it still will not show GDScript time.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>Why does this course keep Health as a child node with <code>class_name</code>, instead of an autoload named HealthManager?</p>
+      <ul>
+        <li>Autoloads cannot hold integers</li>
+        <li>class_name is required for every script</li>
+        <li>GridMap deletes autoloads</li>
+        <li>The autoload page treats global access as a way to make every bug the whole project's bug. A child Health stays with the body that owns it</li>
+      </ul>
+      <p class="explain">Shared behavior can be a <code>class_name</code> without a singleton. Autoloads fit systems that outlive one scene and manage their own data. Part 2's five autoloads are that case. A hit point total is not.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Which path does the version-control page tell you to keep out of git?</p>
+      <ul>
+        <li><code>project.godot</code></li>
+        <li><code>.godot/</code></li>
+        <li><code>player.gd</code></li>
+        <li><code>user://torchlight_best.json</code></li>
+      </ul>
+      <p class="explain"><code>.godot/</code> is the editor cache. <code>project.godot</code> is the project and should be committed. The best-time file is under <code>user://</code>, outside the project folder, so git in the project root never saw it.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/debug/overview_of_debugging_tools.html" target="_blank" rel="noopener">Overview of debugging tools</a>: gutter versus <code>breakpoint</code>, Continue, Remote.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/debug/debugger_panel.html" target="_blank" rel="noopener">Debugger panel</a>: Stack Trace, Evaluator, Visual Profiler, Monitors, Video RAM.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/debug/the_profiler.html" target="_blank" rel="noopener">The Profiler</a>: Start, frame time, physics time, idle time.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/performance/optimizing_3d_performance.html" target="_blank" rel="noopener">Optimizing 3D performance</a>: culling, transparency, LOD, Forward+ instancing.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/performance/general_optimization.html" target="_blank" rel="noopener">General optimization tips</a>: measure before you rewrite.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/best_practices/scene_organization.html" target="_blank" rel="noopener">Scene organization</a>: self-contained scenes, parent context.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/best_practices/autoloads_versus_regular_nodes.html" target="_blank" rel="noopener">Autoloads versus regular nodes</a>: when a singleton is the wrong fix.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/best_practices/version_control_systems.html" target="_blank" rel="noopener">Version control systems</a>: <code>.godot/</code> and Generate Version Control Metadata.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li>Triage note exists and the dungeon still runs with no breakpoint left in the scripts.</li>
+    <li>I have a frame-time number and an FPS number written down.</li>
+    <li><code>git status</code> in <code>g05-torchlight-dungeon</code> is clean and <code>.godot</code> is not tracked.</li>
+    <li>I can point at Health, the enemy scene, and Main and say which one owns the run.</li>
+  </ul>
+  <h3>Retrospective, ten minutes</h3>
+  <p>Open the note and answer in sentences, not bullets of one word:</p>
+  <ul>
+    <li>Which of the five games would you replay, and which folder are you willing to delete?</li>
+    <li>Which Godot word did you confuse for the longest (scene versus node, mask versus layer, Remote versus Local)?</li>
+    <li>What broke because a name in a script did not match a name in the Scene dock?</li>
+    <li>Where did you spend time on a feature the game page did not require?</li>
+  </ul>
+  <h3>Part 2 starts tomorrow</h3>
+  <p><strong>Tomorrow:</strong> Day 15 builds the Ship Kit, a template project, not a sixth genre. You will add the autoloads <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, and <code>SceneRouter</code>, in that order, plus a folder layout those later games all share. Part 2 games are 2D and use the Mobile renderer unless a page says otherwise. The training games stay where they are. You will not port the dungeon onto the kit.</p>
+  <p>The five training designs, for a last look: <a href="../games/g01-arcade-dodger.html">Dodger</a>, <a href="../games/g02-metroidvania-platformer.html">Cave Runner</a>, <a href="../games/g03-tower-defense.html">Bastion Defense</a>, <a href="../games/g04-arena-brawler-3d.html">Arena Brawler 3D</a>, <a href="../games/g05-dungeon-crawler-3d.html">Torchlight Dungeon</a>.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

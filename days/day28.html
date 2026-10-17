@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 28 - Deep Digger II: shop, hazards, and a build | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day28" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 28</div>
+    <h1>Deep Digger II: shop, hazards, and a build</h1>
+    <p class="lead">Sell ore at the surface for the prices below, survive magma and depth pressure, stream chunks in and out, and write the run through SaveManager. The day ends with a Windows release export and an Android debug install.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Concepts.</strong> Prices, hazards, streaming, JSON ints.</td></tr>
+    <tr><td>0:20 – 1:15</td><td><strong>Shop UI.</strong> Panel, buttons, unique names.</td></tr>
+    <tr><td>1:15 – 1:30</td><td><strong>Break.</strong></td></tr>
+    <tr><td>1:30 – 2:20</td><td><strong>Scripts.</strong> Hazards, unload, save, shop code.</td></tr>
+    <tr><td>2:20 – 2:40</td><td><strong>Strings.</strong> <code>DIGGER_</code> rows and the credits line.</td></tr>
+    <tr><td>2:40 – 3:25</td><td><strong>Play the loop.</strong> Sell, buy, hull failure, reload.</td></tr>
+    <tr><td>3:25 – 3:45</td><td><strong>Release builds.</strong> Windows exe and Android debug.</td></tr>
+    <tr><td>3:45 – 4:00</td><td><strong>Quiz and wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>4 h</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Open a surface shop that sells cargo and buys six upgrades at the costs in the table.</li>
+    <li>Take hull damage from magma (18 per second) and from pressure below depth 40.</li>
+    <li>Unload TileMapLayer chunks farther than two chunks from the drill without filling dug holes back in.</li>
+    <li>Save and load the run with <code>SaveManager.save_slot(&amp;"run", …)</code>, casting counters with <code>int()</code>.</li>
+    <li>Export a Windows release and an Android debug build using the Day 16 steps, with package <code>com.yourname.deepdigger</code>.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 27's project runs: <kbd>F6</kbd> on <code>res://game/game.tscn</code> flies, digs, and refuels at the surface.</li>
+    <li>If you skipped Day 27, do that day first. There is no shorter bring-up: the tileset, drill, and chunk fill all live there.</li>
+    <li>Do not edit the five Ship Kit autoloads. Today only calls <code>SaveManager</code>, <code>Events</code>, <code>Audio</code>, and <code>SceneRouter</code>.</li>
+    <li>Numbers below match the <a href="../games/g10-extraction-miner.html">game page</a>. Do not retune them while you wire the shop.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>Prices are a formula, not a feeling</h3>
+  <p>Going from level <code>L</code> to <code>L + 1</code> costs <code>base * (L + 1) * (L + 1)</code>. Ten copper is <code>10 * 8 = 80</code> credits, which is exactly the first fuel tank. Five iron is 90, the first cargo bay. The hull fails by losing cargo and popping back to the shaft; credits and upgrades stay. That is the extraction loss.</p>
+  <h3>Streaming keeps the dug set, not the pixels</h3>
+  <p>A chunk outside the 5×5 window is erased with <code>erase_cell</code>. The <code>_dug</code> dictionary is not cleared. The next <code>load_chunk</code> skips those coordinates, so the hole is still a hole. If you erase the dictionary too, the cave grows back.</p>
+  <h3>JSON numbers come back as floats</h3>
+  <p><code>SaveManager.save_slot</code> writes the dictionary you pass (the file wrapper adds <code>format</code> and <code>saved_at</code>). On load, every number is a float. Credits, upgrade levels, and cell coordinates go through <code>int()</code>. Fuel and hull stay floats. Vectors are stored as <code>[x, y]</code>.</p>
+  <div class="callout docs"><span class="callout-title">What the kit already does</span>
+    <p><code>SaveManager.flush()</code> is already called on window close, app pause, and focus-out for the small profile. The run slot is ours, so <code>game.gd</code> also saves that slot on those notifications. <code>set_value("best_depth", n)</code> is the profile high-score, separate from the slot.</p></div>
+
+  <h2 id="build-1">Block 2: Shop panel and the dark overlay</h2>
+  <p>Cost to buy the next level. A dash means that level is the cap and the button shows MAX.</p>
+  <table class="timebox">
+    <tr><td>Upgrade</td><td>Base</td><td>Cap</td><td>From 0</td><td>From 1</td><td>From 2</td><td>From 3</td><td>From 4</td><td>Effect</td></tr>
+    <tr><td>Fuel tank</td><td>80</td><td>5</td><td>80</td><td>320</td><td>720</td><td>1280</td><td>2000</td><td>max fuel = 100 + 40 × level</td></tr>
+    <tr><td>Drill bit</td><td>100</td><td>5</td><td>100</td><td>400</td><td>900</td><td>1600</td><td>2500</td><td>dig time ÷ (1 + 0.35 × level)</td></tr>
+    <tr><td>Cargo bay</td><td>90</td><td>5</td><td>90</td><td>360</td><td>810</td><td>1440</td><td>2250</td><td>capacity = 20 + 12 × level</td></tr>
+    <tr><td>Hull plating</td><td>150</td><td>4</td><td>150</td><td>600</td><td>1350</td><td>2400</td><td>—</td><td>max hull = 100 + 25 × level; pressure × (1 − 0.20 × level)</td></tr>
+    <tr><td>Fuel mixer</td><td>120</td><td>4</td><td>120</td><td>480</td><td>1080</td><td>1920</td><td>—</td><td>burn × (1 − 0.08 × level)</td></tr>
+    <tr><td>Assay office</td><td>200</td><td>3</td><td>200</td><td>800</td><td>1800</td><td>—</td><td>—</td><td>sell × (1 + 0.10 × level)</td></tr>
+  </table>
+  <p>Hazards, painted only where the rock was not dug yet: magma when cave noise is below <code>-0.75</code> and depth is past 30 (18 hull per second, no collision). Gas when cave noise is between <code>0.20</code> and <code>0.32</code> and depth is past 18 (fuel burn × 3 while the engine runs, no collision). Pressure when depth is past 40: <code>(depth - 40) * 0.15 * (1 - 0.20 * hull_level)</code> hull per second. Darkness alpha is <code>clamp(depth / 120, 0, 0.72)</code>.</p>
+  <ol class="steps">
+    <li><strong>Open the scene.</strong> FileSystem dock, double-click <code>res://game/game.tscn</code>.</li>
+    <li><strong>Darkness.</strong> Select <code>HUD</code>. Press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>ColorRect</code>, rename it <code>Darkness</code>. In the Scene dock, drag <code>Darkness</code> above <code>MarginContainer</code> so the labels draw on top of the tint.</li>
+    <li><strong>Darkness layout.</strong> Select <code>Darkness</code>. Right-click it and choose <kbd class="ui">Access as Unique Name</kbd>. Set <kbd class="ui">Layout &gt; Anchors Preset</kbd> to <kbd class="ui">Full Rect</kbd>. Set <kbd class="ui">Color</kbd> to black. Set <kbd class="ui">Mouse &gt; Filter</kbd> to <kbd class="ui">Ignore</kbd>. The script changes the alpha each frame.</li>
+    <li><strong>Tutorial line.</strong> Select the <code>VBoxContainer</code> under <code>MarginContainer</code>. Add a <code>Label</code>, rename it <code>TutorialLabel</code>. Right-click it and choose <kbd class="ui">Access as Unique Name</kbd>. Set <kbd class="ui">Autowrap Mode</kbd> to <kbd class="ui">Word</kbd>. Set <kbd class="ui">Custom Minimum Size</kbd> Y to <code>48</code>.</li>
+    <li><strong>Shop panel.</strong> Select <code>HUD</code>, add a <code>Panel</code>, rename it <code>Shop</code>. Drag it under <code>MarginContainer</code> so it is the last HUD child and draws in front. Set <kbd class="ui">Anchors Preset</kbd> to <kbd class="ui">Center</kbd>. Set offsets: Left <code>-270</code>, Top <code>-280</code>, Right <code>270</code>, Bottom <code>280</code>. Uncheck <kbd class="ui">Visible</kbd> for now; the script shows it.</li>
+    <li><strong>Shop margin.</strong> Select <code>Shop</code>, add a <code>MarginContainer</code>. Anchors Preset <kbd class="ui">Full Rect</kbd>. Set all four offsets to <code>12</code> on the left and top, and <code>-12</code> on the right and bottom.</li>
+    <li><strong>Shop list.</strong> Select that MarginContainer, add a <code>VBoxContainer</code>. Add children in this order, renaming each one: <code>Label</code> <code>TitleLabel</code>, then <code>Button</code> nodes named <code>SellButton</code>, <code>TankButton</code>, <code>DrillButton</code>, <code>CargoButton</code>, <code>HullButton</code>, <code>EfficiencyButton</code>, <code>AssayButton</code>, <code>CloseButton</code>.</li>
+    <li><strong>Unique names.</strong> For each of those nine nodes, right-click and choose <kbd class="ui">Access as Unique Name</kbd>. The names must be exactly those words. <code>DrillButton</code> is not the <code>Drill</code> body.</li>
+    <li><strong>Button height.</strong> Select <code>SellButton</code>. Set <kbd class="ui">Custom Minimum Size</kbd> Y to <code>36</code>. Hold <kbd>Shift</kbd> and click <code>CloseButton</code> so every button in between is selected, then set the same Y if the Inspector edits them together. If it does not, set Y on each button.</li>
+    <li><strong>Save the scene</strong> with <kbd>Ctrl</kbd>+<kbd>S</kbd> before attaching scripts.</li>
+  </ol>
+  <div class="checkpoint"><p>The Scene dock shows <code>Darkness</code>, then <code>MarginContainer</code> (with <code>TutorialLabel</code> at the bottom of the list), then <code>Shop</code>. Each shop control has a <code>%</code> in its name. <code>Shop</code> is hidden, so the 2D view looks like yesterday plus a black rectangle. If the black rectangle covers the labels, <code>Darkness</code> is below <code>MarginContainer</code> in the tree; drag it above.</p></div>
+
+  <h2 id="build-2">Block 3: Replace four scripts and add the shop</h2>
+  <p>These files replace yesterday's copies. Balance functions are unchanged. New pieces are the shop, hull failure, hazard rates, chunk unload, and the save slot <code>run</code>.</p>
+  <ol class="steps">
+    <li><strong>shop.gd.</strong> Right-click <code>Shop</code>, <kbd class="ui">Attach Script</kbd>, path <code>res://game/shop.gd</code>. Replace the whole file.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/shop.gd">
+class_name DiggerShop
+extends Panel
+
+var game: DiggerGame
+
+func _ready() -> void:
+    hide()
+    %SellButton.pressed.connect(_on_sell)
+    %CloseButton.pressed.connect(close_shop)
+    %TankButton.pressed.connect(_on_buy.bind("tank"))
+    %DrillButton.pressed.connect(_on_buy.bind("drill"))
+    %CargoButton.pressed.connect(_on_buy.bind("cargo"))
+    %HullButton.pressed.connect(_on_buy.bind("hull"))
+    %EfficiencyButton.pressed.connect(_on_buy.bind("efficiency"))
+    %AssayButton.pressed.connect(_on_buy.bind("assay"))
+
+func _game() -> DiggerGame:
+    if game == null:
+        game = get_tree().get_first_node_in_group("digger_game") as DiggerGame
+    return game
+
+func open_shop() -> void:
+    var host := _game()
+    if host == null:
+        return
+    host.shop_open = true
+    if host.tutorial_step == 3:
+        host.advance_tutorial(4)
+    show()
+    _refresh()
+
+func close_shop() -> void:
+    var host := _game()
+    if host != null:
+        host.shop_open = false
+        host.save_run()
+    hide()
+
+func _on_sell() -> void:
+    var host := _game()
+    if host == null:
+        return
+    var payout := host.sell_all()
+    var sold := tr("DIGGER_TOAST_SOLD")
+    if sold.contains("%"):
+        Events.toast_requested.emit(sold % payout)
+    else:
+        Events.toast_requested.emit("%s %d" % [sold, payout])
+    _refresh()
+
+func _on_buy(id: String) -> void:
+    var host := _game()
+    if host == null:
+        return
+    if host.try_buy(id):
+        _refresh()
+
+func _refresh() -> void:
+    var host := _game()
+    if host == null:
+        return
+    %TitleLabel.text = tr("DIGGER_SHOP_TITLE")
+    %SellButton.text = "%s (%d)" % [tr("DIGGER_SELL"), host.quote_sell()]
+    %CloseButton.text = tr("DIGGER_CLOSE")
+    _label(%TankButton, "tank", "DIGGER_UP_TANK")
+    _label(%DrillButton, "drill", "DIGGER_UP_DRILL")
+    _label(%CargoButton, "cargo", "DIGGER_UP_CARGO")
+    _label(%HullButton, "hull", "DIGGER_UP_HULL")
+    _label(%EfficiencyButton, "efficiency", "DIGGER_UP_EFF")
+    _label(%AssayButton, "assay", "DIGGER_UP_ASSAY")
+
+func _label(button: Button, id: String, key: String) -> void:
+    var host := _game()
+    button.text = "%s  %s" % [tr(key), _level_text(host, id)]
+
+func _level_text(host: DiggerGame, id: String) -> String:
+    var level := int(host.upgrades[id])
+    var cap := host.max_level(id)
+    if level >= cap:
+        return tr("DIGGER_MAX")
+    var template := tr("DIGGER_LEVEL")
+    if not template.contains("%"):
+        return "%d/%d  %d cr" % [level, cap, host.upgrade_cost(id)]
+    return template % [level, cap, host.upgrade_cost(id)]
+      </script>
+    </li>
+    <li><strong>game.gd.</strong> Open <code>res://game/game.gd</code>. Select all and replace the whole file. This is yesterday's balance plus save, shop, and hull failure.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/game.gd">
+class_name DiggerGame
+extends Node2D
+
+const SURFACE_Y: int = 2
+const SLOT: StringName = &"run"
+const ORE_VALUE: Dictionary = {
+    "copper": 8,
+    "iron": 18,
+    "gold": 45,
+    "crystal": 120,
+}
+const UPGRADE_BASE: Dictionary = {
+    "tank": 80,
+    "drill": 100,
+    "cargo": 90,
+    "hull": 150,
+    "efficiency": 120,
+    "assay": 200,
+}
+const UPGRADE_MAX: Dictionary = {
+    "tank": 5,
+    "drill": 5,
+    "cargo": 5,
+    "hull": 4,
+    "efficiency": 4,
+    "assay": 3,
+}
+
+var seed_value: int = 1
+var credits: int = 0
+var fuel: float = 100.0
+var hull: float = 100.0
+var dig_ratio: float = 0.0
+var shop_open: bool = false
+var dug_total: int = 0
+var best_depth: int = 0
+var tutorial_step: int = 0
+var seen_deep: bool = false
+var ach_depth: bool = false
+var cargo: Dictionary = {
+    "copper": 0,
+    "iron": 0,
+    "gold": 0,
+    "crystal": 0,
+}
+var upgrades: Dictionary = {
+    "tank": 0,
+    "drill": 0,
+    "cargo": 0,
+    "hull": 0,
+    "efficiency": 0,
+    "assay": 0,
+}
+
+var _toast_at: Dictionary = {}
+var _save_wait: float = 0.0
+var _can_save: bool = false
+var _has_spawn: bool = false
+var _spawn_position: Vector2 = Vector2.ZERO
+var _pending_dug: Variant = []
+
+@onready var terrain: DiggerTerrain = $World/Terrain
+@onready var drill: DiggerDrill = $Drill
+@onready var shop: DiggerShop = $HUD/Shop
+
+func _ready() -> void:
+    add_to_group("digger_game")
+    _load_or_create()
+    terrain.import_dug(_pending_dug)
+    terrain.setup(seed_value)
+    if _has_spawn:
+        drill.global_position = _spawn_position
+    else:
+        drill.global_position = terrain.map_to_local(Vector2i(0, 1))
+    fuel = clampf(fuel, 0.0, max_fuel())
+    hull = clampf(hull, 1.0, max_hull())
+    _can_save = true
+    Events.game_started.emit()
+    Events.score_changed.emit(credits)
+    print("Deep Digger seed %d" % seed_value)
+    print(OS.get_user_data_dir())
+
+func _process(delta: float) -> void:
+    if not _can_save:
+        return
+    _save_wait += delta
+    if _save_wait < 8.0:
+        return
+    _save_wait = 0.0
+    save_run()
+
+func _notification(what: int) -> void:
+    if not _can_save:
+        return
+    if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+        save_run()
+
+func max_fuel() -> float:
+    return 100.0 + 40.0 * float(int(upgrades["tank"]))
+
+func max_hull() -> float:
+    return 100.0 + 25.0 * float(int(upgrades["hull"]))
+
+func cargo_cap() -> int:
+    return 20 + 12 * int(upgrades["cargo"])
+
+func cargo_used() -> int:
+    var total := 0
+    for key in cargo.keys():
+        total += int(cargo[key])
+    return total
+
+func burn_per_second(cell_y: int) -> float:
+    var depth := maxi(0, cell_y - SURFACE_Y)
+    var efficiency := float(int(upgrades["efficiency"]))
+    return (1.6 + 0.035 * float(depth)) * (1.0 - 0.08 * efficiency)
+
+func dig_seconds(hardness: float) -> float:
+    var drill_level := float(int(upgrades["drill"]))
+    return hardness / (1.0 + 0.35 * drill_level)
+
+func pressure_dps(cell_y: int) -> float:
+    var depth := maxi(0, cell_y - SURFACE_Y)
+    if depth <= 40:
+        return 0.0
+    var hull_level := float(int(upgrades["hull"]))
+    return float(depth - 40) * 0.15 * (1.0 - 0.2 * hull_level)
+
+func hazard_burn_scale(kind: int) -> float:
+    if kind == DiggerTerrain.KIND_GAS:
+        return 3.0
+    return 1.0
+
+func hazard_hull_dps(kind: int) -> float:
+    if kind == DiggerTerrain.KIND_MAGMA:
+        return 18.0
+    return 0.0
+
+func upgrade_cost(id: String) -> int:
+    var level := int(upgrades[id])
+    return int(UPGRADE_BASE[id]) * (level + 1) * (level + 1)
+
+func max_level(id: String) -> int:
+    return int(UPGRADE_MAX[id])
+
+func note_depth(cell_y: int) -> void:
+    var depth := maxi(0, cell_y - SURFACE_Y)
+    if depth > best_depth:
+        best_depth = depth
+        if _can_save:
+            SaveManager.set_value("best_depth", best_depth)
+    if depth > 8:
+        seen_deep = true
+    if depth >= 50 and not ach_depth:
+        ach_depth = true
+        Events.achievement_unlocked.emit(&"digger_depth_50")
+        save_run()
+
+func refuel_and_repair(delta: float) -> void:
+    fuel = minf(max_fuel(), fuel + 40.0 * delta)
+    hull = minf(max_hull(), hull + 8.0 * delta)
+    if seen_deep and tutorial_step == 2:
+        advance_tutorial(3)
+
+func collect(kind: int) -> void:
+    dug_total += 1
+    advance_tutorial(1)
+    var ore := DiggerTerrain.ore_id(kind)
+    if ore == "":
+        return
+    cargo[ore] = int(cargo[ore]) + 1
+    advance_tutorial(2)
+
+func quote_sell() -> int:
+    var mult := 1.0 + 0.10 * float(int(upgrades["assay"]))
+    var total := 0
+    for key in cargo.keys():
+        var units := int(cargo[key])
+        if units <= 0:
+            continue
+        total += floori(float(units * int(ORE_VALUE[String(key)])) * mult)
+    return total
+
+func sell_all() -> int:
+    var total := quote_sell()
+    for key in cargo.keys():
+        cargo[key] = 0
+    credits += total
+    Events.score_changed.emit(credits)
+    save_run()
+    return total
+
+func try_buy(id: String) -> bool:
+    if int(upgrades[id]) >= max_level(id):
+        return false
+    var cost := upgrade_cost(id)
+    if credits < cost:
+        toast_once("poor", "DIGGER_TOAST_POOR")
+        return false
+    credits -= cost
+    upgrades[id] = int(upgrades[id]) + 1
+    Events.score_changed.emit(credits)
+    var bought := tr("DIGGER_TOAST_BOUGHT")
+    var label := tr(_upgrade_key(id))
+    if bought.contains("%"):
+        Events.toast_requested.emit(bought % label)
+    else:
+        Events.toast_requested.emit("%s %s" % [bought, label])
+    save_run()
+    return true
+
+func toggle_shop(cell_y: int) -> void:
+    if cell_y > SURFACE_Y:
+        toast_once("surface", "DIGGER_TOAST_SURFACE")
+        return
+    if shop_open:
+        shop.close_shop()
+    else:
+        shop.open_shop()
+
+func damage_hull(amount: float) -> void:
+    if amount <= 0.0 or not _can_save:
+        return
+    hull = maxf(0.0, hull - amount)
+    if hull > 0.0:
+        return
+    for key in cargo.keys():
+        cargo[key] = 0
+    fuel = max_fuel() * 0.2
+    hull = max_hull() * 0.35
+    drill.velocity = Vector2.ZERO
+    drill.global_position = terrain.map_to_local(Vector2i(0, 1))
+    Events.game_over.emit(credits)
+    Events.toast_requested.emit(tr("DIGGER_TOAST_HULL"))
+    save_run()
+
+func advance_tutorial(step: int) -> void:
+    if step <= tutorial_step:
+        return
+    tutorial_step = step
+    save_run()
+
+func toast_once(id: String, key: String) -> void:
+    var now := Time.get_ticks_msec()
+    if _toast_at.has(id) and now - int(_toast_at[id]) < 1600:
+        return
+    _toast_at[id] = now
+    Events.toast_requested.emit(tr(key))
+
+func depth_of_drill() -> int:
+    var cell := terrain.local_to_map(terrain.to_local(drill.global_position))
+    return maxi(0, cell.y - SURFACE_Y)
+
+func save_run() -> void:
+    if not _can_save:
+        return
+    SaveManager.save_slot(SLOT, _to_data())
+    SaveManager.set_value("best_depth", best_depth)
+    var stored := int(SaveManager.get_value("best_credits", 0))
+    if credits > stored:
+        SaveManager.set_value("best_credits", credits)
+    SaveManager.flush()
+
+func _to_data() -> Dictionary:
+    return {
+        "seed": seed_value,
+        "credits": credits,
+        "fuel": fuel,
+        "hull": hull,
+        "cargo": cargo.duplicate(),
+        "upgrades": upgrades.duplicate(),
+        "tutorial_step": tutorial_step,
+        "best_depth": best_depth,
+        "dug_total": dug_total,
+        "seen_deep": seen_deep,
+        "ach_depth": ach_depth,
+        "player": [drill.global_position.x, drill.global_position.y],
+        "dug": terrain.export_dug(),
+    }
+
+func _load_or_create() -> void:
+    if not SaveManager.has_slot(SLOT):
+        seed_value = randi()
+        fuel = max_fuel()
+        hull = max_hull()
+        _pending_dug = []
+        _has_spawn = false
+        return
+    var loaded := SaveManager.load_slot(SLOT, {})
+    seed_value = int(loaded.get("seed", randi()))
+    credits = int(loaded.get("credits", 0))
+    fuel = float(loaded.get("fuel", 100.0))
+    hull = float(loaded.get("hull", 100.0))
+    _load_int_dict(cargo, loaded.get("cargo", {}))
+    _load_int_dict(upgrades, loaded.get("upgrades", {}))
+    tutorial_step = int(loaded.get("tutorial_step", 0))
+    best_depth = int(loaded.get("best_depth", 0))
+    dug_total = int(loaded.get("dug_total", 0))
+    seen_deep = bool(loaded.get("seen_deep", false))
+    ach_depth = bool(loaded.get("ach_depth", false))
+    _pending_dug = loaded.get("dug", [])
+    var pos: Variant = loaded.get("player", [])
+    if typeof(pos) == TYPE_ARRAY and (pos as Array).size() >= 2:
+        var pair: Array = pos
+        _spawn_position = Vector2(float(pair[0]), float(pair[1]))
+        _has_spawn = true
+
+func _load_int_dict(target: Dictionary, raw: Variant) -> void:
+    if typeof(raw) != TYPE_DICTIONARY:
+        return
+    var incoming: Dictionary = raw
+    for key in target.keys():
+        target[key] = int(incoming.get(key, 0))
+
+func _upgrade_key(id: String) -> String:
+    match id:
+        "tank":
+            return "DIGGER_UP_TANK"
+        "drill":
+            return "DIGGER_UP_DRILL"
+        "cargo":
+            return "DIGGER_UP_CARGO"
+        "hull":
+            return "DIGGER_UP_HULL"
+        "efficiency":
+            return "DIGGER_UP_EFF"
+        "assay":
+            return "DIGGER_UP_ASSAY"
+        _:
+            return "DIGGER_SHOP_TITLE"
+      </script>
+    </li>
+    <li><strong>terrain.gd.</strong> Replace the whole file. Same noise as yesterday. Added: magma and gas returns, <code>unload_chunk</code>, and dug import/export.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/terrain.gd">
+class_name DiggerTerrain
+extends TileMapLayer
+
+const SOURCE_ID: int = 0
+const CHUNK: int = 16
+const STREAM_RADIUS: int = 2
+
+const KIND_DIRT: int = 0
+const KIND_STONE: int = 1
+const KIND_COPPER: int = 2
+const KIND_IRON: int = 3
+const KIND_GOLD: int = 4
+const KIND_CRYSTAL: int = 5
+const KIND_MAGMA: int = 6
+const KIND_GAS: int = 7
+const KIND_BEDROCK: int = 8
+
+var seed_value: int = 1
+
+var _cave: FastNoiseLite
+var _ore: FastNoiseLite
+var _loaded: Dictionary = {}
+var _dug: Dictionary = {}
+
+func setup(world_seed: int) -> void:
+    seed_value = world_seed
+    _cave = FastNoiseLite.new()
+    _cave.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+    _cave.fractal_type = FastNoiseLite.FRACTAL_FBM
+    _cave.fractal_octaves = 3
+    _cave.frequency = 0.045
+    _cave.seed = world_seed
+    _ore = FastNoiseLite.new()
+    _ore.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+    _ore.fractal_type = FastNoiseLite.FRACTAL_FBM
+    _ore.fractal_octaves = 2
+    _ore.frequency = 0.09
+    _ore.seed = world_seed + 1
+
+func _process(_delta: float) -> void:
+    if _cave == null:
+        return
+    var player := get_tree().get_first_node_in_group("player") as Node2D
+    if player == null:
+        return
+    stream_around(local_to_map(to_local(player.global_position)))
+
+func stream_around(cell: Vector2i) -> void:
+    var center := _chunk_of(cell)
+    var keep: Dictionary = {}
+    for y in range(center.y - STREAM_RADIUS, center.y + STREAM_RADIUS + 1):
+        for x in range(center.x - STREAM_RADIUS, center.x + STREAM_RADIUS + 1):
+            var chunk := Vector2i(x, y)
+            keep[_key(chunk)] = true
+            load_chunk(chunk)
+    var stale: Array[String] = []
+    for key in _loaded.keys():
+        var key_string := String(key)
+        if not keep.has(key_string):
+            stale.append(key_string)
+    for key_string in stale:
+        var parts := key_string.split(",")
+        unload_chunk(Vector2i(int(parts[0]), int(parts[1])))
+
+func load_chunk(chunk: Vector2i) -> void:
+    var key := _key(chunk)
+    if _loaded.has(key):
+        return
+    _loaded[key] = true
+    if chunk.y < 0:
+        return
+    var origin := chunk * CHUNK
+    for y in CHUNK:
+        for x in CHUNK:
+            var cell := origin + Vector2i(x, y)
+            if _dug.has(_key(cell)):
+                continue
+            var kind := _procedural_kind(cell)
+            if kind < 0:
+                continue
+            set_cell(cell, SOURCE_ID, Vector2i(kind, 0), 0)
+
+func unload_chunk(chunk: Vector2i) -> void:
+    var key := _key(chunk)
+    if not _loaded.has(key):
+        return
+    _loaded.erase(key)
+    if chunk.y < 0:
+        return
+    var origin := chunk * CHUNK
+    for y in CHUNK:
+        for x in CHUNK:
+            erase_cell(origin + Vector2i(x, y))
+
+func kind_at(cell: Vector2i) -> int:
+    if _dug.has(_key(cell)):
+        return -1
+    return _procedural_kind(cell)
+
+func erase_dug(cell: Vector2i) -> void:
+    _dug[_key(cell)] = true
+    erase_cell(cell)
+
+func export_dug() -> Array:
+    var out: Array = []
+    for key in _dug.keys():
+        var parts := String(key).split(",")
+        out.append([int(parts[0]), int(parts[1])])
+    return out
+
+func import_dug(raw: Variant) -> void:
+    _dug.clear()
+    if typeof(raw) != TYPE_ARRAY:
+        return
+    var rows: Array = raw
+    for item in rows:
+        if typeof(item) != TYPE_ARRAY:
+            continue
+        var pair: Array = item
+        if pair.size() < 2:
+            continue
+        _dug[_key(Vector2i(int(pair[0]), int(pair[1])))] = true
+
+func is_solid(kind: int) -> bool:
+    return kind == KIND_DIRT or kind == KIND_STONE or kind == KIND_COPPER or kind == KIND_IRON or kind == KIND_GOLD or kind == KIND_CRYSTAL or kind == KIND_BEDROCK
+
+func is_ore(kind: int) -> bool:
+    return kind >= KIND_COPPER and kind <= KIND_CRYSTAL
+
+static func ore_id(kind: int) -> String:
+    match kind:
+        KIND_COPPER:
+            return "copper"
+        KIND_IRON:
+            return "iron"
+        KIND_GOLD:
+            return "gold"
+        KIND_CRYSTAL:
+            return "crystal"
+        _:
+            return ""
+
+func hardness(kind: int) -> float:
+    match kind:
+        KIND_DIRT:
+            return 0.35
+        KIND_STONE:
+            return 0.90
+        KIND_COPPER:
+            return 0.70
+        KIND_IRON:
+            return 1.10
+        KIND_GOLD:
+            return 1.40
+        KIND_CRYSTAL:
+            return 1.80
+        KIND_MAGMA:
+            return 0.40
+        KIND_GAS:
+            return 0.25
+        _:
+            return 999.0
+
+func _procedural_kind(cell: Vector2i) -> int:
+    if _cave == null:
+        return -1
+    if cell.y < DiggerGame.SURFACE_Y:
+        return -1
+    if absi(cell.x) <= 1 and cell.y <= DiggerGame.SURFACE_Y + 6:
+        return -1
+    if cell.y == DiggerGame.SURFACE_Y and absi(cell.x) > 2:
+        return KIND_DIRT
+    var n := _cave.get_noise_2d(float(cell.x), float(cell.y))
+    if n > 0.32:
+        return -1
+    var depth := cell.y
+    var o := _ore.get_noise_2d(float(cell.x), float(cell.y))
+    if depth > 16 and absf(n) < 0.015:
+        return KIND_BEDROCK
+    if depth > 80 and o > 0.72:
+        return KIND_CRYSTAL
+    if depth > 48 and o > 0.62:
+        return KIND_GOLD
+    if depth > 24 and o > 0.50:
+        return KIND_IRON
+    if depth > 8 and o > 0.42:
+        return KIND_COPPER
+    if depth > 30 and n < -0.75:
+        return KIND_MAGMA
+    if depth > 18 and n > 0.20 and n <= 0.32:
+        return KIND_GAS
+    if n < -0.2:
+        return KIND_STONE
+    return KIND_DIRT
+
+func _chunk_of(cell: Vector2i) -> Vector2i:
+    return Vector2i(floori(float(cell.x) / float(CHUNK)), floori(float(cell.y) / float(CHUNK)))
+
+func _key(v: Vector2i) -> String:
+    return "%d,%d" % [v.x, v.y]
+      </script>
+    </li>
+    <li><strong>drill.gd.</strong> Replace the whole file. <kbd>E</kbd> toggles the shop on the surface. Gas multiplies burn. Magma and pressure call <code>damage_hull</code>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/drill.gd">
+class_name DiggerDrill
+extends CharacterBody2D
+
+const MOVE_SPEED: float = 110.0
+const EMERGENCY_SCALE: float = 0.4
+
+var facing: Vector2 = Vector2.DOWN
+var dig_time: float = 0.0
+var dig_cell: Vector2i = Vector2i.ZERO
+var game: DiggerGame
+var terrain: DiggerTerrain
+
+@export var dig_break: AudioStream
+
+@onready var body_poly: Polygon2D = $Body
+
+func _ready() -> void:
+    add_to_group("player")
+    motion_mode = MOTION_MODE_FLOATING
+    game = get_parent() as DiggerGame
+    terrain = get_parent().get_node("World/Terrain") as DiggerTerrain
+    body_poly.polygon = PackedVector2Array([
+        Vector2(0, -8),
+        Vector2(6, 7),
+        Vector2(-6, 7),
+    ])
+    body_poly.color = Color(0.949, 0.757, 0.306)
+
+func _physics_process(delta: float) -> void:
+    if game == null or terrain == null:
+        return
+    var cell := terrain.local_to_map(terrain.to_local(global_position))
+    var here_kind := terrain.kind_at(cell)
+    game.note_depth(cell.y)
+    if cell.y <= DiggerGame.SURFACE_Y:
+        game.refuel_and_repair(delta)
+    if Input.is_action_just_pressed("interact"):
+        game.toggle_shop(cell.y)
+    game.damage_hull((game.hazard_hull_dps(here_kind) + game.pressure_dps(cell.y)) * delta)
+    if game.shop_open:
+        velocity = Vector2.ZERO
+        move_and_slide()
+        return
+    var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+    var speed := MOVE_SPEED
+    if game.fuel <= 0.0:
+        speed *= EMERGENCY_SCALE
+    if dir != Vector2.ZERO:
+        facing = dir
+        body_poly.rotation = facing.angle() + PI * 0.5
+    velocity = dir * speed
+    move_and_slide()
+    var burning := dir != Vector2.ZERO or dig_time > 0.0
+    if burning and game.fuel > 0.0:
+        var scale := game.hazard_burn_scale(here_kind)
+        game.fuel = maxf(0.0, game.fuel - game.burn_per_second(cell.y) * scale * delta)
+    _dig(delta, cell, dir)
+
+func _dig(delta: float, here: Vector2i, dir: Vector2) -> void:
+    if dir == Vector2.ZERO or game.fuel <= 0.0:
+        _clear_dig()
+        return
+    var step := Vector2i(int(round(facing.x)), int(round(facing.y)))
+    if step == Vector2i.ZERO:
+        _clear_dig()
+        return
+    var target := here + step
+    if target != dig_cell:
+        dig_cell = target
+        dig_time = 0.0
+    var kind := terrain.kind_at(target)
+    if not terrain.is_solid(kind):
+        _clear_dig()
+        return
+    if kind == DiggerTerrain.KIND_BEDROCK:
+        _clear_dig()
+        game.toast_once("bedrock", "DIGGER_TOAST_BEDROCK")
+        return
+    var hard := terrain.hardness(kind)
+    var fuel_cost := hard * 0.8
+    if game.fuel < fuel_cost:
+        _clear_dig()
+        game.toast_once("fuel", "DIGGER_TOAST_FUEL")
+        return
+    if terrain.is_ore(kind) and game.cargo_used() >= game.cargo_cap():
+        _clear_dig()
+        game.toast_once("cargo", "DIGGER_TOAST_CARGO")
+        return
+    var need := game.dig_seconds(hard)
+    dig_time += delta
+    game.dig_ratio = clampf(dig_time / need, 0.0, 1.0)
+    if dig_time < need:
+        return
+    game.fuel -= fuel_cost
+    terrain.erase_dug(target)
+    game.collect(kind)
+    _clear_dig()
+    if dig_break != null:
+        Audio.play_sfx_varied(dig_break, 0.12, -2.0)
+
+func _clear_dig() -> void:
+    dig_time = 0.0
+    game.dig_ratio = 0.0
+      </script>
+    </li>
+    <li><strong>hud.gd.</strong> Replace the whole file so the tutorial line and the darkness alpha update.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/hud.gd">
+class_name DiggerHud
+extends CanvasLayer
+
+func _process(_delta: float) -> void:
+    var game := get_tree().get_first_node_in_group("digger_game") as DiggerGame
+    if game == null:
+        return
+    %FuelLabel.text = "%s  %d / %d" % [tr("DIGGER_FUEL"), int(game.fuel), int(game.max_fuel())]
+    %FuelBar.max_value = game.max_fuel()
+    %FuelBar.value = game.fuel
+    %HullLabel.text = "%s  %d / %d" % [tr("DIGGER_HULL"), int(game.hull), int(game.max_hull())]
+    %HullBar.max_value = game.max_hull()
+    %HullBar.value = game.hull
+    %InfoLabel.text = "%s %d    %s %d/%d    %s %d" % [
+        tr("DIGGER_CREDITS"),
+        game.credits,
+        tr("DIGGER_CARGO"),
+        game.cargo_used(),
+        game.cargo_cap(),
+        tr("DIGGER_DEPTH"),
+        game.depth_of_drill(),
+    ]
+    %DigLabel.text = "%s %d%%" % [tr("DIGGER_DIG"), int(round(game.dig_ratio * 100.0))]
+    if game.tutorial_step >= 4:
+        %TutorialLabel.text = ""
+    else:
+        %TutorialLabel.text = tr("DIGGER_TUT_%d" % game.tutorial_step)
+    var depth := game.depth_of_drill()
+    var darkness := clampf(float(depth) / 120.0, 0.0, 0.72)
+    %Darkness.color = Color(0, 0, 0, darkness)
+      </script>
+    </li>
+    <li><strong>Save all</strong> with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>. If a <code>class_name</code> is reported missing, use <kbd class="menu">Project &gt; Reload Current Project</kbd> and open <code>game.tscn</code> again.</li>
+  </ol>
+
+  <h2 id="build-3">Block 3 continued: strings, then play the loop</h2>
+  <ol class="steps">
+    <li><strong>Append translation rows.</strong> Open <code>res://i18n/translations.csv</code>. Leave yesterday's <code>DIGGER_</code> rows. Paste these at the bottom. <code>fr</code>, <code>pt_BR</code>, <code>ru</code>, and <code>zh_CN</code> stay English on purpose. Save.
+      <script type="text/x-code" data-lang="csv" data-file="res://i18n/translations.csv">
+DIGGER_SHOP_TITLE,Surface shop,Tienda de superficie,Oberflächenladen,Surface shop,Surface shop,Surface shop,Surface shop
+DIGGER_SELL,Sell cargo,Vender carga,Fracht verkaufen,Sell cargo,Sell cargo,Sell cargo,Sell cargo
+DIGGER_CLOSE,Close,Cerrar,Schließen,Close,Close,Close,Close
+DIGGER_TUT_0,Fly with WASD. Push into dirt to drill.,Vuela con WASD. Empuja la tierra para perforar.,Flieg mit WASD. Drücke in den Boden zum Bohren.,Fly with WASD. Push into dirt to drill.,Fly with WASD. Push into dirt to drill.,Fly with WASD. Push into dirt to drill.,Fly with WASD. Push into dirt to drill.
+DIGGER_TUT_1,Ore fills the cargo bay. Dirt and stone do not.,El mineral llena la bodega. La tierra y la piedra no.,Erz füllt den Laderaum. Erde und Stein nicht.,Ore fills the cargo bay. Dirt and stone do not.,Ore fills the cargo bay. Dirt and stone do not.,Ore fills the cargo bay. Dirt and stone do not.,Ore fills the cargo bay. Dirt and stone do not.
+DIGGER_TUT_2,Low fuel? Climb back to the surface. The tank refills there.,Poco combustible? Sube a la superficie. El tanque se llena allí.,Wenig Treibstoff? Steig an die Oberfläche. Der Tank füllt sich dort.,Low fuel? Climb back to the surface. The tank refills there.,Low fuel? Climb back to the surface. The tank refills there.,Low fuel? Climb back to the surface. The tank refills there.,Low fuel? Climb back to the surface. The tank refills there.
+DIGGER_TUT_3,Press E on the surface to sell and buy upgrades.,Pulsa E en la superficie para vender y comprar mejoras.,Drücke E an der Oberfläche zum Verkaufen und Aufrüsten.,Press E on the surface to sell and buy upgrades.,Press E on the surface to sell and buy upgrades.,Press E on the surface to sell and buy upgrades.,Press E on the surface to sell and buy upgrades.
+DIGGER_TOAST_SOLD,Sold for %d credits.,Vendido por %d créditos.,Verkauft für %d Credits.,Sold for %d credits.,Sold for %d credits.,Sold for %d credits.,Sold for %d credits.
+DIGGER_TOAST_BOUGHT,Bought %s.,Comprado: %s.,Gekauft: %s.,Bought %s.,Bought %s.,Bought %s.,Bought %s.
+DIGGER_TOAST_POOR,Not enough credits.,Créditos insuficientes.,Nicht genug Credits.,Not enough credits.,Not enough credits.,Not enough credits.,Not enough credits.
+DIGGER_TOAST_HULL,Hull failed. Cargo lost.,El casco falló. Carga perdida.,Hülle versagt. Fracht verloren.,Hull failed. Cargo lost.,Hull failed. Cargo lost.,Hull failed. Cargo lost.,Hull failed. Cargo lost.
+DIGGER_TOAST_SURFACE,The shop is on the surface.,La tienda está en la superficie.,Der Laden ist an der Oberfläche.,The shop is on the surface.,The shop is on the surface.,The shop is on the surface.,The shop is on the surface.
+DIGGER_UP_TANK,Fuel tank,Tanque,Tank,Fuel tank,Fuel tank,Fuel tank,Fuel tank
+DIGGER_UP_DRILL,Drill bit,Broca,Bohrer,Drill bit,Drill bit,Drill bit,Drill bit
+DIGGER_UP_CARGO,Cargo bay,Bodega,Laderaum,Cargo bay,Cargo bay,Cargo bay,Cargo bay
+DIGGER_UP_HULL,Hull plating,Blindaje,Panzerung,Hull plating,Hull plating,Hull plating,Hull plating
+DIGGER_UP_EFF,Fuel mixer,Mezclador,Mischer,Fuel mixer,Fuel mixer,Fuel mixer,Fuel mixer
+DIGGER_UP_ASSAY,Assay office,Oficina de ensayo,Labor,Assay office,Assay office,Assay office,Assay office
+DIGGER_LEVEL,Lv %d of %d for %d cr,Nv %d de %d por %d cr,St. %d von %d für %d cr,Lv %d of %d for %d cr,Lv %d of %d for %d cr,Lv %d of %d for %d cr,Lv %d of %d for %d cr
+DIGGER_MAX,MAX,MAX,MAX,MAX,MAX,MAX,MAX
+      </script>
+    </li>
+    <li><strong>Play a first loop.</strong> Press <kbd>F6</kbd>. Read the tutorial line. Dig until cargo is at least 1. Go deeper than 8, then return until Depth is 0. Press <kbd>E</kbd>. The shop lists the six upgrades and a sell total.</li>
+    <li><strong>Buy the tank.</strong> Ten copper (or any mix that quotes at least 80) then Sell, then Fuel tank. The button must change from <code>Lv 0 of 5 for 80 cr</code> to <code>Lv 1 of 5 for 320 cr</code>, and the fuel max becomes 140. Close the shop. Fuel refills toward 140 while you sit on the surface.</li>
+    <li><strong>Find a hazard.</strong> Dig past depth 18 along a cave edge for yellow-green gas, and past depth 30 for red magma. Gas triples the fuel drop only while you thrust. Magma drops the hull bar. Standing in magma at hull 0 clears cargo, toasts <code>Hull failed</code>, and puts you back in the shaft. Credits stay.</li>
+    <li><strong>Reload.</strong> Note the seed number in Output. Dig a side pocket you will recognize. Wait 8 seconds or press <kbd>E</kbd> at the surface and Close (both save). Press <kbd>F8</kbd>, then <kbd>F6</kbd>. The same seed prints. The pocket is still empty. Cargo and the tank level match what you left. Output's second line is the user-data folder; <code>saves\run.json</code> is the slot.</li>
+  </ol>
+  <div class="checkpoint"><p>A second <kbd>F6</kbd> restores the hole, the credits, and the upgrade level. If credits reset to 0 but the seed matches, <code>save_slot</code> did not write the run fields: <code>load_slot</code> returns that dictionary, not the on-disk <code>format</code> / <code>data</code> envelope. If the seed changes every launch, <code>has_slot</code> is false: confirm <code>saves/run.json</code> exists in the printed folder. If the shop buttons error with <code>Node not found</code>, a unique name is missing the <code>%</code> flag.</p>
+    <p>To throw the run away and keep the project, delete <code>run.json</code> in that folder. <code>best_depth</code> is the profile key, not the slot, so it can outlive the file.</p></div>
+  <div class="callout warn"><span class="callout-title">String format errors</span>
+    <p>If Output says the string had nothing to format, a <code>DIGGER_</code> row did not reimport and <code>tr()</code> returned the raw key. Save the CSV, click it in the FileSystem dock, and confirm the Import dock lists it as a translation. Then run again.</p></div>
+
+  <h2 id="build-4">Block 4: Credits and release builds</h2>
+  <ol class="steps">
+    <li><strong>Credits scene.</strong> Double-click <code>res://ui/credits.tscn</code>. Select the vertical list of labels (the <code>VBoxContainer</code> the Ship Kit already uses). If you do not see one, select the root and add a <code>Label</code>. Add a <code>Label</code> child. Set <kbd class="ui">Text</kbd> to two lines: <code>Deep Digger tiles: generated atlas (make_tiles.gd).</code> and <code>Optional art: Kenney CC0, kenney.nl/assets</code>. Set Autowrap to Word. Save the scene. Do not remove the Godot license lines already in that scene.</li>
+    <li><strong>Third-party file.</strong> Open <code>res://licenses/THIRD_PARTY.txt</code>. At the bottom, add the same two lines. Leave the Godot copyright text in place. Save.</li>
+    <li><strong>Windows release.</strong> Follow the export clicks on <a href="../days/day16.html">Day 16</a>. In <kbd class="menu">Project &gt; Export</kbd>, select the Windows Desktop preset. Export a release build (debug unchecked) to <code>C:\GodotProjects\deep-digger\build\DeepDigger.exe</code>. Run that exe, not <kbd>F5</kbd>. Open the menu, play, dig one tile, quit, launch the exe again. The tile stays dug.</li>
+    <li><strong>Android debug.</strong> Use the Android preset from Day 16. In the preset options, filter for the package id and set it to <code>com.yourname.deepdigger</code> (replace <code>yourname</code>). Set the screen orientation option to landscape. Export a debug APK and install it on a phone or emulator using the Day 16 install steps. The game must open on the main menu in landscape, and the pause button must still open the pause menu.</li>
+    <li><strong>Store pass.</strong> Walk <a href="../publishing/launch-checklist.html">the launch checklist</a> against this project: icon, version <code>1.0.0</code>, licenses, the credits line you just added, and a save that survives a force-close. The feature list on the <a href="../games/g10-extraction-miner.html">game page</a> is the definition of store-ready for Deep Digger.</li>
+  </ol>
+  <div class="checkpoint"><p>The Windows exe restores a dug cell after a full quit. The Android build shows a landscape 1280×720 mine, not a portrait window. If the phone build is sideways the wrong way, the preset orientation is still portrait.</p></div>
+  <div class="callout external"><span class="callout-title">External resource: store consoles</span>
+    <p>Day 16 and the launch checklist own the Godot export dialog. Store listings live on <a href="https://play.google.com/console" target="_blank" rel="noopener">play.google.com/console</a>. Verify the current screenshot and package rules there; they change. Package name in the preset and in the console must both be <code>com.yourname.deepdigger</code>.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Forgetting <code>int()</code> on upgrade levels.</strong> JSON returns <code>1.0</code>. <code>1.0 + 1</code> becomes a float and the next cost is wrong. <code>_load_int_dict</code> is the cast.</li>
+    <li><strong>Unloading <code>_dug</code> with the chunk.</strong> The cave refills when you fly back. <code>unload_chunk</code> only calls <code>erase_cell</code>.</li>
+    <li><strong>Collision rectangles on columns 6 and 7.</strong> Magma becomes a wall you cannot enter, so the 18-per-second damage never runs. Remove those polygons in the TileSet panel.</li>
+    <li><strong>Shop and pause together.</strong> The shop does not pause the tree. <kbd>Escape</kbd> still pauses. Unpause with the pause menu, then press Close. The pause instance's layer is 20 so it draws above the shop.</li>
+    <li><strong>Saving a Vector2.</strong> The slot stores <code>[x, y]</code>. Putting <code>global_position</code> in the dictionary does not survive JSON.</li>
+    <li><strong>Edited <code>save_manager.gd</code>.</strong> Slot name is <code>run</code>. Profile keys are <code>best_depth</code> and <code>best_credits</code>. That is the whole API this game uses.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 25 min)</h2>
+  <div class="challenge">
+    <h3>A one-shot winch</h3>
+    <p>Add an upgrade id <code>winch</code> with base 250 and max level 1, using the same cost formula. At the surface it does nothing extra. Underground, a second action (add <code>interact</code> is already the shop; use a new action <code>dash</code> if the Ship Kit has it) spends the level and moves the drill to <code>map_to_local(Vector2i(0, 1))</code> without clearing cargo. Save the new key inside <code>upgrades</code> so it loads through <code>_load_int_dict</code>.</p>
+    <details><summary>Hint</summary>
+      <p>If <code>winch</code> is missing from the default dictionary, the loader never writes it. Add the key next to <code>assay</code> with value 0, and add it to both <code>UPGRADE_BASE</code> and <code>UPGRADE_MAX</code>.</p>
+    </details>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="2">
+      <p>You saved <code>credits = 80</code>. On the next launch the value is a float. What do you do?</p>
+      <ul>
+        <li>Store credits only in a String and never use JSON.</li>
+        <li>Call <code>float()</code> and compare with <code>==</code> against the int 80.</li>
+        <li>Assign <code>credits = int(loaded.get("credits", 0))</code>.</li>
+        <li>Turn off the SaveManager format version.</li>
+      </ul>
+      <p class="explain">JSON has one number type. Counters, levels, and cell coordinates are cast with <code>int()</code>. Fuel and hull are real quantities and stay floats.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>The fuel tank is level 1. What is the credit cost of the next purchase?</p>
+      <ul>
+        <li>80</li>
+        <li>160</li>
+        <li>320</li>
+        <li>400</li>
+      </ul>
+      <p class="explain">Cost is <code>base * (level + 1)²</code>. Base 80 at level 1 is <code>80 * 4 = 320</code>. The first purchase, from level 0, was 80.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>A chunk scrolls off and <code>unload_chunk</code> runs. What must remain true?</p>
+      <ul>
+        <li>The dug dictionary is cleared so the next load is faster.</li>
+        <li>Painted cells are erased, and <code>_dug</code> still lists the holes.</li>
+        <li>The whole TileMapLayer node is freed.</li>
+        <li>The seed changes so the chunk cannot collide with the old one.</li>
+      </ul>
+      <p class="explain"><code>load_chunk</code> skips coordinates in <code>_dug</code>. Clearing that dictionary regrows the mine on top of the player.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>Hull reaches 0 in magma. What does the player keep?</p>
+      <ul>
+        <li>Cargo, credits, and the current coordinates.</li>
+        <li>Nothing. The slot is deleted.</li>
+        <li>Cargo only.</li>
+        <li>Credits and upgrades. Cargo is cleared and the drill returns to the shaft.</li>
+      </ul>
+      <p class="explain"><code>damage_hull</code> zeros cargo, sets fuel to 20% of max and hull to 35% of max, moves the drill to cell <code>(0, 1)</code>, emits <code>Events.game_over</code>, and saves.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>Which SaveManager call stores the dug cells?</p>
+      <ul>
+        <li><code>save_slot(&amp;"run", data)</code></li>
+        <li><code>set_value("dug", data)</code> only</li>
+        <li><code>Settings.set_value("run", data)</code></li>
+        <li><code>SceneRouter.go_to</code></li>
+      </ul>
+      <p class="explain">The slot is the run. <code>set_value</code> is the small profile (<code>best_depth</code>, <code>best_credits</code>). Settings stores volume and locale, not the mine.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_tilemaplayer.html" target="_blank" rel="noopener">TileMapLayer.erase_cell</a>: what unload does to a chunk.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_fastnoiselite.html" target="_blank" rel="noopener">FastNoiseLite</a>: the same noise the hazards sample.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/i18n/localization_using_spreadsheets.html" target="_blank" rel="noopener">Localization using spreadsheets</a>: CSV keys and locales.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_projects.html" target="_blank" rel="noopener">Exporting projects</a>: presets and release versus debug.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_windows.html" target="_blank" rel="noopener">Exporting for Windows</a>: the desktop exe.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_android.html" target="_blank" rel="noopener">Exporting for Android</a>: package id and debug install.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_camera2d.html" target="_blank" rel="noopener">Camera2D</a>: zoom and limits from yesterday, still in force.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <p>File map for the finished game. Ship Kit files not listed here stay as Day 15 left them.</p>
+  <table class="timebox">
+    <tr><td><code>res://game/game.tscn</code></td><td>Root <code>Game</code>, world, drill, HUD, shop, pause instance</td></tr>
+    <tr><td><code>res://game/game.gd</code></td><td><code>DiggerGame</code>. Formulas, slot <code>run</code>, profile keys</td></tr>
+    <tr><td><code>res://game/terrain.gd</code></td><td><code>DiggerTerrain</code>. Noise, chunks, dug set</td></tr>
+    <tr><td><code>res://game/drill.gd</code></td><td><code>DiggerDrill</code>. Group <code>player</code></td></tr>
+    <tr><td><code>res://game/hud.gd</code></td><td><code>DiggerHud</code></td></tr>
+    <tr><td><code>res://game/shop.gd</code></td><td><code>DiggerShop</code></td></tr>
+    <tr><td><code>res://game/make_tiles.gd</code></td><td>EditorScript, run once</td></tr>
+    <tr><td><code>res://assets/art/tiles.png</code></td><td>144×16 atlas, columns 0–8</td></tr>
+    <tr><td><code>res://assets/art/tileset.tres</code></td><td>Tile size 16, physics on 0–5 and 8</td></tr>
+    <tr><td><code>res://i18n/translations.csv</code></td><td><code>DIGGER_</code> keys</td></tr>
+  </table>
+  <ul class="checklist">
+    <li>Sell turns ore into credits, and the first tank costs 80.</li>
+    <li>Magma or depth past 40 can zero the hull and keep the upgrades.</li>
+    <li>Flying away unloads distant chunks; flying back does not restore dug cells.</li>
+    <li><kbd>F6</kbd> twice in a row keeps the seed, the hole, and the credits.</li>
+    <li>Windows release exe and Android debug build both reach the mine.</li>
+    <li>Credits scene and <code>THIRD_PARTY.txt</code> mention the generated atlas.</li>
+  </ul>
+  <p><strong>Next:</strong> use the game page checklist before you call the build store-ready. Stretch ideas live on that page, not in this session.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

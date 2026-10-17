@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 20 - Bullet Heaven II: XP, level-ups, weapons, mobile controls | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day20" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 20 · Game 7: Bullet Heaven</div>
+    <h1>Bullet Heaven II: XP, level-ups, weapons, mobile controls</h1>
+    <p class="lead">Bats drop gems. Gems raise a level. A level pauses the run and offers three Resources: a weapon, a passive, or an evolution. A virtual joystick feeds the same move actions as the keyboard, so the player script does not grow a second input path.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Block 1: Concepts.</strong> XP curve, weapon slots, evolution rule, why data is a Resource.</td></tr>
+    <tr><td>0:20 – 1:20</td><td><strong>Block 2: Data.</strong> Balance formulas, WeaponData, PassiveData, one .tres of each, then the rest from the table.</td></tr>
+    <tr><td>1:20 – 2:05</td><td><strong>Block 3: Gems and the loadout.</strong> Gem pool, Loadout, level-up layer.</td></tr>
+    <tr><td>2:05 – 2:20</td><td><strong>Break.</strong></td></tr>
+    <tr><td>2:20 – 3:20</td><td><strong>Block 4: Wire the run.</strong> Replace the director, HUD level, localization keys.</td></tr>
+    <tr><td>3:20 – 3:45</td><td><strong>Block 5: Touch.</strong> VirtualJoystick, with a fallback if your build has no such node.</td></tr>
+    <tr><td>3:45 – 4:00</td><td><strong>Block 6: Challenge, quiz, wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>4 h 0 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Drive combat numbers from <code>Balance</code> and from <code>WeaponData</code> / <code>PassiveData</code> resources, not from copies pasted into the spawner.</li>
+    <li>Pick up pooled XP gems, level with <code>round(12 × 1.22^(level−1))</code>, and choose one of three cards while the tree is paused.</li>
+    <li>Own up to 3 weapons and 6 passives, and evolve a weapon only at weapon level 8 with the matching passive at rank 5.</li>
+    <li>Add <code>BH_</code> rows to <code>translations.csv</code> and show them with <code>tr()</code>.</li>
+    <li>Move with a virtual joystick that presses <code>move_left</code>, <code>move_right</code>, <code>move_up</code>, and <code>move_down</code>.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 19's project opens from <code>C:\GodotProjects\bullet-heaven</code>. F6 on <code>game.tscn</code> still shows the chase, the Needle, and a flat node count.</li>
+    <li>If you skipped Day 19, copy Ship Kit as that day describes, then paste Day 19's player, enemy, projectile, hash, HUD, and director before continuing. Node names must match: <code>Game</code>, <code>World</code>, <code>Player</code>, <code>Enemies</code>, <code>Projectiles</code>, <code>HUD</code>, <code>PauseMenu</code>.</li>
+    <li>The alive cap stays 36 today. The spawn interval becomes the shipping curve, so a long run will sit on that cap. Day 21 removes the cap by removing the enemy nodes.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>Resources are the rows</h3>
+  <p>A <code>Resource</code> is a data object you can save as a <code>.tres</code> and edit in the Inspector. It is the row in a table. The script is the column layout. Weapons and passives are rows. <code>Balance</code> is the math that reads those rows plus the player's ranks. Do not also hard-code the same damage number in the spawner.</p>
+  <h3>The XP curve</h3>
+  <p><code>xp_to_next(level) = round(12 × 1.22^(level − 1))</code> where <code>level</code> is the level you are now, starting at 1. Bats drop 1 XP. You need 12 XP for level 2.</p>
+  <table>
+    <thead><tr><th>From level</th><th>XP needed</th><th>Cumulative XP to get there</th></tr></thead>
+    <tbody>
+      <tr><td>1 → 2</td><td>12</td><td>12</td></tr>
+      <tr><td>2 → 3</td><td>15</td><td>27</td></tr>
+      <tr><td>3 → 4</td><td>18</td><td>45</td></tr>
+      <tr><td>4 → 5</td><td>22</td><td>67</td></tr>
+      <tr><td>5 → 6</td><td>27</td><td>94</td></tr>
+      <tr><td>8 → 9</td><td>48</td><td>214</td></tr>
+      <tr><td>10 → 11</td><td>72</td><td>345</td></tr>
+      <tr><td>15 → 16</td><td>194</td><td>1023</td></tr>
+      <tr><td>20 → 21</td><td>525</td><td>2857</td></tr>
+    </tbody>
+  </table>
+  <h3>Slots and evolutions</h3>
+  <p>Three weapon slots, six passive slots. There are exactly three weapons and six passives, so a finished build holds one of each. An evolution is not a fourth weapon. It replaces the weapon in its slot when that weapon is level 8 and the passive named on the resource is rank 5. The level-up screen forces that evolution into the first card.</p>
+  <table>
+    <thead><tr><th>Weapon</th><th>Passive required</th><th>Evolution</th><th>What changes</th></tr></thead>
+    <tbody>
+      <tr><td>Needle</td><td>Quick Hands (tome) rank 5</td><td>Storm Needle</td><td>damage × 1.25, cooldown × 0.55, pierce + 3, projectiles + 2</td></tr>
+      <tr><td>Orbit</td><td>Iron Will (might) rank 5</td><td>Nova Ring</td><td>damage × 1.40, tick × 0.62, radius × 1.50, orbs + 2</td></tr>
+      <tr><td>Scatter</td><td>Long Arms (bracer) rank 5</td><td>Fan of Knives</td><td>damage × 1.15, cooldown × 0.70, pierce + 1, projectiles become at least 8</td></tr>
+    </tbody>
+  </table>
+  <p>Orbit hits each enemy at most once per tick, no matter how many orbs overlap that enemy. Extra orbs widen coverage. They do not multiply single-target damage.</p>
+  <h3>Formulas the code will use</h3>
+  <p>Weapon level L starts at 1. <code>steps = L − 1</code>.</p>
+  <ul>
+    <li>Raw damage = <code>base_damage + damage_per_level × steps</code>. Then × <code>(1 + might.amount × might_ranks + 0.04 × shop_might_rank)</code>. Then × the evolution damage multiplier if evolved. Shop might is 0 today.</li>
+    <li>Cooldown = <code>max(min_cooldown, base_cooldown + cooldown_per_level × steps)</code> × <code>max(0.45, 1 − tome.amount × tome_ranks)</code> × evolution cooldown multiplier.</li>
+    <li>Projectile count = <code>base_projectiles + floor(steps / extra_projectiles_every)</code>, then the evolution projectile rule.</li>
+    <li>Shot speed = <code>projectile_speed × (1 + bracer.amount × bracer_ranks)</code>. For Orbit, <code>projectile_speed</code> is radians per second.</li>
+    <li>Move speed = <code>210 × (1 + stride.amount × stride_ranks) × character_speed</code>. Character speed is 1 today.</li>
+    <li>Magnet radius = <code>72 + magnet.amount × ranks + shop_magnet</code>.</li>
+    <li>Armor subtracts <code>armor.amount × ranks</code> from incoming contact HP/s. The result is clamped at 0.</li>
+    <li>Bat HP = <code>round(14 × (1 + 0.18 × minute))</code>. Bat speed = <code>min(160, 78 + 3 × minute)</code>. Bat contact = <code>8 + minute</code> HP/s. Minute is <code>int(elapsed / 60)</code>.</li>
+    <li>Spawn interval = <code>max(0.04, 0.55 × 0.90^(elapsed / 30))</code> seconds. The 36-alive cap still applies.</li>
+  </ul>
+
+  <h2 id="build-1">Block 2: Balance and the resource rows</h2>
+  <p class="steps-hint">Click "Mark done" as you go. Replace each new script completely.</p>
+  <ol class="steps">
+    <li><strong>Folders.</strong> In the FileSystem dock, right-click <code>res://</code> (or the existing <code>data</code> folder) and create <code>data</code> if needed. Inside <code>data</code>, create <code>weapons</code> and <code>passives</code>.</li>
+    <li><strong>Balance.</strong> Right-click <code>data</code>, <kbd class="ui">Create New &gt; Script</kbd>, path <code>res://data/balance.gd</code>, template Empty. This file is the only place the curve and the evolution multipliers live.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/balance.gd">
+class_name Balance
+extends Object
+
+const XP_BAT: int = 1
+const BOSS_AT: float = 480.0
+const BOSS_HP: int = 8000
+const BOSS_SPEED: float = 48.0
+const BOSS_DPS: float = 22.0
+const BOSS_HURT: float = 14.0
+
+static func xp_to_next(level: int) -> int:
+    return int(round(12.0 * pow(1.22, float(level - 1))))
+
+static func minute_of(elapsed: float) -> int:
+    return int(elapsed / 60.0)
+
+static func scaled_hp(base_hp: int, minute: int) -> int:
+    return int(round(float(base_hp) * (1.0 + 0.18 * float(minute))))
+
+static func bat_speed(minute: int) -> float:
+    return minf(160.0, 78.0 + 3.0 * float(minute))
+
+static func bat_dps(minute: int) -> float:
+    return 8.0 + float(minute)
+
+static func brute_speed(minute: int) -> float:
+    return minf(110.0, 56.0 + 2.0 * float(minute))
+
+static func brute_dps(minute: int) -> float:
+    return 14.0 + 2.0 * float(minute)
+
+static func spawn_interval(elapsed: float) -> float:
+    return maxf(0.04, 0.55 * pow(0.90, elapsed / 30.0))
+
+static func shop_cost(base_cost: int, rank: int) -> int:
+    return base_cost * (1 << rank)
+
+static func coins_for_run(kills: int, seconds: int, boss_kills: int, purse_rank: int) -> int:
+    var base: float = float(kills) * 0.25 + float(seconds) * 0.5 + float(boss_kills) * 200.0
+    var mult: float = 1.0 + 0.08 * float(purse_rank)
+    return int(floor(base * mult))
+
+static func damage(data: WeaponData, level: int, evolved: bool, might_ranks: int, might_per: float, shop_might: int) -> float:
+    var raw: float = data.base_damage + data.damage_per_level * float(level - 1)
+    var mult: float = 1.0 + might_per * float(might_ranks) + 0.04 * float(shop_might)
+    if evolved:
+        mult *= _evo_damage(data.id)
+    return raw * mult
+
+static func cooldown(data: WeaponData, level: int, evolved: bool, tome_ranks: int, tome_per: float) -> float:
+    var raw: float = data.base_cooldown + data.cooldown_per_level * float(level - 1)
+    raw = maxf(data.min_cooldown, raw)
+    var haste: float = maxf(0.45, 1.0 - tome_per * float(tome_ranks))
+    var evo: float = 1.0
+    if evolved:
+        evo = _evo_cooldown(data.id)
+    return raw * haste * evo
+
+static func projectile_count(data: WeaponData, level: int, evolved: bool) -> int:
+    var extra: int = 0
+    if data.extra_projectiles_every > 0:
+        extra = int((level - 1) / data.extra_projectiles_every)
+    var n: int = data.base_projectiles + extra
+    if evolved and data.id == &"needle":
+        n += 2
+    elif evolved and data.id == &"orbit":
+        n += 2
+    elif evolved and data.id == &"scatter":
+        n = maxi(n, 8)
+    return n
+
+static func shot_speed(data: WeaponData, bracer_ranks: int, bracer_per: float) -> float:
+    return data.projectile_speed * (1.0 + bracer_per * float(bracer_ranks))
+
+static func pierce(data: WeaponData, evolved: bool) -> int:
+    var n: int = data.pierce
+    if evolved and data.id == &"needle":
+        n += 3
+    elif evolved and data.id == &"scatter":
+        n += 1
+    return n
+
+static func orbit_radius(data: WeaponData, level: int, evolved: bool, area_mult: float) -> float:
+    var radius: float = data.orbit_radius + data.orbit_radius_per_level * float(level - 1)
+    if evolved and data.id == &"orbit":
+        radius *= 1.5
+    return radius * area_mult
+
+static func hit_radius(data: WeaponData, area_mult: float) -> float:
+    return data.hit_radius * area_mult
+
+static func _evo_damage(id: StringName) -> float:
+    if id == &"needle":
+        return 1.25
+    if id == &"orbit":
+        return 1.40
+    if id == &"scatter":
+        return 1.15
+    return 1.0
+
+static func _evo_cooldown(id: StringName) -> float:
+    if id == &"needle":
+        return 0.55
+    if id == &"orbit":
+        return 0.62
+    if id == &"scatter":
+        return 0.70
+    return 1.0
+      </script>
+      Boss constants sit here so Day 21 does not invent a second math file. Nothing spawns a boss today.</li>
+    <li><strong>Weapon script.</strong> Create <code>res://data/weapon_data.gd</code>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/weapon_data.gd">
+class_name WeaponData
+extends Resource
+
+@export var id: StringName = &""
+@export var name_key: String = ""
+@export var blurb_key: String = ""
+@export var max_level: int = 8
+@export var base_damage: float = 10.0
+@export var damage_per_level: float = 1.0
+@export var base_cooldown: float = 0.5
+@export var cooldown_per_level: float = 0.0
+@export var min_cooldown: float = 0.16
+@export var projectile_speed: float = 400.0
+@export var lifetime: float = 0.65
+@export var hit_radius: float = 12.0
+@export var base_projectiles: int = 1
+@export var extra_projectiles_every: int = 2
+@export var pierce: int = 0
+@export var kind: StringName = &"needle"
+@export var evolve_passive: StringName = &""
+@export var evolve_into: StringName = &""
+@export var orbit_radius: float = 78.0
+@export var orbit_radius_per_level: float = 6.0
+      </script>
+    </li>
+    <li><strong>Passive script.</strong> Create <code>res://data/passive_data.gd</code>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/passive_data.gd">
+class_name PassiveData
+extends Resource
+
+@export var id: StringName = &""
+@export var name_key: String = ""
+@export var blurb_key: String = ""
+@export var max_level: int = 5
+@export var stat: StringName = &""
+@export var amount_per_level: float = 0.0
+      </script>
+    </li>
+    <li><strong>First weapon resource.</strong> Wait until the Output panel is clear (the new class names must register). In the FileSystem dock, right-click <code>data/weapons</code>, click <kbd class="ui">New Resource</kbd>. Search <code>WeaponData</code>. If it is missing, the script has an error or Godot has not reloaded it: open <code>weapon_data.gd</code>, save it, and try again. Click <kbd class="ui">Create</kbd>. Name the file <code>needle.tres</code>. Save it in <code>res://data/weapons/</code>.</li>
+    <li><strong>Fill Needle.</strong> Select <code>needle.tres</code>. In the Inspector set every field. StringName fields accept <code>needle</code> without quotes. Use these values: Id <code>needle</code>, Name Key <code>BH_WPN_NEEDLE</code>, Blurb Key <code>BH_WPN_NEEDLE_BLURB</code>, Max Level <code>8</code>, Base Damage <code>10</code>, Damage Per Level <code>3</code>, Base Cooldown <code>0.48</code>, Cooldown Per Level <code>-0.025</code>, Min Cooldown <code>0.16</code>, Projectile Speed <code>680</code>, Lifetime <code>0.65</code>, Hit Radius <code>12</code>, Base Projectiles <code>1</code>, Extra Projectiles Every <code>2</code>, Pierce <code>0</code>, Kind <code>needle</code>, Evolve Passive <code>tome</code>, Evolve Into <code>storm</code>, Orbit Radius <code>78</code>, Orbit Radius Per Level <code>6</code>. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+    <li><strong>The other weapons.</strong> Repeat New Resource for <code>orbit.tres</code> and <code>scatter.tres</code>. Only the cells that differ are listed. Anything not listed matches Needle, including Max Level 8 and Extra Projectiles Every 2.</li>
+  </ol>
+  <table>
+    <thead><tr><th>Field</th><th>orbit.tres</th><th>scatter.tres</th></tr></thead>
+    <tbody>
+      <tr><td>Id / Kind</td><td>orbit</td><td>scatter</td></tr>
+      <tr><td>Name Key</td><td>BH_WPN_ORBIT</td><td>BH_WPN_SCATTER</td></tr>
+      <tr><td>Blurb Key</td><td>BH_WPN_ORBIT_BLURB</td><td>BH_WPN_SCATTER_BLURB</td></tr>
+      <tr><td>Base Damage</td><td>7</td><td>6</td></tr>
+      <tr><td>Damage Per Level</td><td>2</td><td>1.5</td></tr>
+      <tr><td>Base Cooldown</td><td>0.45</td><td>0.85</td></tr>
+      <tr><td>Cooldown Per Level</td><td>-0.02</td><td>-0.04</td></tr>
+      <tr><td>Min Cooldown</td><td>0.22</td><td>0.28</td></tr>
+      <tr><td>Projectile Speed</td><td>2.4</td><td>520</td></tr>
+      <tr><td>Lifetime</td><td>0.65</td><td>0.55</td></tr>
+      <tr><td>Hit Radius</td><td>18</td><td>12</td></tr>
+      <tr><td>Base Projectiles</td><td>1</td><td>3</td></tr>
+      <tr><td>Pierce</td><td>0</td><td>0</td></tr>
+      <tr><td>Evolve Passive</td><td>might</td><td>bracer</td></tr>
+      <tr><td>Evolve Into</td><td>nova</td><td>fan</td></tr>
+      <tr><td>Orbit Radius</td><td>78</td><td>0</td></tr>
+      <tr><td>Orbit Radius Per Level</td><td>6</td><td>0</td></tr>
+    </tbody>
+  </table>
+  <ol class="steps">
+    <li><strong>First passive.</strong> Right-click <code>data/passives</code>, <kbd class="ui">New Resource</kbd>, type <code>PassiveData</code>, create <code>might.tres</code>. Set Id <code>might</code>, Name Key <code>BH_PAS_MIGHT</code>, Blurb Key <code>BH_PAS_MIGHT_BLURB</code>, Max Level <code>5</code>, Stat <code>might</code>, Amount Per Level <code>0.08</code>. Save.</li>
+    <li><strong>The other passives.</strong> Same clicks, these values. Max Level is 5 for all of them. Stat equals Id.</li>
+  </ol>
+  <table>
+    <thead><tr><th>File</th><th>Id</th><th>Name Key</th><th>Blurb Key</th><th>Amount Per Level</th></tr></thead>
+    <tbody>
+      <tr><td>might.tres</td><td>might</td><td>BH_PAS_MIGHT</td><td>BH_PAS_MIGHT_BLURB</td><td>0.08</td></tr>
+      <tr><td>tome.tres</td><td>tome</td><td>BH_PAS_TOME</td><td>BH_PAS_TOME_BLURB</td><td>0.06</td></tr>
+      <tr><td>bracer.tres</td><td>bracer</td><td>BH_PAS_BRACER</td><td>BH_PAS_BRACER_BLURB</td><td>0.10</td></tr>
+      <tr><td>stride.tres</td><td>stride</td><td>BH_PAS_STRIDE</td><td>BH_PAS_STRIDE_BLURB</td><td>0.08</td></tr>
+      <tr><td>magnet.tres</td><td>magnet</td><td>BH_PAS_MAGNET</td><td>BH_PAS_MAGNET_BLURB</td><td>28</td></tr>
+      <tr><td>armor.tres</td><td>armor</td><td>BH_PAS_ARMOR</td><td>BH_PAS_ARMOR_BLURB</td><td>2</td></tr>
+    </tbody>
+  </table>
+  <div class="checkpoint">
+    <p>In the FileSystem dock you have three files under <code>data/weapons</code> and six under <code>data/passives</code>. Click <code>orbit.tres</code>. The Inspector shows Kind <code>orbit</code> and Base Damage <code>7</code>. If a .tres opens as a plain Resource, the script failed to register: the top of the Inspector has a Script field, assign <code>weapon_data.gd</code> or <code>passive_data.gd</code>.</p>
+  </div>
+
+  <h2 id="build-2">Block 3: Gems, loadout, level-up</h2>
+  <ol class="steps">
+    <li><strong>Gem scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>. Root <code>Node2D</code> named <code>Gem</code>. Add a child <code>Sprite2D</code>, texture <code>icon.svg</code>, scale <code>0.05</code>, modulate a green (about <code>0.3, 0.95, 0.55</code>). Save as <code>res://game/pickups/gem.tscn</code>. Create the <code>pickups</code> folder when the save dialog asks. Attach <code>res://game/pickups/gem.gd</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/pickups/gem.gd">
+class_name Gem
+extends Node2D
+
+var value: int = 1
+var active: bool = false
+
+func _ready() -> void:
+    deactivate()
+
+func activate(at: Vector2, xp: int) -> void:
+    global_position = at
+    value = xp
+    active = true
+    visible = true
+
+func deactivate() -> void:
+    active = false
+    visible = false
+    global_position = Vector2(-8000, -8000)
+      </script>
+    </li>
+    <li><strong>Scene hooks.</strong> Open <code>game.tscn</code>. Select <code>World</code>, add a <code>Node2D</code> named <code>Gems</code> and a <code>Node2D</code> named <code>Loadout</code>. Select <code>Game</code>, add a <code>CanvasLayer</code> named <code>LevelUp</code>. Set its <kbd class="ui">Layer</kbd> to <code>30</code>. In the Inspector, under Node &gt; Process, set <kbd class="ui">Mode</kbd> to <code>Always</code> so its buttons work while the tree is paused. Turn <kbd class="ui">Visible</kbd> off for now; the script turns it on.</li>
+    <li><strong>Level-up controls.</strong> Under <code>LevelUp</code> add a <code>PanelContainer</code> named <code>LevelPanel</code>. With it selected, open the <kbd class="ui">Anchor Presets</kbd> dropdown on the toolbar above the 2D viewport and choose <kbd class="ui">Full Rect</kbd>. Add a child <code>VBoxContainer</code> named <code>LevelBox</code>. Under that add a <code>Label</code> named <code>LevelTitle</code> and an <code>HBoxContainer</code> named <code>Cards</code>. Under <code>Cards</code> add three <code>Button</code> nodes named <code>Card0</code>, <code>Card1</code>, and <code>Card2</code>. Select each button: <kbd class="ui">Custom Minimum Size</kbd> <code>280</code> by <code>150</code>, <kbd class="ui">Autowrap Mode</kbd> to <code>Word</code>. Right-click <code>LevelTitle</code>, <code>Card0</code>, <code>Card1</code>, and <code>Card2</code> and choose <kbd class="ui">Access as Unique Name</kbd>.</li>
+    <li><strong>Level-up script.</strong> Attach <code>res://game/level_up.gd</code> to <code>LevelUp</code>. It pauses the tree. It does not emit <code>Events.game_paused</code>. That signal belongs to the pause menu.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/level_up.gd">
+class_name LevelUp
+extends CanvasLayer
+
+signal picked(choice: Dictionary)
+
+var _choices: Array[Dictionary] = []
+
+func _ready() -> void:
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    visible = false
+    %Card0.pressed.connect(_on_card_0)
+    %Card1.pressed.connect(_on_card_1)
+    %Card2.pressed.connect(_on_card_2)
+
+func open(choices: Array[Dictionary]) -> void:
+    _choices = choices
+    %LevelTitle.text = tr("BH_LEVELUP")
+    %Card0.text = str(choices[0]["text"])
+    %Card1.text = str(choices[1]["text"])
+    %Card2.text = str(choices[2]["text"])
+    visible = true
+    get_tree().paused = true
+
+func _on_card_0() -> void:
+    _choose(0)
+
+func _on_card_1() -> void:
+    _choose(1)
+
+func _on_card_2() -> void:
+    _choose(2)
+
+func _choose(index: int) -> void:
+    var choice: Dictionary = _choices[index]
+    visible = false
+    get_tree().paused = false
+    picked.emit(choice)
+      </script>
+    </li>
+    <li><strong>Loadout.</strong> Attach <code>res://game/loadout.gd</code> to the <code>Loadout</code> node. It preloads every .tres. A missing file is a parse error that names the path. Weapons call back into the director with <code>call</code>, so this file does not <code>preload</code> <code>game.gd</code>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/loadout.gd">
+class_name Loadout
+extends Node2D
+
+const NEEDLE: WeaponData = preload("res://data/weapons/needle.tres")
+const ORBIT: WeaponData = preload("res://data/weapons/orbit.tres")
+const SCATTER: WeaponData = preload("res://data/weapons/scatter.tres")
+const MIGHT: PassiveData = preload("res://data/passives/might.tres")
+const TOME: PassiveData = preload("res://data/passives/tome.tres")
+const BRACER: PassiveData = preload("res://data/passives/bracer.tres")
+const STRIDE: PassiveData = preload("res://data/passives/stride.tres")
+const MAGNET: PassiveData = preload("res://data/passives/magnet.tres")
+const ARMOR: PassiveData = preload("res://data/passives/armor.tres")
+const ICON: Texture2D = preload("res://icon.svg")
+
+class WeaponState:
+    var data: WeaponData
+    var level: int = 1
+    var cooldown: float = 0.15
+    var evolved: bool = false
+    var angle: float = 0.0
+
+var weapons: Array = []
+var passive_levels: Dictionary = {}
+var meta_might: int = 0
+var area_mult: float = 1.0
+var _catalog: Array[WeaponData] = []
+var _passives: Array[PassiveData] = []
+var _orbs: Array[Sprite2D] = []
+var _clock: float = 0.0
+
+func _ready() -> void:
+    _catalog = [NEEDLE, ORBIT, SCATTER]
+    _passives = [MIGHT, TOME, BRACER, STRIDE, MAGNET, ARMOR]
+    for i: int in 8:
+        var sprite := Sprite2D.new()
+        sprite.texture = ICON
+        sprite.scale = Vector2(0.07, 0.07)
+        sprite.modulate = Color(0.35, 0.9, 0.95)
+        sprite.z_index = 3
+        sprite.visible = false
+        add_child(sprite)
+        _orbs.append(sprite)
+
+func start_with(id: StringName) -> void:
+    weapons.clear()
+    var state := WeaponState.new()
+    state.data = _find_weapon(id)
+    state.level = 1
+    weapons.append(state)
+
+func tick(delta: float, board: Node) -> void:
+    _clock += delta
+    for item: Variant in weapons:
+        var state: WeaponState = item
+        if state.data.kind == &"orbit":
+            _tick_orbit(state, delta, board)
+        else:
+            _tick_gun(state, delta, board)
+    _hide_spare_orbs()
+
+func apply(choice: Dictionary, player: Player) -> void:
+    var kind: String = str(choice.get("kind", ""))
+    var id := StringName(str(choice.get("id", "")))
+    if kind == "heal":
+        player.heal(25.0)
+        return
+    if kind == "evolve":
+        var evolving: WeaponState = _state(id)
+        if evolving != null:
+            evolving.evolved = true
+        return
+    if kind == "weapon_new":
+        var created := WeaponState.new()
+        created.data = _find_weapon(id)
+        created.level = 1
+        weapons.append(created)
+        return
+    if kind == "weapon_up":
+        var upgrading: WeaponState = _state(id)
+        if upgrading != null and upgrading.level < upgrading.data.max_level:
+            upgrading.level += 1
+        return
+    if kind == "passive_new":
+        passive_levels[id] = 1
+        return
+    if kind == "passive_up":
+        passive_levels[id] = int(passive_levels.get(id, 0)) + 1
+
+func recompute(player: Player, meta: Dictionary) -> void:
+    meta_might = int(meta.get("might_rank", 0))
+    area_mult = float(meta.get("area_mult", 1.0))
+    var stride_ranks: int = passive_level(&"stride")
+    var magnet_ranks: int = passive_level(&"magnet")
+    var armor_ranks: int = passive_level(&"armor")
+    player.speed_mult = (1.0 + _amount(&"stride") * float(stride_ranks)) * float(meta.get("speed_mult", 1.0))
+    player.magnet_radius = 72.0 + _amount(&"magnet") * float(magnet_ranks) + float(meta.get("magnet_add", 0.0))
+    player.armor = _amount(&"armor") * float(armor_ranks)
+    player.regen = 0.0
+
+func roll_labeled() -> Array[Dictionary]:
+    var rolled: Array[Dictionary] = _roll()
+    for item: Dictionary in rolled:
+        item["text"] = describe(item)
+    return rolled
+
+func describe(choice: Dictionary) -> String:
+    var kind: String = str(choice.get("kind", ""))
+    var id := StringName(str(choice.get("id", "")))
+    if kind == "heal":
+        return tr("BH_HEAL") + "\n" + tr("BH_HEAL_BLURB")
+    if kind == "evolve":
+        return tr(_evo_key(id)) + "\n" + tr("BH_EVO_BLURB")
+    if kind.begins_with("weapon"):
+        var data: WeaponData = _find_weapon(id)
+        var next_level: int = 1
+        var evolved: bool = false
+        var held: WeaponState = _state(id)
+        if held != null and kind == "weapon_up":
+            next_level = mini(held.level + 1, data.max_level)
+            evolved = held.evolved
+        var dmg: float = Balance.damage(data, next_level, evolved, passive_level(&"might"), _amount(&"might"), meta_might)
+        var cd: float = Balance.cooldown(data, next_level, evolved, passive_level(&"tome"), _amount(&"tome"))
+        return tr(data.name_key) + "\n" + tr(data.blurb_key) + "\n" + str(snappedf(dmg, 0.1)) + " / " + str(snappedf(cd, 0.01)) + "s"
+    var passive: PassiveData = _find_passive(id)
+    var next_rank: int = 1
+    if kind == "passive_up":
+        next_rank = mini(passive_level(id) + 1, passive.max_level)
+    return tr(passive.name_key) + "  " + str(next_rank) + "\n" + tr(passive.blurb_key)
+
+func passive_level(id: StringName) -> int:
+    return int(passive_levels.get(id, 0))
+
+func _tick_gun(state: WeaponState, delta: float, board: Node) -> void:
+    state.cooldown -= delta
+    if state.cooldown > 0.0:
+        return
+    var origin: Vector2 = board.call("player_position")
+    var target: int = int(board.call("nearest_enemy", origin, 460.0))
+    if target < 0:
+        return
+    state.cooldown = Balance.cooldown(state.data, state.level, state.evolved, passive_level(&"tome"), _amount(&"tome"))
+    var aim: Vector2 = (board.call("enemy_position", target) as Vector2) - origin
+    if aim.length_squared() < 0.0001:
+        aim = Vector2.RIGHT
+    var count: int = Balance.projectile_count(state.data, state.level, state.evolved)
+    var dmg: float = Balance.damage(state.data, state.level, state.evolved, passive_level(&"might"), _amount(&"might"), meta_might)
+    var spd: float = Balance.shot_speed(state.data, passive_level(&"bracer"), _amount(&"bracer"))
+    var pierce: int = Balance.pierce(state.data, state.evolved)
+    var reach: float = Balance.hit_radius(state.data, area_mult)
+    var spread: float = 0.18
+    if state.data.kind == &"scatter":
+        spread = 0.45
+    var base_ang: float = aim.angle()
+    for i: int in count:
+        var shot: Variant = board.call("borrow_shot")
+        if shot == null:
+            return
+        var offset: float = 0.0
+        if count > 1:
+            offset = lerpf(-spread, spread, float(i) / float(count - 1))
+        var projectile: Projectile = shot as Projectile
+        projectile.launch(origin, Vector2.from_angle(base_ang + offset), dmg, spd, pierce, state.data.lifetime)
+        projectile.radius = reach
+
+func _tick_orbit(state: WeaponState, delta: float, board: Node) -> void:
+    var count: int = Balance.projectile_count(state.data, state.level, state.evolved)
+    var radius: float = Balance.orbit_radius(state.data, state.level, state.evolved, area_mult)
+    var spin: float = Balance.shot_speed(state.data, passive_level(&"bracer"), _amount(&"bracer"))
+    state.angle += spin * delta
+    state.cooldown -= delta
+    var origin: Vector2 = board.call("player_position")
+    var do_hit: bool = state.cooldown <= 0.0
+    if do_hit:
+        state.cooldown = Balance.cooldown(state.data, state.level, state.evolved, passive_level(&"tome"), _amount(&"tome"))
+    var seen: Dictionary = {}
+    var dmg: float = Balance.damage(state.data, state.level, state.evolved, passive_level(&"might"), _amount(&"might"), meta_might)
+    var reach: float = Balance.hit_radius(state.data, area_mult) + 14.0
+    for i: int in count:
+        var at: Vector2 = origin + Vector2.from_angle(state.angle + TAU * float(i) / float(count)) * radius
+        _orbs[i].visible = true
+        _orbs[i].global_position = at
+        if not do_hit:
+            continue
+        var found: Variant = board.call("enemies_near", at, reach)
+        for raw_id: Variant in found:
+            var id: int = int(raw_id)
+            if seen.has(id):
+                continue
+            seen[id] = true
+            board.call("damage_enemy", id, dmg)
+    for j: int in range(count, _orbs.size()):
+        _orbs[j].visible = false
+
+func _hide_spare_orbs() -> void:
+    var used: int = 0
+    for item: Variant in weapons:
+        var state: WeaponState = item
+        if state.data.kind == &"orbit":
+            used = Balance.projectile_count(state.data, state.level, state.evolved)
+    if used == 0:
+        for sprite: Sprite2D in _orbs:
+            sprite.visible = false
+
+func _roll() -> Array[Dictionary]:
+    var pool: Array[Dictionary] = []
+    var evolutions: Array[Dictionary] = []
+    for item: Variant in weapons:
+        var state: WeaponState = item
+        if _can_evolve(state):
+            evolutions.append({"kind": "evolve", "id": state.data.id})
+        elif state.level < state.data.max_level:
+            pool.append({"kind": "weapon_up", "id": state.data.id})
+    if weapons.size() < 3:
+        for data: WeaponData in _catalog:
+            if _state(data.id) == null:
+                pool.append({"kind": "weapon_new", "id": data.id})
+    if passive_levels.size() < 6:
+        for data: PassiveData in _passives:
+            if passive_level(data.id) == 0:
+                pool.append({"kind": "passive_new", "id": data.id})
+    for data2: PassiveData in _passives:
+        var rank: int = passive_level(data2.id)
+        if rank > 0 and rank < data2.max_level:
+            pool.append({"kind": "passive_up", "id": data2.id})
+    pool.shuffle()
+    var out: Array[Dictionary] = []
+    if not evolutions.is_empty():
+        out.append(evolutions[0])
+    for choice: Dictionary in pool:
+        if out.size() >= 3:
+            break
+        if _has_choice(out, choice):
+            continue
+        out.append(choice)
+    while out.size() < 3:
+        out.append({"kind": "heal", "id": &""})
+    return out
+
+func _can_evolve(state: WeaponState) -> bool:
+    if state.evolved or state.level < state.data.max_level:
+        return false
+    if state.data.evolve_passive == &"":
+        return false
+    return passive_level(state.data.evolve_passive) >= 5
+
+func _has_choice(out: Array[Dictionary], choice: Dictionary) -> bool:
+    for existing: Dictionary in out:
+        if str(existing["kind"]) == str(choice["kind"]) and str(existing["id"]) == str(choice["id"]):
+            return true
+    return false
+
+func _state(id: StringName) -> WeaponState:
+    for item: Variant in weapons:
+        var state: WeaponState = item
+        if state.data.id == id:
+            return state
+    return null
+
+func _find_weapon(id: StringName) -> WeaponData:
+    for data: WeaponData in _catalog:
+        if data.id == id:
+            return data
+    return NEEDLE
+
+func _find_passive(id: StringName) -> PassiveData:
+    for data: PassiveData in _passives:
+        if data.id == id:
+            return data
+    return MIGHT
+
+func _amount(id: StringName) -> float:
+    return _find_passive(id).amount_per_level
+
+func _evo_key(id: StringName) -> String:
+    if id == &"orbit":
+        return "BH_EVO_NOVA"
+    if id == &"scatter":
+        return "BH_EVO_FAN"
+    return "BH_EVO_STORM"
+      </script>
+    </li>
+  </ol>
+  <div class="callout note"><span class="callout-title">Inner class and orbs</span>
+    <p><code>WeaponState</code> lives inside <code>Loadout</code> so it is not a global name. The eight orb sprites are created once. Unused ones are hidden. Orbit is the only weapon that moves them.</p></div>
+  <h2 id="build-3">Block 4: Director, HUD, translations</h2>
+  <ol class="steps">
+    <li><strong>Level line on the HUD.</strong> Open <code>game.tscn</code>, select <code>Row</code> under <code>HUD/TopBar</code>. Add a <code>Label</code> named <code>LevelLabel</code> and a <code>ProgressBar</code> named <code>XpBar</code>. Set <code>XpBar</code> custom minimum size to <code>180</code> by <code>18</code>, turn off <kbd class="ui">Show Percentage</kbd>, Max Value <code>12</code>, Value <code>0</code>. Right-click both and choose <kbd class="ui">Access as Unique Name</kbd>.</li>
+    <li><strong>Replace the HUD script</strong> with this whole file. It reads level and XP from the director and translates the game-over title.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/hud.gd">
+class_name Hud
+extends CanvasLayer
+
+@onready var _time: Label = %TimeLabel
+@onready var _hp: ProgressBar = %HpBar
+@onready var _kills: Label = %KillsLabel
+@onready var _level: Label = %LevelLabel
+@onready var _xp: ProgressBar = %XpBar
+@onready var _over: PanelContainer = %GameOver
+@onready var _title: Label = %GameOverTitle
+
+func _ready() -> void:
+    %RetryButton.text = tr("BH_RETRY")
+    %MenuButton.text = tr("BH_MENU")
+    %RetryButton.pressed.connect(_on_retry_pressed)
+    %MenuButton.pressed.connect(_on_menu_pressed)
+
+func _process(_delta: float) -> void:
+    var director: Node = get_parent()
+    if director == null:
+        return
+    var secs: int = int(director.call("elapsed"))
+    _time.text = "%02d:%02d" % [int(secs / 60), secs % 60]
+    _kills.text = tr("BH_KILLS") + " " + str(int(director.call("kills")))
+    _level.text = tr("BH_LEVEL") + " " + str(int(director.call("run_level")))
+    var player: Player = director.get_node("World/Player") as Player
+    _hp.max_value = player.max_hp
+    _hp.value = player.hp
+    _xp.max_value = maxf(1.0, float(director.call("xp_goal")))
+    _xp.value = float(director.call("xp_value"))
+
+func show_game_over(kills: int) -> void:
+    _title.text = tr("BH_GAME_OVER") + "  " + str(kills)
+    _over.visible = true
+
+func _on_retry_pressed() -> void:
+    if get_tree().paused:
+        get_tree().paused = false
+    SceneRouter.reload_current()
+
+func _on_menu_pressed() -> void:
+    if get_tree().paused:
+        get_tree().paused = false
+    SceneRouter.go_to(SceneRouter.MAIN_MENU_SCENE)
+      </script>
+      <code>call</code> keeps <code>hud.gd</code> from naming <code>RunDirector</code> while <code>game.gd</code> still names <code>Hud</code>.</li>
+    <li><strong>Replace <code>game.gd</code> completely.</strong> The Needle timer is gone. <code>Loadout</code> fires. Gems, XP, and the level-up signal are new. Pools, the hash, contact, and the 36 cap stay.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/game.gd">
+class_name RunDirector
+extends Node
+
+const ENEMY_SCENE: PackedScene = preload("res://game/enemies/enemy.tscn")
+const SHOT_SCENE: PackedScene = preload("res://game/combat/projectile.tscn")
+const GEM_SCENE: PackedScene = preload("res://game/pickups/gem.tscn")
+const ENEMY_POOL: int = 48
+const ALIVE_CAP: int = 36
+const SHOT_POOL: int = 40
+const GEM_POOL: int = 80
+const CONTACT_RADIUS: float = 26.0
+
+var _hash: SpatialHash = SpatialHash.new()
+var _query: Array[int] = []
+var _enemies: Array[Enemy] = []
+var _enemy_free: Array[int] = []
+var _shots: Array[Projectile] = []
+var _shot_free: Array[int] = []
+var _gems: Array[Gem] = []
+var _gem_free: Array[int] = []
+
+var _player: Player
+var _loadout: Loadout
+var _level_up: LevelUp
+var _elapsed: float = 0.0
+var _spawn_wait: float = 0.4
+var _kills: int = 0
+var _xp: int = 0
+var _level: int = 1
+var _leveling: bool = false
+var _running: bool = true
+
+func _ready() -> void:
+    physics_process_priority = 20
+    _player = $World/Player as Player
+    _loadout = $World/Loadout as Loadout
+    _level_up = $LevelUp as LevelUp
+    _player.died.connect(_on_player_died)
+    _level_up.picked.connect(_on_level_picked)
+    _build_pools()
+    _loadout.start_with(&"needle")
+    _loadout.recompute(_player, _meta())
+    if not Performance.has_custom_monitor(&"BH/Alive"):
+        Performance.add_custom_monitor(&"BH/Alive", _monitor_alive)
+    Events.game_started.emit()
+
+func _exit_tree() -> void:
+    if Performance.has_custom_monitor(&"BH/Alive"):
+        Performance.remove_custom_monitor(&"BH/Alive")
+
+func _monitor_alive() -> float:
+    return float(ENEMY_POOL - _enemy_free.size())
+
+func _physics_process(delta: float) -> void:
+    if not _running:
+        return
+    _elapsed += delta
+    _spawn_wait -= delta
+    if _spawn_wait <= 0.0:
+        _spawn_wait = Balance.spawn_interval(_elapsed)
+        _spawn_enemy()
+    _rebuild_hash()
+    _loadout.tick(delta, self)
+    _resolve_shots()
+    _resolve_contact(delta)
+    _move_gems(delta)
+
+func _build_pools() -> void:
+    for i: int in ENEMY_POOL:
+        var enemy: Enemy = ENEMY_SCENE.instantiate() as Enemy
+        enemy.entity_id = i
+        $World/Enemies.add_child(enemy)
+        _enemies.append(enemy)
+        _enemy_free.append(i)
+    for i: int in SHOT_POOL:
+        var shot: Projectile = SHOT_SCENE.instantiate() as Projectile
+        $World/Projectiles.add_child(shot)
+        _shots.append(shot)
+        _shot_free.append(i)
+    for i: int in GEM_POOL:
+        var gem: Gem = GEM_SCENE.instantiate() as Gem
+        $World/Gems.add_child(gem)
+        _gems.append(gem)
+        _gem_free.append(i)
+
+func _spawn_enemy() -> void:
+    if _enemy_free.is_empty():
+        return
+    if ENEMY_POOL - _enemy_free.size() >= ALIVE_CAP:
+        return
+    var id: int = _enemy_free.pop_back()
+    var minute: int = Balance.minute_of(_elapsed)
+    var enemy: Enemy = _enemies[id]
+    enemy.max_hp = float(Balance.scaled_hp(14, minute))
+    enemy.move_speed = Balance.bat_speed(minute)
+    enemy.contact_dps = Balance.bat_dps(minute)
+    var ang: float = randf() * TAU
+    var dist: float = randf_range(640.0, 820.0)
+    enemy.activate(_player.global_position + Vector2.from_angle(ang) * dist)
+
+func _rebuild_hash() -> void:
+    _hash.clear()
+    for enemy: Enemy in _enemies:
+        if enemy.active:
+            _hash.insert(enemy.entity_id, enemy.global_position)
+
+func player_position() -> Vector2:
+    return _player.global_position
+
+func nearest_enemy(origin: Vector2, radius: float) -> int:
+    var found: Array[int] = enemies_near(origin, radius)
+    var best: int = -1
+    var best_d: float = radius * radius
+    for id: int in found:
+        var d: float = origin.distance_squared_to(_enemies[id].global_position)
+        if d < best_d:
+            best_d = d
+            best = id
+    return best
+
+func enemy_position(id: int) -> Vector2:
+    return _enemies[id].global_position
+
+func enemies_near(origin: Vector2, radius: float) -> Array[int]:
+    var out: Array[int] = []
+    _hash.query_into(origin, radius, _query)
+    var reach2: float = radius * radius
+    for id: int in _query:
+        var enemy: Enemy = _enemies[id]
+        if enemy.active and origin.distance_squared_to(enemy.global_position) <= reach2:
+            out.append(id)
+    return out
+
+func borrow_shot() -> Projectile:
+    if _shot_free.is_empty():
+        return null
+    return _shots[_shot_free.pop_back()]
+
+func damage_enemy(id: int, amount: float) -> bool:
+    if id < 0 or id >= _enemies.size():
+        return false
+    var enemy: Enemy = _enemies[id]
+    if not enemy.active:
+        return false
+    var where: Vector2 = enemy.global_position
+    if not enemy.hurt(amount):
+        return false
+    _enemy_free.append(id)
+    _kills += 1
+    Events.score_changed.emit(_kills)
+    _spawn_gem(where, Balance.XP_BAT)
+    return true
+
+func _resolve_shots() -> void:
+    for shot: Projectile in _shots:
+        if not shot.active:
+            continue
+        var reach: float = shot.radius + 14.0
+        var ids: Array[int] = enemies_near(shot.global_position, reach)
+        for id: int in ids:
+            if not shot.active or shot.already_hit(id):
+                continue
+            shot.remember_hit(id)
+            damage_enemy(id, shot.damage)
+            if shot.pierce_left <= 0:
+                shot.deactivate()
+                break
+            shot.pierce_left -= 1
+    for i: int in _shots.size():
+        if not _shots[i].active and not _shot_free.has(i):
+            _shot_free.append(i)
+
+func _resolve_contact(delta: float) -> void:
+    var ids: Array[int] = enemies_near(_player.global_position, CONTACT_RADIUS)
+    var total: float = 0.0
+    for id: int in ids:
+        total += _enemies[id].contact_dps
+    if total > 0.0:
+        _player.apply_contact(total, delta)
+
+func _spawn_gem(at: Vector2, xp: int) -> void:
+    if _gem_free.is_empty():
+        _gain_xp(xp)
+        return
+    _gems[_gem_free.pop_back()].activate(at, xp)
+
+func _move_gems(delta: float) -> void:
+    var origin: Vector2 = _player.global_position
+    var magnet: float = _player.magnet_radius
+    for i: int in _gems.size():
+        var gem: Gem = _gems[i]
+        if not gem.active:
+            continue
+        var dist: float = origin.distance_to(gem.global_position)
+        if dist <= 22.0:
+            var gained: int = gem.value
+            gem.deactivate()
+            if not _gem_free.has(i):
+                _gem_free.append(i)
+            _gain_xp(gained)
+        elif dist <= magnet:
+            gem.global_position = gem.global_position.move_toward(origin, 460.0 * delta)
+
+func _gain_xp(amount: int) -> void:
+    _xp += amount
+    _try_level()
+
+func _try_level() -> void:
+    if _leveling or not _running:
+        return
+    var need: int = Balance.xp_to_next(_level)
+    if _xp < need:
+        return
+    _xp -= need
+    _level += 1
+    _leveling = true
+    _level_up.open(_loadout.roll_labeled())
+
+func _on_level_picked(choice: Dictionary) -> void:
+    _loadout.apply(choice, _player)
+    _loadout.recompute(_player, _meta())
+    _leveling = false
+    _try_level()
+
+func _on_player_died() -> void:
+    _running = false
+    for enemy: Enemy in _enemies:
+        enemy.deactivate()
+    for shot: Projectile in _shots:
+        shot.deactivate()
+    Events.game_over.emit(_kills)
+    ($HUD as Hud).show_game_over(_kills)
+
+func _meta() -> Dictionary:
+    return {
+        "might_rank": 0,
+        "speed_mult": 1.0,
+        "magnet_add": 0.0,
+        "area_mult": 1.0,
+        "hp_bonus": 0,
+    }
+
+func kills() -> int:
+    return _kills
+
+func elapsed() -> float:
+    return _elapsed
+
+func run_level() -> int:
+    return _level
+
+func xp_value() -> int:
+    return _xp
+
+func xp_goal() -> int:
+    return Balance.xp_to_next(_level)
+      </script>
+    </li>
+    <li><strong>Translation rows.</strong> In the FileSystem dock, open <code>res://i18n/translations.csv</code>. Do not change the header. It should be <code>keys,en,es,de,fr,pt_BR,ru,zh_CN</code>. If a column is missing, add that header cell first (Day 16 already uses this header). Scroll to the end and paste these rows. No field contains a comma, so you do not add quotes. Save. Godot reimports the CSV. If the editor shows ANSI garbage, you saved with the wrong encoding: use the script editor or Notepad and UTF-8.
+      <script type="text/x-code" data-lang="csv" data-file="res://i18n/translations.csv">
+BH_LEVELUP,Choose one,Elige uno,Wähle eins,Choisis,Escolha um,Выбери,选一个
+BH_HEAL,Recover,Recuperar,Heilen,Soigner,Curar,Лечение,回复
+BH_HEAL_BLURB,Restore 25 HP.,Recupera 25 PS.,Stellt 25 KP wieder her.,Rend 25 PV.,Recupera 25 PV.,Восстановить 25 ОЗ.,恢复 25 点生命
+BH_KILLS,Kills,Bajas,Kills,Élim.,Abates,Убийства,击杀
+BH_LEVEL,Lv,Nv,St,Nv,Nv,Ур,级
+BH_GAME_OVER,Run over,Fin de la partida,Lauf vorbei,Partie finie,Fim da partida,Забег окончен,本局结束
+BH_RETRY,Retry,Reintentar,Nochmal,Rejouer,De novo,Ещё раз,再来
+BH_MENU,Menu,Menú,Menü,Menu,Menu,Меню,菜单
+BH_WPN_NEEDLE,Needle,Aguja,Nadel,Aiguille,Agulha,Игла,细针
+BH_WPN_NEEDLE_BLURB,Fires at the nearest enemy.,Dispara al enemigo más cercano.,Schießt auf den nächsten Gegner.,Tire sur l'ennemi le plus proche.,Atira no inimigo mais próximo.,Бьёт ближайшего врага.,射击最近的敌人
+BH_WPN_ORBIT,Orbit,Órbita,Orbit,Orbite,Órbita,Орбита,环绕
+BH_WPN_ORBIT_BLURB,Orbs circle you and burn enemies.,Los orbes giran y queman.,Kugeln kreisen und brennen.,Des orbes tournent et brûlent.,Orbes giram e queimam.,Сферы кружат и жгут.,法球环绕并灼烧
+BH_WPN_SCATTER,Scatter,Dispersión,Streuschuss,Éventail,Dispersão,Веер,散射
+BH_WPN_SCATTER_BLURB,A fan of shots.,Un abanico de disparos.,Ein Fächer aus Schüssen.,Un éventail de tirs.,Um leque de tiros.,Веер выстрелов.,扇形射击
+BH_EVO_STORM,Storm Needle,Aguja de tormenta,Sturmnadel,Aiguille d'orage,Agulha da tempestade,Грозовая игла,风暴细针
+BH_EVO_NOVA,Nova Ring,Anillo nova,Nova-Ring,Anneau nova,Anel nova,Кольцо новой,新星之环
+BH_EVO_FAN,Fan of Knives,Abanico de cuchillos,Messerfächer,Éventail de lames,Leque de lâminas,Веер клинков,飞刀扇
+BH_EVO_BLURB,Replaces this weapon.,Sustituye esta arma.,Ersetzt diese Waffe.,Remplace cette arme.,Substitui esta arma.,Заменяет это оружие.,替换此武器
+BH_PAS_MIGHT,Iron Will,Voluntad de hierro,Eiserner Wille,Volonté de fer,Vontade de ferro,Железная воля,钢铁意志
+BH_PAS_MIGHT_BLURB,+8% damage per rank.,+8% de daño por rango.,+8% Schaden pro Rang.,+8% de dégâts par rang.,+8% de dano por nível.,+8% урона за ранг.,每级伤害 +8%
+BH_PAS_TOME,Quick Hands,Manos rápidas,Schnelle Hände,Mains vives,Mãos rápidas,Быстрые руки,快手
+BH_PAS_TOME_BLURB,-6% cooldown per rank.,-6% de recarga por rango.,-6% Abklingzeit pro Rang.,-6% de délai par rang.,-6% de recarga por nível.,-6% перезарядки за ранг.,每级冷却 -6%
+BH_PAS_BRACER,Long Arms,Brazos largos,Lange Arme,Bras longs,Braços longos,Длинные руки,长臂
+BH_PAS_BRACER_BLURB,+10% projectile speed per rank.,+10% de velocidad por rango.,+10% Geschossgeschwindigkeit pro Rang.,+10% de vitesse par rang.,+10% de velocidade por nível.,+10% скорости снарядов за ранг.,每级弹速 +10%
+BH_PAS_STRIDE,Long Stride,Zancada larga,Weiter Schritt,Grande foulée,Passo largo,Широкий шаг,阔步
+BH_PAS_STRIDE_BLURB,+8% move speed per rank.,+8% de velocidad por rango.,+8% Lauftempo pro Rang.,+8% de vitesse par rang.,+8% de movimento por nível.,+8% скорости за ранг.,每级移速 +8%
+BH_PAS_MAGNET,Magnet,Imán,Magnet,Aimant,Ímã,Магнит,磁铁
+BH_PAS_MAGNET_BLURB,+28 pickup radius per rank.,+28 de radio por rango.,+28 Sammelradius pro Rang.,+28 de rayon par rang.,+28 de raio por nível.,+28 радиуса подбора за ранг.,每级吸取半径 +28
+BH_PAS_ARMOR,Thick Hide,Piel gruesa,Dickes Fell,Peau épaisse,Pele grossa,Толстая шкура,厚皮
+BH_PAS_ARMOR_BLURB,-2 contact damage per second per rank.,-2 de daño por contacto por rango.,-2 Kontaktschaden pro Sekunde pro Rang.,-2 dégâts de contact par seconde par rang.,-2 de dano de contato por nível.,-2 контактного урона в секунду за ранг.,每级接触伤害每秒 -2
+      </script>
+    </li>
+  </ol>
+  <div class="checkpoint">
+    <p>Press <kbd>F6</kbd> on <code>game.tscn</code>. Bats still chase. Yellow shots still fire, now from the loadout, so the first card you own is Needle even though you did not pick it. Green gems drop. Walk over them (they slide in from 72 px). After 12 gems the screen pauses and three buttons appear. Their text is English if your locale is <code>en</code>. Pick Quick Hands or Orbit. The run resumes and the level label shows 2. The XP bar's max matches the table (15 for level 2). Die on purpose: Retry still reloads.</p>
+    <p>If the pause is instant at start, a .tres id is empty and the loadout rolled garbage: recheck Needle's Id. If Output says a preload path is missing, that .tres was not saved in <code>data/weapons</code> or <code>data/passives</code>. If the buttons are blank, the CSV did not reimport: click the file and in the Import dock click <kbd class="ui">Reimport</kbd>.</p>
+  </div>
+
+  <h2 id="build-4">Block 5: Virtual joystick</h2>
+  <div class="callout version"><span class="callout-title">Version note</span>
+    <p><code>VirtualJoystick</code> is in the class reference this course checked. It is newer than Godot 4.3. Open the Create New Node dialog and search <code>VirtualJoystick</code>. If the node is not in the list, your build does not have it. Skip the property steps and use the fallback script in the details block. Do not invent property names. The Inspector labels below match the class reference: Action Left, Action Right, Action Up, Action Down, Joystick Mode, Visibility Mode, Deadzone Ratio, Joystick Size, Tip Size.</p></div>
+  <ol class="steps">
+    <li><strong>Touch test switch.</strong> Menu bar <kbd class="menu">Project &gt; Project Settings &gt; Input Devices &gt; Pointing</kbd>. Turn on <kbd class="ui">Emulate Touch From Mouse</kbd>. A mouse drag is then a touch, so you can test the stick on a desktop. Turn it off again before you ship if you want mouse and touch to stay distinct. Day 21's phone build does not need this switch.</li>
+    <li><strong>Zone.</strong> Open <code>game.tscn</code>. Select <code>HUD</code>, add a <code>Control</code> named <code>StickZone</code>. In the Inspector set anchors: Anchor Left <code>0</code>, Anchor Top <code>1</code>, Anchor Right <code>0</code>, Anchor Bottom <code>1</code>, Offset Left <code>24</code>, Offset Top <code>-320</code>, Offset Right <code>324</code>, Offset Bottom <code>-20</code>. That pins a 300×300 box to the bottom-left of the screen. Set <kbd class="ui">Mouse &gt; Filter</kbd> to <code>Stop</code>.</li>
+    <li><strong>Joystick node.</strong> Select <code>StickZone</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add <code>VirtualJoystick</code>, leave the name <code>VirtualJoystick</code>. Anchor preset <kbd class="ui">Full Rect</kbd> so it fills the zone. In the Inspector set Action Left to <code>move_left</code>, Action Right to <code>move_right</code>, Action Up to <code>move_up</code>, Action Down to <code>move_down</code>. Set Joystick Mode to <code>Following</code> (the enum value <code>JOYSTICK_FOLLOWING</code>). Set Visibility Mode to <code>When Touched</code> (<code>VISIBILITY_WHEN_TOUCHED</code>). Set Deadzone Ratio to <code>0.18</code>, Joystick Size to <code>150</code>, Tip Size to <code>60</code>. Leave the player script alone. <code>Input.get_vector</code> already reads those four actions, and this node presses them.</li>
+  </ol>
+  <details>
+    <summary>No VirtualJoystick node? Paste this fallback onto StickZone</summary>
+    <p>Do not also add a <code>VirtualJoystick</code>. Attach <code>res://game/touch_stick.gd</code> to <code>StickZone</code>. It presses the same four actions. Releasing the stick releases those actions, so do not hold WASD at the same time while you test it.</p>
+    <script type="text/x-code" data-lang="gdscript" data-file="res://game/touch_stick.gd">
+extends Control
+
+var _index: int = -1
+var _origin: Vector2 = Vector2.ZERO
+const RADIUS: float = 70.0
+
+func _ready() -> void:
+    mouse_filter = Control.MOUSE_FILTER_STOP
+
+func _gui_input(event: InputEvent) -> void:
+    if event is InputEventScreenTouch:
+        var touch: InputEventScreenTouch = event as InputEventScreenTouch
+        if touch.pressed:
+            _index = touch.index
+            _origin = touch.position
+            _apply(Vector2.ZERO)
+        elif touch.index == _index:
+            _index = -1
+            _release()
+    elif event is InputEventScreenDrag:
+        var drag: InputEventScreenDrag = event as InputEventScreenDrag
+        if drag.index != _index:
+            return
+        var vector: Vector2 = drag.position - _origin
+        if vector.length() > RADIUS:
+            vector = vector.normalized() * RADIUS
+        _apply(vector / RADIUS)
+
+func _apply(vector: Vector2) -> void:
+    _axis(&"move_right", maxf(vector.x, 0.0))
+    _axis(&"move_left", maxf(-vector.x, 0.0))
+    _axis(&"move_down", maxf(vector.y, 0.0))
+    _axis(&"move_up", maxf(-vector.y, 0.0))
+
+func _axis(action: StringName, strength: float) -> void:
+    if strength > 0.12:
+        Input.action_press(action, strength)
+    else:
+        Input.action_release(action)
+
+func _release() -> void:
+    Input.action_release(&"move_left")
+    Input.action_release(&"move_right")
+    Input.action_release(&"move_up")
+    Input.action_release(&"move_down")
+    </script>
+  </details>
+  <div class="checkpoint">
+    <p>Press <kbd>F6</kbd>. Click-drag inside the bottom-left of the window. The player moves with the drag and stops when you release. WASD still works when you are not dragging. During a level-up the tree is paused, so the stick does not slide you around behind the cards. If nothing moves, Emulate Touch From Mouse is off, or the action names on the joystick do not match the Input Map.</p>
+  </div>
+  <div class="callout external"><span class="callout-title">External resource (optional sounds)</span>
+    <p>Kenney's Interface Sounds and Impact Sounds packs are CC0. Verify the current packs at <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a>; filenames change between pack versions. If you want audio, pick a short UI click and a soft hit by listening, drop them in <code>res://assets/audio/</code>, and call <code>Audio.play_sfx_varied(stream, 0.08, -4.0)</code> from the level-up pick and from <code>damage_enemy</code>. The run is complete without them. Credit the packs you actually ship: "Sounds from Kenney (www.kenney.nl), CC0."</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Level-up buttons do nothing.</strong> <code>LevelUp</code> must use process mode Always. A pausable layer does not receive clicks while <code>get_tree().paused</code> is true.</li>
+    <li><strong>You emit <code>game_paused</code> from the level-up.</strong> The pause menu may open on top of the cards. This day only sets <code>get_tree().paused</code>.</li>
+    <li><strong>Two sources of Needle damage.</strong> If you left <code>_fire_needle</code> in <code>game.gd</code> and also tick the loadout, you fire twice and the card numbers lie. The replacement file has no <code>_fire_needle</code>.</li>
+    <li><strong>Evolution never shows.</strong> The weapon must already be level 8 and the passive rank 5 before the roll. Ranking the passive on the same card that hits weapon level 8 offers the evolution on the next level, not this one.</li>
+    <li><strong>Gems never arrive.</strong> Magnet starts at 72 px. The green icon is small. Walk onto the cluster. If the pool is empty the XP is granted directly and no icon appears; that is intended.</li>
+    <li><strong>CSV shifted a column.</strong> A comma inside a translation splits the row. The rows above have none. A broken import shows the wrong language on the cards.</li>
+    <li><strong>Joystick releases WASD.</strong> The fallback script calls <code>action_release</code> on all four actions when the finger lifts. The built-in node is the one to ship. Test keyboard and stick separately.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, about 25 min)</h2>
+  <div class="challenge">
+    <h3>Second Wind</h3>
+    <p>Add a seventh passive, id <code>regen</code>, max level 5, amount <code>0.4</code>, keys <code>BH_PAS_REGEN</code> and <code>BH_PAS_REGEN_BLURB</code> ("+0.4 HP per second per rank" plus two translations). Preload it in <code>_passives</code>. In <code>recompute</code>, set <code>player.regen</code> to <code>0.4 * passive_level(regen)</code> instead of 0. The player script from Day 19 already heals by <code>regen * delta</code>.</p>
+    <p>Hint: the slot cap is 6, so this passive competes with the others. Do not raise the cap unless you also change the roll condition <code>passive_levels.size() &lt; 6</code>.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="2">
+      <p>You are level 1 and you have 12 XP. What happens?</p>
+      <ul>
+        <li>Nothing. The first threshold is 15.</li>
+        <li>You jump to level 3 because 12 is more than 8.</li>
+        <li>XP becomes 0, level becomes 2, and the card layer pauses the tree.</li>
+        <li>The run ends.</li>
+      </ul>
+      <p class="explain"><code>xp_to_next(1)</code> is <code>round(12 × 1.22^0) = 12</code>. One level is spent per open. Leftover XP waits for the next check.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>When may Storm Needle appear as a card?</p>
+      <ul>
+        <li>As soon as Needle is level 8, even with no passive.</li>
+        <li>When Needle is level 8 and Quick Hands is rank 5, on a later roll.</li>
+        <li>When any passive is rank 1.</li>
+        <li>It replaces the player character.</li>
+      </ul>
+      <p class="explain">The resource says Evolve Passive <code>tome</code>. <code>_can_evolve</code> requires weapon level ≥ 8, that passive ≥ 5, and <code>evolved == false</code>. The evolution replaces the weapon; it does not take a new slot.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>Why does the joystick not get its own movement code on the player?</p>
+      <ul>
+        <li>It presses the existing <code>move_*</code> actions, and <code>Input.get_vector</code> already builds the direction.</li>
+        <li>Touch cannot set <code>velocity</code>.</li>
+        <li><code>CharacterBody2D</code> reads the screen position on its own.</li>
+        <li>The Mobile renderer moves the body.</li>
+      </ul>
+      <p class="explain">One consumer of the Input Map means keyboard, gamepad, and touch stay consistent. The fallback script uses <code>Input.action_press</code> for the same reason.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>Why is the level-up layer process mode Always?</p>
+      <ul>
+        <li>So gems keep moving during the choice.</li>
+        <li>So <code>move_and_slide()</code> keeps running.</li>
+        <li>Always is the default, and the property does nothing.</li>
+        <li>A paused tree does not process pausable controls, and the buttons must still receive clicks.</li>
+      </ul>
+      <p class="explain">Opening the layer sets <code>get_tree().paused = true</code>. Pausable nodes, including the player and the bats, stop. Always nodes keep working.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/resources.html" target="_blank" rel="noopener">Resources</a>: custom resources and <code>.tres</code> files.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/i18n/localization_using_spreadsheets.html" target="_blank" rel="noopener">Localization using spreadsheets</a>: CSV columns and UTF-8.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/i18n/internationalizing_games.html" target="_blank" rel="noopener">Internationalizing games</a>: <code>tr()</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_virtualjoystick.html" target="_blank" rel="noopener">VirtualJoystick</a>: actions, joystick mode, visibility mode.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_input.html" target="_blank" rel="noopener">Input</a>: <code>get_vector</code>, <code>action_press</code>, <code>action_release</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_node.html" target="_blank" rel="noopener">Node process mode</a>: Always versus pausable.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li>Three weapon resources and six passive resources match the tables, including evolution ids.</li>
+    <li>12 bat gems open the card layer. Picking a card changes the run (a new weapon fires, or cooldowns drop, or you heal).</li>
+    <li>The level label and XP bar follow <code>Balance.xp_to_next</code>.</li>
+    <li><code>BH_</code> keys exist in <code>en</code>, <code>es</code>, and <code>de</code> at least, and the cards use <code>tr()</code>.</li>
+    <li>Dragging the bottom-left moves the player. Esc still opens the Ship Kit pause menu during a run. Node count still does not climb, and <code>BH/Alive</code> stays ≤ 36.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> the same weapons, but the bats are canvas-item RIDs so a thousand of them are not a thousand nodes. Then a boss, three characters, a coin shop, and a Windows export plus an Android debug install.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

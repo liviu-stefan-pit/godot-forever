@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 18 - Idle Clicker II: offline, prestige, Android | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day18" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 18 · Game 6: Idle Clicker</div>
+    <h1>Idle Clicker II: offline progress, prestige, polish, Android build</h1>
+    <p class="lead">The foundry keeps working while the app is closed, a prestige reset turns lifetime crumbs into sparks, and you leave with a Windows release export plus a signed Android App Bundle ready for a Play closed test.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Block 1: Concepts.</strong> Offline cap, spark formula, what an ad callback would call.</td></tr>
+    <tr><td>0:20 – 1:05</td><td><strong>Block 2: Offline.</strong> Replace the economy script and show the return panel.</td></tr>
+    <tr><td>1:05 – 1:50</td><td><strong>Block 3: Prestige.</strong> Sparks, three permanent upgrades, confirm dialog.</td></tr>
+    <tr><td>1:50 – 2:05</td><td><strong>Break.</strong></td></tr>
+    <tr><td>2:05 – 2:40</td><td><strong>Block 4: Achievements and juice.</strong> Toasts, floating numbers, a generated click.</td></tr>
+    <tr><td>2:40 – 3:10</td><td><strong>Block 5: Strings and the debug reward.</strong> CSV rows, Spanish check, ads and IAP as options.</td></tr>
+    <tr><td>3:10 – 4:00</td><td><strong>Block 6: Release exports, closed test, quiz.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>4 h</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Grant offline crumbs as <code>rate * min(elapsed, 28800) * 0.5</code> and show that number when the scene loads.</li>
+    <li>Prestige with <code>floorf(sqrt(lifetime / 1e6))</code> total sparks, each unspent spark adding 2% global production.</li>
+    <li>Unlock nine achievements through <code>Events.achievement_unlocked</code> and <code>Events.toast_requested</code>.</li>
+    <li>Punch the tap button, float a <code>+N</code> label, and play a generated blip on the SFX bus.</li>
+    <li>Export a Windows release and point a signed <code>.aab</code> (package <code>com.yourname.idleclicker</code>) at a Play closed test, using Day 16's export steps.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 17's project opens from <code>C:\GodotProjects\idle-clicker</code>. <kbd>F6</kbd> on <code>game.tscn</code> still prints 8 generators and 6 upgrades.</li>
+    <li>Bring-up if you skipped Day 17: copy <code>ship-kit</code> as Day 17 describes, then paste Day 17's scripts and resources before continuing. Do not invent new autoloads.</li>
+    <li>Day 16's Android export preset, release keystore, and Windows preset exist in this copied project (they came along with the kit). If Export is empty, do Day 16's export section in <em>this</em> project before Block 6.</li>
+    <li>A phone or an emulator is enough for the debug install. The closed test needs a Play Console account from Day 16.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>Offline is just elapsed time times rate</h3>
+  <p>On load, and again when the app resumes, elapsed seconds are <code>int(Time.get_unix_time_from_system()) - saved_unix</code>. Negative values (clock stepped backward) become 0. The grant uses</p>
+  <p><code>earned = rate * min(elapsed, 28800) * 0.5</code></p>
+  <p>28800 seconds is 8 hours. The 0.5 efficiency means an idle phone never beats someone who is tapping. Worked example: one sprout, rate <code>0.1</code>, away 7200 seconds (2 hours). <code>0.1 * 7200 * 0.5 = 360</code> crumbs. Away 10 hours is clamped to 8 hours: <code>0.1 * 28800 * 0.5 = 1440</code> crumbs. Grants under 5 seconds are ignored so an autosave does not pop the panel.</p>
+  <p>The save writes <code>saved_unix</code> inside your data dictionary. <code>SaveManager</code>'s own <code>saved_at</code> wrapper is not what this game reads. Focus-out and <code>NOTIFICATION_APPLICATION_PAUSED</code> both save, which matters on Android where the OS pauses the process instead of quitting it. Resume grants the gap once, then saves again so a second notification cannot pay twice.</p>
+
+  <h3>Sparks</h3>
+  <p>Lifetime crumbs never reset. Total sparks ever earned are</p>
+  <p><code>floorf(sqrt(lifetime / 1_000_000))</code></p>
+  <p>So 1,000,000 lifetime crumbs is 1 spark, 4,000,000 is 2, and 100,000,000 is 10. The button pays <code>total - sparks_claimed</code> and then sets claimed equal to total. Unspent sparks each multiply global production by an extra 0.02: <code>1 + 0.02 * unspent</code>. Spending a spark on a permanent upgrade removes that 2% and keeps the upgrade across prestiges. Crumbs, generator counts, and upgrades with Persists off are cleared. Achievements stay.</p>
+
+  <h3>Ads and IAP are a callback, not a scene</h3>
+  <p>A rewarded ad and a real-money product both end in a function you already trust: add crumbs, or grant an upgrade without charging sparks. This course wires a clearly labeled debug button to <code>grant_debug_minute()</code> so you can test that path. It does not embed an ad network or a billing plugin. Those change often and they add a privacy disclosure. The callout in Block 5 names the official sites.</p>
+
+  <h2 id="build-1">Block 2: Offline income</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Open the project</strong> <code>C:\GodotProjects\idle-clicker</code>. Open <code>res://game/economy.gd</code> in the Script workspace (top center, <kbd class="ui">Script</kbd>).</li>
+    <li><strong>Replace the economy script.</strong> Press <kbd>Ctrl</kbd>+<kbd>A</kbd>, delete, and paste the full file below. Yesterday's prices, save keys, and <code>SaveManager</code> calls are still here. New pieces are the offline grant, sparks, achievements, and the debug minute. Save with <kbd>Ctrl</kbd>+<kbd>S</kbd>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/economy.gd">
+extends Node
+class_name CrumbEconomy
+
+const SAVE_SLOT: StringName = &"run"
+const OFFLINE_CAP_SECONDS: int = 28800
+const OFFLINE_EFFICIENCY: float = 0.5
+const SPARK_DIVISOR: float = 1.0e6
+const SPARK_BONUS: float = 0.02
+
+const ACHIEVEMENT_KEYS: Dictionary = {
+    "first_tap": "CLICKER_ACH_FIRST_TAP",
+    "crumbs_1k": "CLICKER_ACH_CRUMBS_1K",
+    "crumbs_1m": "CLICKER_ACH_CRUMBS_1M",
+    "crumbs_1b": "CLICKER_ACH_CRUMBS_1B",
+    "sprout_25": "CLICKER_ACH_SPROUT_25",
+    "full_set": "CLICKER_ACH_FULL_SET",
+    "first_spark": "CLICKER_ACH_FIRST_SPARK",
+    "away_hour": "CLICKER_ACH_AWAY_HOUR",
+    "clicks_500": "CLICKER_ACH_CLICKS_500",
+}
+
+signal state_changed
+
+@export var catalog: EconomyCatalog
+
+var crumbs: float = 0.0
+var lifetime: float = 0.0
+var sparks_unspent: float = 0.0
+var sparks_claimed: float = 0.0
+var total_clicks: int = 0
+var owned: Dictionary = {}
+var upgrades_owned: Dictionary = {}
+var achievements: Dictionary = {}
+
+var pending_offline_away: int = 0
+var pending_offline_seconds: int = 0
+var pending_offline_earned: float = 0.0
+var last_offline_seconds: int = 0
+
+var _ready_done: bool = false
+var _anchor_unix: int = 0
+var _debug_reward_used: bool = false
+
+func _ready() -> void:
+    if catalog == null:
+        push_error("Assign data/catalog.tres on the Economy node.")
+        return
+    load_run()
+    _ready_done = true
+    if _anchor_unix <= 0:
+        _anchor_unix = int(Time.get_unix_time_from_system())
+    save_run()
+    _self_check()
+    poll_achievements()
+    print("Catalog generators: ", catalog.generators.size(), " upgrades: ", catalog.upgrades.size())
+
+func _notification(what: int) -> void:
+    if not _ready_done:
+        return
+    if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+        save_run()
+    elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
+        var now := int(Time.get_unix_time_from_system())
+        var elapsed := now - _anchor_unix
+        if elapsed < 0:
+            elapsed = 0
+        _grant_elapsed(elapsed, true)
+        _anchor_unix = now
+        save_run()
+
+func tick(delta: float) -> void:
+    var gained := rate() * delta
+    if gained <= 0.0:
+        return
+    crumbs += gained
+    lifetime += gained
+
+func click() -> float:
+    var gained := click_value()
+    crumbs += gained
+    lifetime += gained
+    total_clicks += 1
+    poll_achievements()
+    state_changed.emit()
+    return gained
+
+func owned_count(id: String) -> int:
+    return int(owned.get(id, 0))
+
+func has_upgrade(id: String) -> bool:
+    return bool(upgrades_owned.get(id, false))
+
+func is_achievement_unlocked(id: String) -> bool:
+    return bool(achievements.get(id, false))
+
+func achievement_ids() -> PackedStringArray:
+    var ids := PackedStringArray()
+    for key in ACHIEVEMENT_KEYS.keys():
+        ids.append(String(key))
+    return ids
+
+func achievement_key(id: String) -> String:
+    return String(ACHIEVEMENT_KEYS.get(id, id))
+
+func debug_reward_used() -> bool:
+    return _debug_reward_used
+
+func next_cost(id: String) -> float:
+    var gen := find_generator(id)
+    if gen == null:
+        return INF
+    return _unit_cost(gen, owned_count(id))
+
+func bulk_cost(id: String, count: int) -> float:
+    var gen := find_generator(id)
+    if gen == null or count <= 0:
+        return INF
+    var growth := gen.growth
+    var n := owned_count(id)
+    if is_equal_approx(growth, 1.0):
+        return ceilf(gen.base_cost * float(count))
+    var first := gen.base_cost * pow(growth, float(n))
+    var total := first * (pow(growth, float(count)) - 1.0) / (growth - 1.0)
+    if not is_finite(total):
+        return INF
+    return ceilf(total)
+
+func try_buy_generator(id: String, count: int = 1) -> bool:
+    if count <= 0:
+        return false
+    var cost := next_cost(id) if count == 1 else bulk_cost(id, count)
+    if not is_finite(cost) or crumbs + 0.001 < cost:
+        return false
+    crumbs -= cost
+    owned[id] = owned_count(id) + count
+    poll_achievements()
+    state_changed.emit()
+    return true
+
+func try_buy_upgrade(id: String) -> bool:
+    var up := find_upgrade(id)
+    if up == null or not upgrade_available(up):
+        return false
+    if up.pay == UpgradeDef.Pay.SPARKS:
+        if sparks_unspent + 0.001 < up.cost:
+            return false
+        sparks_unspent -= up.cost
+    else:
+        if crumbs + 0.001 < up.cost:
+            return false
+        crumbs -= up.cost
+    upgrades_owned[up.id] = true
+    poll_achievements()
+    state_changed.emit()
+    return true
+
+func upgrade_available(up: UpgradeDef) -> bool:
+    if has_upgrade(up.id):
+        return false
+    if up.require_upgrade != "" and not has_upgrade(up.require_upgrade):
+        return false
+    if up.require_generator != "" and owned_count(up.require_generator) < up.require_owned:
+        return false
+    return true
+
+func rate() -> float:
+    if catalog == null:
+        return 0.0
+    var per_second := 0.0
+    for gen: GeneratorDef in catalog.generators:
+        per_second += gen.base_rate * float(owned_count(gen.id)) * _generator_multiplier(gen.id)
+    return per_second * _global_multiplier()
+
+func click_value() -> float:
+    return _click_multiplier() * _global_multiplier()
+
+func prestige_gain() -> float:
+    var total := floorf(sqrt(maxf(lifetime, 0.0) / SPARK_DIVISOR))
+    if not is_finite(total):
+        return 0.0
+    return maxf(total - sparks_claimed, 0.0)
+
+func try_prestige() -> bool:
+    var gain := prestige_gain()
+    if gain < 1.0:
+        return false
+    sparks_unspent += gain
+    sparks_claimed += gain
+    crumbs = 0.0
+    owned.clear()
+    var keep := {}
+    for key in upgrades_owned.keys():
+        var id := String(key)
+        var up := find_upgrade(id)
+        if up != null and up.persists and bool(upgrades_owned[key]):
+            keep[id] = true
+    upgrades_owned = keep
+    poll_achievements()
+    state_changed.emit()
+    save_run()
+    print("prestige sparks now ", sparks_unspent, " claimed ", sparks_claimed)
+    return true
+
+func grant_debug_minute() -> float:
+    if _debug_reward_used:
+        return 0.0
+    _debug_reward_used = true
+    var per_second := maxf(rate(), click_value())
+    var earned := per_second * 60.0
+    crumbs += earned
+    lifetime += earned
+    poll_achievements()
+    state_changed.emit()
+    return earned
+
+func consume_offline_popup() -> Dictionary:
+    if pending_offline_earned < 1.0:
+        return {}
+    var info := {
+        "away": pending_offline_away,
+        "seconds": pending_offline_seconds,
+        "earned": pending_offline_earned,
+    }
+    pending_offline_earned = 0.0
+    return info
+
+func poll_achievements() -> void:
+    _try_achievement("first_tap", total_clicks >= 1)
+    _try_achievement("crumbs_1k", lifetime >= 1000.0)
+    _try_achievement("crumbs_1m", lifetime >= 1.0e6)
+    _try_achievement("crumbs_1b", lifetime >= 1.0e9)
+    _try_achievement("sprout_25", owned_count("sprout") >= 25)
+    _try_achievement("first_spark", sparks_claimed >= 1.0)
+    _try_achievement("away_hour", last_offline_seconds >= 3600)
+    _try_achievement("clicks_500", total_clicks >= 500)
+    var all_owned := catalog != null and catalog.generators.size() > 0
+    if catalog != null:
+        for gen: GeneratorDef in catalog.generators:
+            if owned_count(gen.id) < 1:
+                all_owned = false
+                break
+    _try_achievement("full_set", all_owned)
+
+func save_run() -> void:
+    if catalog == null or not _ready_done:
+        return
+    _anchor_unix = int(Time.get_unix_time_from_system())
+    var payload := {
+        "crumbs": BigFormat.store(crumbs),
+        "lifetime": BigFormat.store(lifetime),
+        "sparks_unspent": BigFormat.store(sparks_unspent),
+        "sparks_claimed": BigFormat.store(sparks_claimed),
+        "owned": _owned_payload(),
+        "upgrades": _upgrade_payload(),
+        "achievements": _achievement_payload(),
+        "total_clicks": total_clicks,
+        "saved_unix": _anchor_unix,
+    }
+    if not SaveManager.save_slot(SAVE_SLOT, payload):
+        push_error("SaveManager.save_slot failed")
+        return
+    var best := BigFormat.load_amount(SaveManager.get_value("best_lifetime", "0"))
+    if lifetime > best:
+        SaveManager.set_value("best_lifetime", BigFormat.store(lifetime))
+    SaveManager.flush()
+
+func load_run() -> void:
+    var data := SaveManager.load_slot(SAVE_SLOT, {})
+    if data.is_empty():
+        return
+    crumbs = BigFormat.load_amount(data.get("crumbs", "0"))
+    lifetime = BigFormat.load_amount(data.get("lifetime", "0"))
+    sparks_unspent = BigFormat.load_amount(data.get("sparks_unspent", "0"))
+    sparks_claimed = BigFormat.load_amount(data.get("sparks_claimed", "0"))
+    total_clicks = int(data.get("total_clicks", 0))
+    owned.clear()
+    var raw_owned: Variant = data.get("owned", {})
+    if raw_owned is Dictionary:
+        var dict := raw_owned as Dictionary
+        for key in dict.keys():
+            owned[String(key)] = int(dict[key])
+    upgrades_owned.clear()
+    var raw_up: Variant = data.get("upgrades", [])
+    if raw_up is Array:
+        for entry in raw_up as Array:
+            upgrades_owned[String(entry)] = true
+    achievements.clear()
+    var raw_ach: Variant = data.get("achievements", [])
+    if raw_ach is Array:
+        for entry in raw_ach as Array:
+            achievements[String(entry)] = true
+    var saved_unix := int(data.get("saved_unix", 0))
+    var now := int(Time.get_unix_time_from_system())
+    if saved_unix > 0:
+        var elapsed := now - saved_unix
+        if elapsed < 0:
+            elapsed = 0
+        _grant_elapsed(elapsed, true)
+    _anchor_unix = now
+
+func find_generator(id: String) -> GeneratorDef:
+    if catalog == null:
+        return null
+    for gen: GeneratorDef in catalog.generators:
+        if gen.id == id:
+            return gen
+    return null
+
+func find_upgrade(id: String) -> UpgradeDef:
+    if catalog == null:
+        return null
+    for up: UpgradeDef in catalog.upgrades:
+        if up.id == id:
+            return up
+    return null
+
+func _grant_elapsed(elapsed: int, show_panel: bool) -> void:
+    if elapsed < 5:
+        return
+    var capped := mini(elapsed, OFFLINE_CAP_SECONDS)
+    var earned := rate() * float(capped) * OFFLINE_EFFICIENCY
+    if earned <= 0.0:
+        return
+    crumbs += earned
+    lifetime += earned
+    last_offline_seconds = capped
+    if show_panel and earned >= 1.0:
+        pending_offline_away = elapsed
+        pending_offline_seconds = capped
+        pending_offline_earned = earned
+    poll_achievements()
+
+func _try_achievement(id: String, passed: bool) -> void:
+    if not passed or bool(achievements.get(id, false)):
+        return
+    achievements[id] = true
+    var key := achievement_key(id)
+    Events.achievement_unlocked.emit(StringName(id))
+    Events.toast_requested.emit(tr("CLICKER_ACH_TOAST") % tr(key))
+    print("achievement ", id)
+
+func _self_check() -> void:
+    var one := floorf(sqrt(1.0e6 / SPARK_DIVISOR))
+    var two := floorf(sqrt(4.0e6 / SPARK_DIVISOR))
+    var ten := floorf(sqrt(1.0e8 / SPARK_DIVISOR))
+    print("spark self-check ", one, " ", two, " ", ten, " (expect 1 2 10)")
+
+func _unit_cost(gen: GeneratorDef, count: int) -> float:
+    var raw := gen.base_cost * pow(gen.growth, float(count))
+    if not is_finite(raw):
+        return INF
+    return ceilf(raw)
+
+func _generator_multiplier(id: String) -> float:
+    var mult := 1.0
+    if catalog == null:
+        return mult
+    for up: UpgradeDef in catalog.upgrades:
+        if has_upgrade(up.id) and up.kind == UpgradeDef.Kind.GENERATOR and up.target_id == id:
+            mult *= up.multiplier
+    return mult
+
+func _click_multiplier() -> float:
+    var mult := 1.0
+    if catalog == null:
+        return mult
+    for up: UpgradeDef in catalog.upgrades:
+        if has_upgrade(up.id) and up.kind == UpgradeDef.Kind.CLICK:
+            mult *= up.multiplier
+    return mult
+
+func _global_multiplier() -> float:
+    var mult := 1.0 + SPARK_BONUS * sparks_unspent
+    if catalog == null:
+        return mult
+    for up: UpgradeDef in catalog.upgrades:
+        if has_upgrade(up.id) and up.kind == UpgradeDef.Kind.GLOBAL:
+            mult *= up.multiplier
+    return mult
+
+func _owned_payload() -> Dictionary:
+    var payload := {}
+    for key in owned.keys():
+        payload[String(key)] = int(owned[key])
+    return payload
+
+func _upgrade_payload() -> Array:
+    var payload: Array = []
+    for key in upgrades_owned.keys():
+        if bool(upgrades_owned[key]):
+            payload.append(String(key))
+    return payload
+
+func _achievement_payload() -> Array:
+    var payload: Array = []
+    for key in achievements.keys():
+        if bool(achievements[key]):
+            payload.append(String(key))
+    return payload
+
+      </script>
+    </li>
+  </ol>
+  <div class="callout warn"><span class="callout-title">Do not run the game yet</span>
+    <p>The new script still expects yesterday's scene. The UI script is replaced in Block 4, after the new nodes exist. Running now spams "Node not found" for panels you have not built.</p></div>
+
+  <h2 id="build-2">Block 3: Sparks and the return panel</h2>
+  <p>Three upgrades are paid in sparks and survive a prestige. Kind and Pay are Inspector dropdowns.</p>
+  <table>
+    <thead><tr><th>File</th><th>Id</th><th>Title key</th><th>Cost</th><th>Kind</th><th>Pay</th><th>Mult</th><th>Persists</th></tr></thead>
+    <tbody>
+      <tr><td>ledger.tres</td><td>ledger</td><td>CLICKER_UPG_LEDGER</td><td>1</td><td>Global</td><td>Sparks</td><td>1.1</td><td>on</td></tr>
+      <tr><td>archive.tres</td><td>archive</td><td>CLICKER_UPG_ARCHIVE</td><td>5</td><td>Global</td><td>Sparks</td><td>1.25</td><td>on</td></tr>
+      <tr><td>monument.tres</td><td>monument</td><td>CLICKER_UPG_MONUMENT</td><td>25</td><td>Click</td><td>Sparks</td><td>3</td><td>on</td></tr>
+    </tbody>
+  </table>
+  <ol class="steps">
+    <li><strong>Create the three resources.</strong> In the FileSystem dock, right-click <code>data</code> and choose <kbd class="ui">Create New &gt; Resource</kbd>. In the search box type <code>UpgradeDef</code>, click <kbd class="ui">Create</kbd>, then save each file name from the table and fill the fields. Leave Target Id and the require fields empty. Save each file.</li>
+    <li><strong>Append them to the catalog.</strong> Click <code>catalog.tres</code>. Set <kbd class="ui">Upgrades</kbd> size from 6 to <code>9</code>. Drag <code>ledger.tres</code>, <code>archive.tres</code>, and <code>monument.tres</code> onto the new slots. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+    <li><strong>Add the offline layer.</strong> Open <code>game.tscn</code>. Select <code>Game</code>, add a <code>CenterContainer</code>, rename it <code>OfflineLayer</code>. Anchors Preset <kbd class="ui">Full Rect</kbd>. Inspector search <code>mouse</code>, set <kbd class="ui">Filter</kbd> to <kbd class="ui">Stop</kbd> so the panel eats taps until it is dismissed. Click the eye icon in the Scene dock so the layer starts hidden.</li>
+    <li><strong>Build the panel.</strong> Under <code>OfflineLayer</code> add a <code>PanelContainer</code> named <code>OfflinePanel</code>. Custom Minimum Size <code>520</code> by <code>300</code>. Under it, a <code>VBoxContainer</code> named <code>OfflineVBox</code>. Under that, a <code>Label</code> named <code>OfflineTitle</code> with Text <code>CLICKER_OFFLINE_TITLE</code>, a <code>Label</code> named <code>OfflineBody</code>, and a <code>Button</code> named <code>OfflineOk</code> with Text <code>CLICKER_OFFLINE_OK</code>.</li>
+    <li><strong>Mark unique names and translation mode.</strong> Right-click <code>OfflineBody</code> and <code>OfflineOk</code> → <kbd class="ui">Access as Unique Name</kbd>. On <code>OfflineBody</code>, set Auto Translate Mode to <kbd class="ui">Disabled</kbd>, and Autowrap Mode to <kbd class="ui">Word Smart</kbd>. Title and OK keep inherited auto-translate because their Text is a key.</li>
+    <li><strong>Add the prestige confirm layer</strong> the same way: <code>ConfirmLayer</code> (<code>CenterContainer</code>, Full Rect, mouse Stop, eye closed). Inside it, <code>ConfirmPanel</code> (<code>PanelContainer</code>, minimum size 520×260), then a <code>VBoxContainer</code>, then <code>ConfirmBody</code> (Label, unique, auto-translate Disabled, autowrap Word Smart), <code>ConfirmYes</code> (Button, unique, Text <code>CLICKER_YES</code>), <code>ConfirmNo</code> (Button, unique, Text <code>CLICKER_NO</code>).</li>
+    <li><strong>Add the bottom controls.</strong> Under <code>BottomRow</code>, add a <code>Button</code> named <code>PrestigeButton</code> (unique, auto-translate Disabled, horizontal Fill + Expand) and a <code>Button</code> named <code>DebugButton</code> (unique, auto-translate Disabled, horizontal Fill + Expand). Add a <code>Label</code> named <code>SparksLabel</code> under <code>Columns</code>, just below <code>RateLabel</code> (drag it in the Scene dock). Unique name, auto-translate Disabled.</li>
+    <li><strong>Add the achievements tab.</strong> Under <code>TabRow</code>, add a <code>Button</code> named <code>AchievementsTab</code>, Text <code>CLICKER_ACHIEVEMENTS</code>, horizontal Fill + Expand. Under <code>Lists</code>, add <code>AchScroll</code> (<code>ScrollContainer</code>, unique, Full Rect, Horizontal Scroll Mode Disabled, eye closed) and under it <code>AchList</code> (<code>VBoxContainer</code>, unique, horizontal Fill + Expand).</li>
+  </ol>
+  <pre class="scene-tree">Game (Control) [game.gd]
+├── … yesterday's tree …
+├── Columns
+│   ├── RateLabel
+│   ├── SparksLabel                 %
+│   └── BottomRow
+│       ├── MenuButton
+│       ├── PrestigeButton          %
+│       └── DebugButton             %
+├── Lists
+│   └── AchScroll                   %  (eye closed)
+│       └── AchList                 %
+├── OfflineLayer (CenterContainer)     eye closed, mouse Stop
+│   └── OfflinePanel
+│       └── OfflineVBox
+│           ├── OfflineTitle
+│           ├── OfflineBody         %
+│           └── OfflineOk           %
+└── ConfirmLayer (CenterContainer)     eye closed, mouse Stop
+    └── ConfirmPanel
+        └── VBoxContainer
+            ├── ConfirmBody         %
+            ├── ConfirmYes          %
+            └── ConfirmNo           %</pre>
+
+  <h3>Strings to append</h3>
+  <ol class="steps">
+    <li><strong>Append CSV rows</strong> at the bottom of <code>res://i18n/translations.csv</code>. Do not touch the header. Save, click the file once, and click <kbd class="ui">Reimport</kbd>.
+      <script type="text/x-code" data-lang="csv" data-file="res://i18n/translations.csv">
+CLICKER_OFFLINE_TITLE,While you were away,Mientras no estabas,Während du weg warst,,,,
+CLICKER_OFFLINE_BODY,Away %s. Paid %s at 50 percent. Earned %s.,Ausente %s. Pagado %s al 50 por ciento. Ganaste %s.,Weg %s. Bezahlt %s bei 50 Prozent. Verdient %s.,,,,
+CLICKER_OFFLINE_OK,Collect,Recoger,Einsammeln,,,,
+CLICKER_PRESTIGE,Prestige +%s,Prestigio +%s,Prestige +%s,,,,
+CLICKER_PRESTIGE_BODY,Reset the foundry for %s sparks? Lifetime stays.,¿Reiniciar la fundición por %s chispas? El total permanece.,Foundry für %s Funken zurücksetzen? Lebenszeit bleibt.,,,,
+CLICKER_YES,Yes,Sí,Ja,,,,
+CLICKER_NO,No,No,Nein,,,,
+CLICKER_SPARKS,%s sparks,%s chispas,%s Funken,,,,
+CLICKER_ACHIEVEMENTS,Achievements,Logros,Erfolge,,,,
+CLICKER_ACH_TOAST,Achievement: %s,Logro: %s,Erfolg: %s,,,,
+CLICKER_DONE,done,hecho,fertig,,,,
+CLICKER_LOCKED,locked,bloqueado,offen,,,,
+CLICKER_DEBUG_REWARD,Debug: grant 60s,Depuración: 60 s,Debug: 60 s,,,,
+CLICKER_UPG_LEDGER,Ledger,Libro,Hauptbuch,,,,
+CLICKER_UPG_ARCHIVE,Archive,Archivo,Archiv,,,,
+CLICKER_UPG_MONUMENT,Monument,Monumento,Monument,,,,
+CLICKER_ACH_FIRST_TAP,First tap,Primer toque,Erster Tipp,,,,
+CLICKER_ACH_CRUMBS_1K,A small pile,Un montón pequeño,Ein kleiner Haufen,,,,
+CLICKER_ACH_CRUMBS_1M,A million crumbs,Un millón de migas,Eine Million Krümel,,,,
+CLICKER_ACH_CRUMBS_1B,A billion crumbs,Mil millones de migas,Eine Milliarde Krümel,,,,
+CLICKER_ACH_SPROUT_25,Greenhouse,Invernadero,Gewächshaus,,,,
+CLICKER_ACH_FULL_SET,All lines running,Todas las líneas,Alle Linien laufen,,,,
+CLICKER_ACH_FIRST_SPARK,First spark,Primera chispa,Erster Funke,,,,
+CLICKER_ACH_AWAY_HOUR,While you slept,Mientras dormías,Während du schliefst,,,,
+CLICKER_ACH_CLICKS_500,Sore thumb,Pulgar cansado,Müder Daumen,,,,
+      </script>
+    </li>
+  </ol>
+
+  <h2 id="build-3">Block 4: UI script, achievements, juice</h2>
+  <ol class="steps">
+    <li><strong>Replace <code>res://game/game.gd</code>.</strong> Select all, paste, save. This file still builds the generator rows. It also opens the offline panel, the prestige confirm, the achievement list, the floating <code>+N</code>, and a short synthesized click on the SFX bus through <code>Audio.play_sfx</code>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/game.gd">
+extends Control
+
+@onready var _economy: CrumbEconomy = $Economy
+
+var _gen_buttons: Dictionary = {}
+var _up_buttons: Dictionary = {}
+var _ach_labels: Dictionary = {}
+var _blip: AudioStreamWAV
+var _poll_wait: float = 0.0
+
+func _ready() -> void:
+    _blip = _make_blip(520.0)
+    _build_generator_rows()
+    _build_upgrade_rows()
+    _build_achievement_rows()
+    %ClickButton.pressed.connect(_on_click)
+    %GeneratorsTab.pressed.connect(_show_tab.bind("gen"))
+    %UpgradesTab.pressed.connect(_show_tab.bind("up"))
+    %AchievementsTab.pressed.connect(_show_tab.bind("ach"))
+    %MenuButton.pressed.connect(_on_menu)
+    %PrestigeButton.pressed.connect(_on_prestige)
+    %ConfirmYes.pressed.connect(_on_prestige_yes)
+    %ConfirmNo.pressed.connect(_on_prestige_no)
+    %OfflineOk.pressed.connect(_on_offline_ok)
+    %DebugButton.pressed.connect(_on_debug)
+    %AutosaveTimer.timeout.connect(_on_autosave)
+    %OfflineLayer.visible = false
+    %ConfirmLayer.visible = false
+    _show_tab("gen")
+    _center_pivot.call_deferred()
+    Events.game_started.emit()
+    _show_offline_if_needed()
+    _refresh()
+
+func _process(delta: float) -> void:
+    _economy.tick(delta)
+    _poll_wait += delta
+    if _poll_wait >= 1.0:
+        _poll_wait = 0.0
+        _economy.poll_achievements()
+    _refresh()
+
+func _center_pivot() -> void:
+    %ClickButton.pivot_offset = %ClickButton.size * 0.5
+
+func _build_generator_rows() -> void:
+    if _economy.catalog == null:
+        return
+    for gen: GeneratorDef in _economy.catalog.generators:
+        var button := Button.new()
+        button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+        button.custom_minimum_size = Vector2(0, 64)
+        button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        button.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+        button.pressed.connect(_on_buy_generator.bind(gen.id))
+        %GenList.add_child(button)
+        _gen_buttons[gen.id] = button
+
+func _build_upgrade_rows() -> void:
+    if _economy.catalog == null:
+        return
+    for up: UpgradeDef in _economy.catalog.upgrades:
+        var button := Button.new()
+        button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+        button.custom_minimum_size = Vector2(0, 64)
+        button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        button.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+        button.pressed.connect(_on_buy_upgrade.bind(up.id))
+        %UpgradeList.add_child(button)
+        _up_buttons[up.id] = button
+
+func _build_achievement_rows() -> void:
+    for id in _economy.achievement_ids():
+        var label := Label.new()
+        label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+        label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        %AchList.add_child(label)
+        _ach_labels[id] = label
+
+func _show_tab(which: String) -> void:
+    %GenScroll.visible = which == "gen"
+    %UpScroll.visible = which == "up"
+    %AchScroll.visible = which == "ach"
+
+func _on_click() -> void:
+    var gained := _economy.click()
+    _spawn_float(gained)
+    _punch(%ClickButton)
+    Audio.play_sfx(_blip, -8.0, 1.0)
+
+func _on_buy_generator(id: String) -> void:
+    if _economy.try_buy_generator(id, 1):
+        Audio.play_sfx(_blip, -8.0, 1.2)
+
+func _on_buy_upgrade(id: String) -> void:
+    if _economy.try_buy_upgrade(id):
+        Audio.play_sfx(_blip, -6.0, 1.35)
+
+func _on_menu() -> void:
+    _economy.save_run()
+    SceneRouter.go_to(SceneRouter.MAIN_MENU_SCENE)
+
+func _on_autosave() -> void:
+    _economy.save_run()
+    print("autosaved ", BigFormat.store(_economy.crumbs))
+
+func _on_prestige() -> void:
+    %ConfirmBody.text = tr("CLICKER_PRESTIGE_BODY") % BigFormat.format_amount(_economy.prestige_gain())
+    %ConfirmLayer.visible = true
+
+func _on_prestige_yes() -> void:
+    %ConfirmLayer.visible = false
+    _economy.try_prestige()
+
+func _on_prestige_no() -> void:
+    %ConfirmLayer.visible = false
+
+func _on_offline_ok() -> void:
+    %OfflineLayer.visible = false
+
+func _on_debug() -> void:
+    var earned := _economy.grant_debug_minute()
+    if earned > 0.0:
+        _spawn_float(earned)
+        Events.toast_requested.emit(tr("CLICKER_DEBUG_REWARD"))
+
+func _show_offline_if_needed() -> void:
+    var info := _economy.consume_offline_popup()
+    if info.is_empty():
+        return
+    %OfflineBody.text = tr("CLICKER_OFFLINE_BODY") % [
+        BigFormat.format_duration(int(info["away"])),
+        BigFormat.format_duration(int(info["seconds"])),
+        BigFormat.format_amount(float(info["earned"])),
+    ]
+    %OfflineLayer.visible = true
+
+func _refresh() -> void:
+    if _economy.catalog == null:
+        return
+    %CrumbLabel.text = tr("CLICKER_CRUMBS") % BigFormat.format_amount(_economy.crumbs)
+    %RateLabel.text = tr("CLICKER_RATE") % BigFormat.format_amount(_economy.rate())
+    %SparksLabel.text = tr("CLICKER_SPARKS") % BigFormat.format_amount(_economy.sparks_unspent)
+    %ClickButton.text = tr("CLICKER_TAP") + "  +" + BigFormat.format_amount(_economy.click_value())
+    var gain := _economy.prestige_gain()
+    %PrestigeButton.text = tr("CLICKER_PRESTIGE") % BigFormat.format_amount(gain)
+    %PrestigeButton.disabled = gain < 1.0
+    %DebugButton.text = tr("CLICKER_DEBUG_REWARD")
+    %DebugButton.disabled = _economy.debug_reward_used()
+    for gen: GeneratorDef in _economy.catalog.generators:
+        var gen_button := _gen_buttons[gen.id] as Button
+        var cost := _economy.next_cost(gen.id)
+        var afford := _economy.crumbs + 0.001 >= cost and is_finite(cost)
+        gen_button.text = tr(gen.title_key) + "  x" + str(_economy.owned_count(gen.id)) + "   " + BigFormat.format_amount(cost)
+        gen_button.disabled = not afford
+    for up: UpgradeDef in _economy.catalog.upgrades:
+        var up_button := _up_buttons[up.id] as Button
+        var owned_flag := _economy.has_upgrade(up.id)
+        var shown := owned_flag or _economy.upgrade_available(up)
+        up_button.visible = shown
+        if not shown:
+            continue
+        var price := tr("CLICKER_SPARKS") % BigFormat.format_amount(up.cost) if up.pay == UpgradeDef.Pay.SPARKS else BigFormat.format_amount(up.cost)
+        up_button.text = tr(up.title_key) + "   " + price
+        var can_pay := _economy.sparks_unspent + 0.001 >= up.cost if up.pay == UpgradeDef.Pay.SPARKS else _economy.crumbs + 0.001 >= up.cost
+        up_button.disabled = owned_flag or not can_pay
+    for id in _economy.achievement_ids():
+        var ach_label := _ach_labels[id] as Label
+        var state := tr("CLICKER_DONE") if _economy.is_achievement_unlocked(id) else tr("CLICKER_LOCKED")
+        ach_label.text = tr(_economy.achievement_key(id)) + " — " + state
+
+func _spawn_float(amount: float) -> void:
+    var label := Label.new()
+    label.text = "+" + BigFormat.format_amount(amount)
+    label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+    label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    add_child(label)
+    label.global_position = %ClickButton.global_position + Vector2(24, 12)
+    var tween := create_tween()
+    tween.set_parallel(true)
+    tween.tween_property(label, "position", label.position + Vector2(0, -70), 0.55)
+    tween.tween_property(label, "modulate", Color(1, 1, 1, 0), 0.55)
+    tween.finished.connect(label.queue_free)
+
+func _punch(control: Control) -> void:
+    control.pivot_offset = control.size * 0.5
+    control.scale = Vector2(0.96, 0.96)
+    var tween := create_tween()
+    tween.tween_property(control, "scale", Vector2.ONE, 0.08)
+
+func _make_blip(freq: float) -> AudioStreamWAV:
+    var stream := AudioStreamWAV.new()
+    stream.format = AudioStreamWAV.FORMAT_16_BITS
+    stream.mix_rate = 22050
+    stream.stereo = false
+    var count := 1764
+    var bytes := PackedByteArray()
+    bytes.resize(count * 2)
+    for i in count:
+        var t := float(i) / 22050.0
+        var env := clampf(1.0 - (t / 0.08), 0.0, 1.0)
+        var sample := int(clampf(sin(TAU * freq * t) * env, -1.0, 1.0) * 32767.0)
+        bytes.encode_s16(i * 2, sample)
+    stream.data = bytes
+    return stream
+      </script>
+    </li>
+    <li><strong>Save the scene</strong> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) so the unique names and the eye-closed layers are stored.</li>
+  </ol>
+  <div class="checkpoint"><p>Press <kbd>F6</kbd>. Output includes <code>spark self-check 1 2 10 (expect 1 2 10)</code> and <code>upgrades: 9</code>. Tap once: the button shrinks and springs back, a <code>+1</code> (or more) drifts up and fades, and you hear a short blip. Output prints <code>achievement first_tap</code>. If a toast banner from the kit appears, good. If it does not, the print is still the proof; Day 16's toast listens for <code>Events.toast_requested</code>. If there is no sound, open the kit settings and raise the SFX and Master buses, then tap again. Prestige stays disabled.</p></div>
+
+  <ol class="steps">
+    <li><strong>Force a 2-hour absence.</strong> Buy one sprout if you have none. Wait for an <code>autosaved</code> line. Press <kbd>F8</kbd>. <kbd class="menu">Project &gt; Open User Data Folder</kbd>, open <code>saves/run.json</code>. Inside <code>data</code>, subtract <code>7200</code> from <code>saved_unix</code> (that field, not a different timestamp on the wrapper). Save the text file and close it.</li>
+    <li><strong>Collect.</strong> Press <kbd>F6</kbd>. A panel covers the foundry. With one sprout and no rate upgrades it should say you were paid <code>2h 0m</code> and earned <code>360</code>. Press Collect. The panel goes away and the crumb line includes those 360. If the panel does not appear, the edited number was not the <code>saved_unix</code> inside <code>data</code>, or the sprout was missing so rate was 0.</li>
+  </ol>
+  <div class="checkpoint"><p>Collect dismisses the panel. A second <kbd>F6</kbd> immediately does <em>not</em> pay another 360, because <code>_ready</code> saved the new timestamp. If it pays again, <code>save_run()</code> at the end of <code>_ready</code> was removed.</p></div>
+
+  <h2 id="build-4">Block 5: Debug reward, ads, and IAP</h2>
+  <ol class="steps">
+    <li><strong>Press the debug button once.</strong> It adds <code>60 * max(rate, click value)</code> crumbs, floats that number, shows a toast, and then disables itself until the next launch. It is not saved as "already used", so a restart arms it again. The label says Debug on purpose.</li>
+    <li><strong>Switch language.</strong> Stop the game. From the main menu settings, set locale <code>es</code> (or temporarily call <code>Settings.set_locale("es")</code> at the top of <code>_ready</code>, verify, then delete that line). The achievements tab reads Logros. Collect, if you trigger the panel again, is Recoger.</li>
+  </ol>
+  <div class="callout external"><span class="callout-title">External resource: ads and billing (verify on the official pages)</span>
+    <p>This project does not ship an ad SDK or a billing client. A rewarded video, if you add one later, should call the same kind of function as <code>grant_debug_minute()</code> from the SDK's reward callback, and only from that callback. A real product should grant a spark upgrade without subtracting sparks, only after the store says the purchase is valid. Start at <a href="https://play.google.com/console" target="_blank" rel="noopener">play.google.com/console</a> and <a href="https://admob.google.com" target="_blank" rel="noopener">admob.google.com</a>. In Godot's AssetLib, search "Google Play Billing". Console menus and plugin APIs change; follow the page you land on. If you turn ads on, the Play Data safety form has to say so (Day 30). Do not add a personal ad unit id to this course project.</p></div>
+
+  <h2 id="build-5">Block 6: Windows release, signed AAB, closed test</h2>
+  <p>Day 16 is the click-by-click for SDKs, the debug keystore, the release keystore, and USB install. Do not re-key a keystore you already created. Use this project's names when those steps ask for a package or a file.</p>
+  <ol class="steps">
+    <li><strong>Set the Android package id.</strong> <kbd class="menu">Project &gt; Export</kbd>. Select the Android preset Day 16 created. In the options, find <kbd class="ui">Package &gt; Unique Name</kbd> and set it to <code>com.yourname.idleclicker</code>, with your own name in place of <code>yourname</code> (lowercase, no spaces). Version name can stay <code>0.1.0</code>. Click <kbd class="ui">Close</kbd> if you are not exporting this second. The preset is saved when you change it; if a save prompt appears, save.</li>
+    <li><strong>Install a debug build on a phone or emulator</strong> by following the Day 16 debug-install steps (<a href="../days/day16.html">Day 16</a>): one-click deploy or an APK exported with debug. Launch Crumb Foundry, tap, buy a sprout, and force-stop the app from the phone's app settings. Open it again. The sprout is still owned. That is <code>NOTIFICATION_APPLICATION_PAUSED</code> saving, then the next launch loading.</li>
+    <li><strong>Export a Windows release.</strong> <kbd class="menu">Project &gt; Export</kbd>, select the Windows Desktop preset. Uncheck <kbd class="ui">Export With Debug</kbd> next to the export button. Click <kbd class="ui">Export Project</kbd> and write <code>C:\GodotProjects\idle-clicker-build\windows\CrumbFoundry.exe</code> (create the folder if the dialog asks). Run that exe from Explorer, not from Godot. You should get the main menu and then the foundry, with no Godot editor attached.</li>
+    <li><strong>Export the signed AAB.</strong> Still in Export, select Android. Confirm Unique Name is <code>com.yourname.idleclicker</code>. Confirm the preset uses the <em>release</em> keystore from Day 16, not the debug keystore. Choose the AAB export (not APK) the way Day 16 shows it. Leave <kbd class="ui">Export With Debug</kbd> unchecked. Export to <code>C:\GodotProjects\idle-clicker-build\android\crumb-foundry.aab</code>.</li>
+  </ol>
+  <div class="callout external"><span class="callout-title">External resource: Play closed testing</span>
+    <p>Verify every label on <a href="https://play.google.com/console" target="_blank" rel="noopener">play.google.com/console</a>. The console moves items between releases. As of this writing the path is: open your app, <kbd class="ui">Test and release</kbd>, <kbd class="ui">Closed testing</kbd>, create a track, upload <code>crumb-foundry.aab</code>, add tester emails, and roll the release out. Copy the opt-in link and open it on the phone that uses one of those Google accounts. The first review can take hours or days; a debug APK from step 2 is how you play today. If the console rejects the bundle, the usual causes are a debug signature, the wrong package id, or a version code that did not increase. Day 16 has the keystore and version-code notes.</p></div>
+  <div class="checkpoint"><p>You have <code>CrumbFoundry.exe</code> that runs outside the editor, a phone or emulator that kept the sprout after a force-stop, and an <code>.aab</code> whose package id is <code>com.yourname.idleclicker</code>. The closed-test track is created even if Google has not finished reviewing it. Tick the matching rows on the <a href="../games/g06-idle-clicker.html">game page</a> checklist.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Editing the wrapper timestamp</strong> instead of <code>data.saved_unix</code> does nothing. This game never reads the wrapper.</li>
+    <li><strong>Two resume notifications double-paying.</strong> <code>_grant_elapsed</code> ignores gaps under 5 seconds, and the first resume calls <code>save_run()</code>, which moves the anchor. Keep both.</li>
+    <li><strong>Prestige clearing Ledger.</strong> Persists must be on, and Pay must be Sparks. A crumbs upgrade with Persists off is removed on purpose.</li>
+    <li><strong>Spending sparks still expecting +2% each.</strong> The 2% applies to unspent sparks only. Ledger at 1.10 is better than one unspent spark at 1.02, which is why the trade exists.</li>
+    <li><strong>Export With Debug left on</strong> for the AAB. Play closed testing wants the release keystore and a non-debug export. Day 16 separates the two keystores.</li>
+    <li><strong>Unique Name missing on a node you added today</strong> fails at <code>_ready</code> before the first tap. The error names the missing node.</li>
+    <li><strong>Replacing <code>game.gd</code> before the new nodes exist</strong> produces a pile of unique-name errors. Build the tree, then paste the script.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 20–30 min)</h2>
+  <div class="challenge">
+    <h3>Buy 10, and a spark you can actually press</h3>
+    <p>Wire an x10 button that calls <code>try_buy_generator(id, 10)</code> and labels it with <code>bulk_cost</code>. From zero sprouts that price is 305.</p>
+    <p>Then reach one real spark without editing the JSON lifetime: Ledger costs 1 spark, so you need lifetime at least 1,000,000. A mill is 8 crumbs per second; ten mills are 80 per second, about 3.5 hours to a million if you leave the debug window open. Offline at 50% is slower than leaving it focused, because a focused game runs <code>tick</code>. Write down which you used. After the prestige button enables, confirm, and check that sprout count returns to 0 while Sparks reads 1 and the achievement list shows First spark as done.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>Rate is 100 crumbs per second and the app was closed for 10 hours. How many crumbs does the offline grant add?</p>
+      <ul>
+        <li>100 * 36000 = 3,600,000</li>
+        <li>100 * 28800 * 0.5 = 1,440,000</li>
+        <li>100 * 28800 = 2,880,000</li>
+        <li>100 * 0.5 = 50</li>
+      </ul>
+      <p class="explain">Elapsed is clamped to 8 hours (28800 seconds) and then multiplied by 0.5. Ten hours does not pay the extra two.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>Lifetime is 4,000,000 and you have never prestiged. How many sparks does this prestige pay?</p>
+      <ul>
+        <li>4</li>
+        <li>40</li>
+        <li>2</li>
+        <li>1</li>
+      </ul>
+      <p class="explain"><code>floorf(sqrt(4e6 / 1e6)) = floorf(sqrt(4)) = 2</code>. The self-check print is this formula.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>You own Ledger (global ×1.10, persists) and have 0 unspent sparks. What is the global multiplier from sparks and Ledger together?</p>
+      <ul>
+        <li>1.10</li>
+        <li>1.12</li>
+        <li>1.02</li>
+        <li>1.00, because prestige cleared Ledger</li>
+      </ul>
+      <p class="explain">Unspent sparks add 0. Spent sparks do not. Ledger persists and multiplies. 1.00 + 0, then ×1.10.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>Which notification is the one Android sends when the player switches away, and which this game uses to save?</p>
+      <ul>
+        <li><code>NOTIFICATION_WM_CLOSE_REQUEST</code> only</li>
+        <li><code>Events.game_paused</code></li>
+        <li><code>NOTIFICATION_TRANSLATION_CHANGED</code></li>
+        <li><code>NOTIFICATION_APPLICATION_PAUSED</code> (and focus-out)</li>
+      </ul>
+      <p class="explain">The economy <code>_notification</code> saves on application pause and on focus-out, then <code>SaveManager.flush()</code> inside <code>save_run</code>.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>What do you upload for the Play closed test?</p>
+      <ul>
+        <li>The Windows exe, signed with the debug keystore</li>
+        <li>An <code>.aab</code> signed with the release keystore, package <code>com.yourname.idleclicker</code>, Export With Debug off</li>
+        <li>The <code>project.godot</code> file</li>
+        <li>An APK exported with debug, because closed testing rejects AAB</li>
+      </ul>
+      <p class="explain">Closed testing takes the release AAB. The debug APK is only for the phone you install yourself today. The steps for the keystore live on Day 16.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/io/saving_games.html" target="_blank" rel="noopener">Saving games</a>: JSON numbers come back as floats; cast the small counters.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_time.html" target="_blank" rel="noopener">Time</a>: <code>get_unix_time_from_system</code> is UTC.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_node.html" target="_blank" rel="noopener">Node notifications</a>: application paused and focus.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/audio/audio_streams.html" target="_blank" rel="noopener">Audio streams</a>: what <code>Audio.play_sfx</code> is playing.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_tween.html" target="_blank" rel="noopener">Tween</a>: the floating label and the button punch.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_android.html" target="_blank" rel="noopener">Exporting for Android</a>: read beside Day 16, not instead of it.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/i18n/localization_using_spreadsheets.html" target="_blank" rel="noopener">Localization using spreadsheets</a></li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li>Output prints <code>spark self-check 1 2 10</code>. A 2-hour edit of <code>saved_unix</code> pays 360 crumbs at 0.1 per second and does not pay them twice.</li>
+    <li>Tap punches the button, floats <code>+N</code>, plays a blip, and prints <code>achievement first_tap</code>.</li>
+    <li>Debug grant works once per launch and is labeled Debug. No ad SDK is in the project.</li>
+    <li>Windows release exe runs from Explorer. A debug build on a device keeps the save after a force-stop.</li>
+    <li>Release <code>.aab</code> uses package <code>com.yourname.idleclicker</code> and the Day 16 release keystore. A Play closed-test track has that file, or is waiting on Day 16's console setup.</li>
+  </ul>
+  <p><strong>Tomorrow</strong> (Day 19) starts Bullet Heaven in a new copy of the Ship Kit. Idle Clicker stays in <code>C:\GodotProjects\idle-clicker</code>.</p>
+
+  <h3>File map</h3>
+  <table>
+    <thead><tr><th>Path</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td><code>res://game/game.tscn</code></td><td>Portrait UI, pause-menu instance, offline and confirm layers. Path is <code>SceneRouter.GAME_SCENE</code>.</td></tr>
+      <tr><td><code>res://game/game.gd</code></td><td>Tabs, refresh, juice, <code>Audio.play_sfx</code>, <code>SceneRouter.go_to</code>.</td></tr>
+      <tr><td><code>res://game/economy.gd</code></td><td><code>CrumbEconomy</code>. Prices, offline, prestige, achievements, <code>SaveManager</code>.</td></tr>
+      <tr><td><code>res://game/big_format.gd</code></td><td><code>BigFormat</code>. Suffixes and save strings.</td></tr>
+      <tr><td><code>res://data/generator_def.gd</code></td><td><code>GeneratorDef</code></td></tr>
+      <tr><td><code>res://data/upgrade_def.gd</code></td><td><code>UpgradeDef</code> with <code>Kind</code> and <code>Pay</code></td></tr>
+      <tr><td><code>res://data/economy_catalog.gd</code></td><td><code>EconomyCatalog</code></td></tr>
+      <tr><td><code>res://data/catalog.tres</code></td><td>8 generators, 9 upgrades</td></tr>
+      <tr><td><code>res://i18n/translations.csv</code></td><td>Keys prefixed <code>CLICKER_</code></td></tr>
+      <tr><td><code>user://saves/run.json</code></td><td>Slot <code>&amp;run</code> via <code>SaveManager.save_slot</code></td></tr>
+    </tbody>
+  </table>
+  <p>Design checklist and stretch goals: <a href="../games/g06-idle-clicker.html">Idle Clicker</a>. Export clicks: <a href="../days/day16.html">Day 16</a>.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

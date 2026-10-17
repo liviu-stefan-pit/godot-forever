@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game 7 - Bullet Heaven | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="game" data-id="g07" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Publishable game 7 · 2D · Bullet heaven</div>
+    <h1>Bullet Heaven</h1>
+    <p class="lead">A landscape survivor. You move, weapons fire on their own, and the swarm is a list of canvas items rather than a list of nodes. Gems raise a level, a level is a paused choice of three Resources, and a coin shop between runs unlocks two more characters. The menus, settings, pause, and save flush come from the Ship Kit.</p>
+    <div class="chips"><span class="chip blue">Days 19–21</span><span class="chip green">CharacterBody2D, Camera2D, RenderingServer, Resources</span><span class="chip">1280×720 · canvas_items · expand · Mobile</span></div>
+  </header>
+
+  <h2 id="design">Game design</h2>
+  <p>One run is a clock. Bats (and, after two minutes, brutes) walk straight at the player. Standing in them drains HP per second. Weapons never need an aim button. Gems grant XP. At each level the tree pauses and you pick one card: a new weapon, a weapon rank, a new passive, a passive rank, an evolution, or a 25 HP heal if the pool is empty. At 8:00 the Warden spawns once. Dying writes coins and bests, then offers retry or the main menu.</p>
+  <p><strong>Controls.</strong> Keyboard and gamepad use <code>move_left</code>, <code>move_right</code>, <code>move_up</code>, <code>move_down</code>. Touch uses a <code>VirtualJoystick</code> (or the fallback <code>Control</code> if that node is missing) that presses those same actions. <code>pause</code> is the Ship Kit pause menu. There is no attack button.</p>
+  <p><strong>Project.</strong> Copy <code>C:\GodotProjects\ship-kit</code> to <code>C:\GodotProjects\bullet-heaven</code>. Viewport 1280×720, stretch mode <code>canvas_items</code>, aspect <code>expand</code>, renderer Mobile. Android package <code>com.yourname.bulletheaven</code> (replace <code>yourname</code>). Canvas-item RIDs draw on Forward+, Mobile, and Compatibility; Mobile is the phone default, not a requirement of the swarm.</p>
+  <h3>Formulas</h3>
+  <p>Level starts at 1. <code>xp_to_next(level) = round(12 × 1.22^(level − 1))</code>. Bat gem = 1 XP, brute = 3, Warden = 8 gems of 5. Minute = <code>int(seconds / 60)</code>.</p>
+  <ul>
+    <li>Bat: HP <code>round(14 × (1 + 0.18 × minute))</code>, speed <code>min(160, 78 + 3 × minute)</code>, contact <code>8 + minute</code> HP/s, radius 11.</li>
+    <li>Brute (minute ≥ 2, 22% of spawns): base HP 36 on the same curve, speed <code>min(110, 56 + 2 × minute)</code>, contact <code>14 + 2 × minute</code>, radius 18.</li>
+    <li>Spawn interval <code>max(0.04, 0.55 × 0.90^(seconds / 30))</code>. Alive cap 1100. Gems pool at 160; a full pool grants XP with no icon.</li>
+    <li>Weapon damage <code>(base + per_level × (L − 1)) × (1 + 0.08 × might_ranks + 0.04 × shop_might) × evo</code>. Evo multipliers: Needle 1.25, Orbit 1.40, Scatter 1.15.</li>
+    <li>Cooldown <code>max(min, base + per_level × (L − 1)) × max(0.45, 1 − 0.06 × tome_ranks) × evo</code>. Evo cooldown: Needle 0.55, Orbit 0.62, Scatter 0.70.</li>
+    <li>Projectile count <code>base + floor((L − 1) / every)</code>, every = 2. Evolved Needle and Orbit add 2. Evolved Scatter becomes at least 8. Orbit hits each enemy at most once per tick.</li>
+    <li>Move speed <code>210 × (1 + 0.08 × stride_ranks) × character_speed</code>. Magnet <code>72 + 28 × magnet_ranks + 20 × shop_magnet_rank</code>. Armor subtracts <code>2 × armor_ranks</code> from contact HP/s, floored at 0.</li>
+    <li>Evolution: weapon level 8 and the named passive at rank 5. Needle + Quick Hands, Orbit + Iron Will, Scatter + Long Arms. The evolution replaces that weapon.</li>
+    <li>Warden at 480 s: 8000 HP, 48 px/s, 22 contact HP/s, radius 36, ring of up to 12 shots every 2.4 s at 160 px/s for 14 HP each. Death adds 50 kills.</li>
+    <li>Coins <code>floor((kills × 0.25 + seconds × 0.5 + boss_kills × 200) × (1 + 0.08 × purse_rank))</code>. Next shop rank costs <code>base × 2^rank</code> (rank 0..4). Vitality +15 HP, Sharpened +4% damage, pocket magnet +20 px, purse +8% coins. Max HP = <code>100 + character_hp + 15 × vitality_rank</code>.</li>
+  </ul>
+  <table>
+    <thead><tr><th></th><th>Needle</th><th>Orbit</th><th>Scatter</th></tr></thead>
+    <tbody>
+      <tr><td>Base damage / per level</td><td>10 / 3</td><td>7 / 2</td><td>6 / 1.5</td></tr>
+      <tr><td>Base cooldown / per level / min</td><td>0.48 / −0.025 / 0.16</td><td>0.45 / −0.02 / 0.22</td><td>0.85 / −0.04 / 0.28</td></tr>
+      <tr><td>Speed</td><td>680 px/s</td><td>2.4 rad/s</td><td>520 px/s</td></tr>
+      <tr><td>Base projectiles</td><td>1</td><td>1</td><td>3</td></tr>
+      <tr><td>Passive to evolve</td><td>tome</td><td>might</td><td>bracer</td></tr>
+    </tbody>
+  </table>
+  <p>Characters: Scout (free, Needle, speed × 1.10), Acolyte (800, Orbit, area × 1.15), Vanguard (1500, Scatter, +25 HP). Slots: 3 weapons, 6 passives.</p>
+
+  <h2 id="scope">Scope: what "done" means</h2>
+  <p>Store-ready here means the run is the one in the tables, the Ship Kit shell is still the shell, and both export targets boot. Stretch goals are not required to tick this list.</p>
+  <ul class="checklist">
+    <li>Main menu, settings (volume, fullscreen, locale), pause, and credits are the Ship Kit scenes, not a second menu kit.</li>
+    <li>Start reaches <code>res://game/game.tscn</code> through <code>SceneRouter</code>. Retry calls <code>reload_current</code>. Menu calls <code>go_to(MAIN_MENU_SCENE)</code>.</li>
+    <li>Player, camera, three weapons, six passives, evolutions, gems, and the level-up pause all match the formulas above.</li>
+    <li>Virtual joystick or the documented fallback drives <code>move_*</code>. Keyboard still works.</li>
+    <li><code>BH_</code> keys exist in <code>en</code>, <code>es</code>, and <code>de</code> (the CSV header still has the Ship Kit columns) and the cards use <code>tr()</code>.</li>
+    <li>Horde is canvas items. With Stress Spawn on, <code>BH/Alive</code> can pass 1000 while Object Count stays within about 30 of the count printed at launch. Stress Spawn is off in the exported scene.</li>
+    <li>Warden, three characters, and the four shop tracks use the prices and effects in the tables. Coins and ranks are read back with <code>int()</code> and flushed on death.</li>
+    <li>Save keys: <code>bh_coins</code>, <code>bh_best_kills</code>, <code>bh_best_time</code>, <code>bh_unlocks</code>, <code>bh_might_rank</code>, <code>bh_hp_rank</code>, <code>bh_magnet_rank</code>, <code>bh_purse_rank</code>.</li>
+    <li>Windows exe under <code>build\BulletHeaven.exe</code> boots the menu and keeps coins. Android debug package id <code>com.yourname.bulletheaven</code> installs and the stick works. Release keystore and Play listing are later days.</li>
+    <li>Credits and <code>licenses/THIRD_PARTY.txt</code> mention Kenney only if those files are actually in the export. Godot's license files from the Ship Kit are still present. Icon and version are set (<code>0.1.0</code>).</li>
+  </ul>
+
+  <h2 id="architecture">Architecture</h2>
+  <pre class="scene-tree">Game (Node)                         [game.gd, class RunDirector]
+├── World (Node2D)
+│   ├── Player                      [player.gd] Camera2D child, group "player"
+│   ├── Horde (Node2D)              [horde.gd] 1200 canvas-item RIDs, position (0, 0)
+│   ├── Projectiles                 40 pooled Projectile nodes
+│   ├── Gems                        160 pooled Gem nodes
+│   ├── Loadout (Node2D)            [loadout.gd] weapons, passives, orb sprites
+│   └── Boss                        [boss.gd] Warden + 24 ring sprites
+├── HUD (CanvasLayer 10)            [hud.gd]
+├── LevelUp (CanvasLayer 30)        [level_up.gd] process mode Always
+├── Front (CanvasLayer 40)          [front.gd] select + shop, process mode Always
+└── PauseMenu                       instance of ui/pause_menu.tscn</pre>
+  <p><code>Loadout</code> never names <code>RunDirector</code>. It calls <code>player_position</code>, <code>nearest_enemy</code>, <code>enemy_position</code>, <code>enemies_near</code>, <code>borrow_shot</code>, and <code>damage_enemy</code>. Horde ids are <code>0..1199</code>. The Warden is id <code>1000001</code>. The cell hash (64 px, buckets reused) only stores horde ids; the boss is tested by distance beside that result. <code>Autoload</code> order stays <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, <code>SceneRouter</code>.</p>
+  <table>
+    <thead><tr><th>Piece</th><th>Owns</th></tr></thead>
+    <tbody>
+      <tr><td><code>Balance</code></td><td>XP curve, enemy curves, cooldown, damage, evolution multipliers, coin and shop formulas.</td></tr>
+      <tr><td><code>WeaponData</code> / <code>PassiveData</code> / <code>CharacterData</code></td><td>Rows in <code>data/weapons</code>, <code>data/passives</code>, <code>data/characters</code>.</td></tr>
+      <tr><td><code>Horde</code></td><td>RIDs, packed arrays, <code>canvas_item_set_transform</code> each physics frame, <code>free_rid</code> on exit. Clears a circle only when a slot changes kind.</td></tr>
+      <tr><td><code>RunDirector</code></td><td>Spawn clock, hash rebuild, shot hits, contact, gems, level-ups, boss timer, coin grant.</td></tr>
+      <tr><td>Ship Kit</td><td>Menus, buses, locale, pause, scene fades, profile JSON. This game does not reimplement them.</td></tr>
+    </tbody>
+  </table>
+  <h3>File map</h3>
+  <table>
+    <thead><tr><th>Path</th><th>class_name</th></tr></thead>
+    <tbody>
+      <tr><td><code>game/game.gd</code></td><td><code>RunDirector</code></td></tr>
+      <tr><td><code>game/horde.gd</code></td><td><code>Horde</code></td></tr>
+      <tr><td><code>game/loadout.gd</code></td><td><code>Loadout</code></td></tr>
+      <tr><td><code>game/level_up.gd</code></td><td><code>LevelUp</code></td></tr>
+      <tr><td><code>game/hud.gd</code></td><td><code>Hud</code></td></tr>
+      <tr><td><code>game/spatial_hash.gd</code></td><td><code>SpatialHash</code></td></tr>
+      <tr><td><code>game/player/player.gd</code></td><td><code>Player</code></td></tr>
+      <tr><td><code>game/enemies/enemy.gd</code></td><td><code>Enemy</code> (Day 19 pool; not instanced after Day 21)</td></tr>
+      <tr><td><code>game/enemies/boss.gd</code></td><td><code>Boss</code></td></tr>
+      <tr><td><code>game/combat/projectile.gd</code></td><td><code>Projectile</code></td></tr>
+      <tr><td><code>game/pickups/gem.gd</code></td><td><code>Gem</code></td></tr>
+      <tr><td><code>game/front.gd</code></td><td>no class_name; select and shop</td></tr>
+      <tr><td><code>data/balance.gd</code></td><td><code>Balance</code></td></tr>
+      <tr><td><code>data/weapon_data.gd</code></td><td><code>WeaponData</code></td></tr>
+      <tr><td><code>data/passive_data.gd</code></td><td><code>PassiveData</code></td></tr>
+      <tr><td><code>data/character_data.gd</code></td><td><code>CharacterData</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="assets">Assets and credits</h2>
+  <p>The run is playable with <code>res://icon.svg</code> and flat colors. No pack is required to finish the checklist.</p>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>If you add audio or icons, take them from <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a> (CC0). Verify the live page; pack versions rename files. Pick by role, not by a memorized filename: a short UI click and a short positive chime from the interface-sounds pack, a soft hit from the impact-sounds pack, and from a game-icons pack a sword-like glyph, a circular-arrows glyph, and a burst glyph for Needle, Orbit, and Scatter. Drop what you use under <code>res://assets/</code>.</p></div>
+  <p>Credit line, only when those files are in the build, in the credits scene and in <code>licenses/THIRD_PARTY.txt</code>:</p>
+  <pre class="plain">Sounds and icons from Kenney (https://kenney.nl/assets), CC0.</pre>
+  <p>Godot's MIT license and copyright files stay the copies the Ship Kit already ships. Do not claim Kenney art you did not include.</p>
+
+  <h2 id="days">Where you build it</h2>
+  <ul>
+    <li><a href="../days/day19.html">Day 19</a>: copy the kit, 1280×720, floating player, smoothing camera, 36-cap enemy pool, cell hash, one Needle, HUD, pause, retry.</li>
+    <li><a href="../days/day20.html">Day 20</a>: <code>Balance</code>, weapon and passive resources, gems, level-up cards, evolutions, <code>BH_</code> strings, virtual joystick.</li>
+    <li><a href="../days/day21.html">Day 21</a>: canvas-item horde, profiler, Warden, characters, shop, Windows exe, Android debug install.</li>
+  </ul>
+
+  <h2 id="stretch">Stretch goals</h2>
+  <ul>
+    <li>Move gems off nodes and onto the same canvas-item pool, with a second color and a smaller radius.</li>
+    <li>A second <code>MultiMeshInstance2D</code> for the player projectiles only, now that every shot is the same quad. Set <code>use_colors</code> before <code>instance_count</code>.</li>
+    <li>Gold elites: every 40th bat, 4× HP, gold <code>canvas_item_set_modulate</code>, and restore that tint when the hit flash ends.</li>
+    <li>Two more weapons that only add rows to <code>WeaponData</code> and a branch in <code>Loadout</code>. Do not give them a new damage formula.</li>
+    <li>A daily seed stored in the profile: one <code>RandomNumberGenerator</code> seeded from the UTC date, used only for the spawn angle sequence.</li>
+    <li>Emit <code>Events.achievement_unlocked</code> for a first clear of the Warden (the director already emits <code>&amp;"bh_warden"</code>) and surface it in the Ship Kit toast.</li>
+  </ul>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

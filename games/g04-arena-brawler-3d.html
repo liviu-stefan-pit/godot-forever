@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game 4 - Arena Brawler 3D | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="game" data-id="g04" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Training game 4 · 3D · Arena brawler</div>
+    <h1>Arena Brawler 3D</h1>
+    <p class="lead">A third-person brawler in a CSG bowl. You orbit a spring-arm camera, swing light and heavy attacks, dodge with a short invulnerable window, and clear four waves of navigation enemies, one of which throws projectiles. The run ends on a pause menu or a win/lose card.</p>
+    <div class="chips"><span class="chip blue">Built on Days 10–11</span><span class="chip green">CharacterBody3D, SpringArm3D, AnimationTree, NavigationAgent3D, Area3D</span></div>
+  </header>
+
+  <h2 id="design">Game design</h2>
+  <p>One arena, one life, four waves. Between waves the game waits 2.5 seconds. There is no shop and no level-up. The skill is spacing: the light swing is fast and short, the heavy swing is a commitment, and the dodge's i-frames end before the dash does.</p>
+  <table>
+    <thead><tr><th></th><th>Binding</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td>Move</td><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or left stick (<code>move_up</code> is forward)</td><td>Camera-relative, 6 m/s, acceleration 28, friction 36.</td></tr>
+      <tr><td>Look</td><td>Captured mouse, or right stick (<code>look_*</code>)</td><td>Yaw unlimited, pitch from -50° to +35°. <code>Esc</code> releases the cursor because it pauses.</td></tr>
+      <tr><td>Jump</td><td><kbd>Space</kbd> / gamepad South (<code>jump</code>)</td><td>6 m/s, about 1.8 m. Not during a dodge or an attack lock.</td></tr>
+      <tr><td>Light</td><td>Left mouse / West (<code>attack</code>)</td><td>12 damage, 0.45 s, hit window 0.12–0.28 s. Move speed drops to 35%.</td></tr>
+      <tr><td>Heavy</td><td>Right mouse / North (<code>heavy_attack</code>)</td><td>28 damage, 0.75 s, hit window 0.30–0.50 s. Knockback 7 instead of 3.</td></tr>
+      <tr><td>Dodge</td><td><kbd>Shift</kbd> / East (<code>dash</code>)</td><td>11 m/s for 0.45 s, i-frames 0.28 s, cooldown 0.55 s, floor only.</td></tr>
+      <tr><td>Pause</td><td><kbd>Esc</kbd> / Start (<code>pause</code>)</td><td>Freezes the tree. HUD stays on Process Mode Always.</td></tr>
+    </tbody>
+  </table>
+  <p>Win: clear wave 4. The card reads <strong>Arena clear</strong>. Lose: player health reaches 0. The card reads <strong>You fell</strong>. Retry reloads <code>res://game/main.tscn</code> and forces <code>Engine.time_scale</code> back to 1. Score is 100 per chaser, 150 per spitter, plus <code>200 * wave number</code> when that wave's last enemy dies.</p>
+  <table>
+    <thead><tr><th>Wave</th><th>Chasers</th><th>Spitters</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>3</td><td>0</td></tr>
+      <tr><td>2</td><td>4</td><td>1</td></tr>
+      <tr><td>3</td><td>5</td><td>2</td></tr>
+      <tr><td>4</td><td>6</td><td>3</td></tr>
+    </tbody>
+  </table>
+  <p>Chaser: 40 health, 3.4 m/s, 8 damage, starts a 0.15 s wind-up inside 1.7 m, bite stays open 0.20 s, cooldown 1.1 s. Spitter: 28 health, 2.6 m/s, likes 8 m, backs off under 5.5 m, fires every 1.8 s. Projectile: 10 damage, 11 m/s, dies after 2.5 s or on the arena. Player health is 100. A heavy hit shakes harder and freezes longer (time scale 0.05 for 0.07 real seconds) than a light hit (0.08 for 0.045 s).</p>
+
+  <h2 id="scope">Scope: what "done" means</h2>
+  <p>This is a training game. Done means the list below, played from <kbd>F5</kbd> with no test enemies left in the main scene. It is not a store build: no menus beyond pause and game over, no save, no localization.</p>
+  <ul class="checklist">
+    <li>Project <code>C:\GodotProjects\g04-arena-brawler-3d</code>, Forward+, <code>res://game/main.tscn</code> is the main scene.</li>
+    <li>CSG arena: <code>Arena</code> combiner, <code>Base</code> and subtractive <code>Hollow</code>, four pillars, <code>Dais</code>, <code>Ramp</code>, two blocks, <code>use_collision</code> only on the root.</li>
+    <li>Materials <code>mat_stone</code>, <code>mat_accent</code>, <code>mat_dais</code> saved under <code>res://game/</code>.</li>
+    <li><code>WorldEnvironment</code> (procedural sky, filmic tonemap, glow, SSAO, depth fog) and <code>Sun</code> with shadows on, max distance 40.</li>
+    <li><code>art/player.glb</code> and <code>art/mob.glb</code> imported from the official starter zip. No attack clips are required from the files.</li>
+    <li>3D physics layers named <code>world</code>, <code>player</code>, <code>enemies</code>, <code>player_attacks</code>, <code>enemy_attacks</code>, <code>pickups</code>, <code>triggers</code>.</li>
+    <li>Input Map: <code>move_left</code>, <code>move_right</code>, <code>move_up</code>, <code>move_down</code>, <code>jump</code>, <code>dash</code>, <code>attack</code>, <code>heavy_attack</code>, <code>look_left</code>, <code>look_right</code>, <code>look_up</code>, <code>look_down</code>, <code>pause</code>.</li>
+    <li>Player is a <code>CharacterBody3D</code> with capsule, <code>Pivot/Rig/Model</code>, and <code>CameraYaw/CameraPitch/SpringArm3D/Camera3D</code>. Mouse and stick orbit. Movement is camera-relative. Jump lands on the ramp and the dais.</li>
+    <li><code>class_name Health</code> on the player (100), each chaser (40), and each spitter (28).</li>
+    <li>Six authored clips: <code>idle</code>, <code>run</code>, <code>jump</code>, <code>attack</code>, <code>heavy_attack</code>, <code>dodge</code>. Swings key <code>Rig</code>. Bob and hop key <code>Pivot</code> position.</li>
+    <li><code>AnimationTree</code> state machine travels from code. Attack, heavy, and dodge return to <code>idle</code> with Advance Mode Auto and Switch Mode At End.</li>
+    <li>Player <code>AttackHitbox</code> is an <code>Area3D</code> on <code>player_attacks</code> scanning <code>enemies</code>, open only during the hit window, one hit per enemy per swing.</li>
+    <li>Dodge: 11 m/s, 0.45 s, i-frames 0.28 s, cooldown 0.55 s.</li>
+    <li>Navigation mesh baked from the CSG static collider. Chasers use <code>NavigationAgent3D</code> and call <code>get_next_path_position()</code> every physics frame.</li>
+    <li>Spitters keep about 8 m and fire <code>projectile.tscn</code> (10 damage, 11 m/s, 2.5 s). Shots die on the player and on the arena.</li>
+    <li>Hits call <code>Feel</code>: hit-stop via <code>Engine.time_scale</code> and shake via <code>Camera3D.h_offset</code> / <code>v_offset</code>, with the numbers in the design section.</li>
+    <li>Waves are exactly (3, 0), (4, 1), (5, 2), (6, 3), spawned from six <code>Marker3D</code> nodes. 2.5 s gap. Clear bonus <code>200 * wave</code>.</li>
+    <li>HUD shows health, wave, and score. <kbd>Esc</kbd> pauses. Death and victory use the same card with Retry and Quit.</li>
+    <li>Groups used at runtime: <code>player</code>, <code>enemies</code>, <code>feel</code>.</li>
+    <li><kbd>F5</kbd> can be played from the first spawn through a win, and through a death plus Retry, without errors in the Output panel.</li>
+  </ul>
+
+  <h2 id="architecture">Architecture</h2>
+  <pre class="scene-tree">Main (Node3D)                         [main.gd]
+├── WorldEnvironment
+├── Sun (DirectionalLight3D)
+├── NavigationRegion3D
+│   └── Arena (CSGCombiner3D)
+├── Spawns (Node3D)
+│   └── Spawn1..Spawn6 (Marker3D)
+├── Player                              [player.gd]  group "player"
+│   ├── CollisionShape3D
+│   ├── Pivot
+│   │   ├── Rig / Model                 player.glb
+│   │   └── AttackHitbox (Area3D)
+│   ├── CameraYaw / CameraPitch / SpringArm3D / Camera3D
+│   ├── AnimationPlayer
+│   ├── AnimationTree
+│   └── Health                          [health.gd]
+├── Feel (Node)                         [feel.gd]  group "feel"
+└── HUD (CanvasLayer)                   [hud.gd]  process Always</pre>
+  <table>
+    <thead><tr><th>Piece</th><th>Responsibility</th></tr></thead>
+    <tbody>
+      <tr><td><code>main.gd</code></td><td>Waves, spawn offsets, score, <code>register_kill</code>, <code>notify_player_died</code>. Signals: <code>wave_changed</code>, <code>score_changed</code>, <code>game_finished</code>.</td></tr>
+      <tr><td><code>player.gd</code></td><td>Camera, camera-relative <code>move_and_slide()</code>, jump, attacks, dodge, i-frames, <code>travel()</code> on the state machine.</td></tr>
+      <tr><td><code>health.gd</code></td><td><code>class_name Health</code>. <code>take_damage</code>, <code>heal</code>, signals <code>health_changed</code> and <code>died</code>.</td></tr>
+      <tr><td><code>chaser.gd</code> / <code>spitter.gd</code></td><td>Group <code>enemies</code>. Path following. Melee area or projectile. Report score on death.</td></tr>
+      <tr><td><code>projectile.gd</code></td><td><code>Area3D</code> plus a ray on layers <code>world</code> and <code>player</code>, because CSG collision does not emit <code>body_entered</code>.</td></tr>
+      <tr><td><code>feel.gd</code></td><td>Group <code>feel</code>. <code>hit_stop(scale, real_seconds)</code> and <code>shake(amount)</code>. Process Mode Always.</td></tr>
+      <tr><td><code>hud.gd</code></td><td>Bar and labels. Pause, resume, retry, quit. Listens to <code>Health</code> and to <code>Main</code>.</td></tr>
+    </tbody>
+  </table>
+  <p>No autoloads. Collision bits, if you set them in code: <code>world</code> 1, <code>player</code> 2, <code>enemies</code> 4, <code>player_attacks</code> 8, <code>enemy_attacks</code> 16. The player body scans world and enemies. The spring arm scans world only and excludes the player's RID.</p>
+
+  <h2 id="assets">Assets and credits</h2>
+  <div class="callout external"><span class="callout-title">External resource: the docs do not name a license</span>
+    <p>Verify on the official pages; the wording can change. The Godot docs page <a href="https://docs.godotengine.org/en/stable/getting_started/first_3d_game/index.html" target="_blank" rel="noopener">Your first 3D game</a> says only "We prepared some game assets so we can jump straight to the code" and links the zip. It does not state a license for <code>player.glb</code>, <code>mob.glb</code>, the materials, or the music track in that zip.</p>
+  </div>
+  <ul>
+    <li>Models and the rest of the starter: <a href="https://github.com/godotengine/godot-docs-project-starters/releases/download/latest-4.x/3d_squash_the_creeps_starter.zip" target="_blank" rel="noopener">3d_squash_the_creeps_starter.zip</a>. The docs name <code>player.glb</code> and <code>mob.glb</code> inside <code>art/</code>, plus materials and a music track. This course does not play the music, because the docs do not give a stable filename.</li>
+    <li>The same assets ship with the demo <a href="https://github.com/godotengine/godot-demo-projects/tree/master/3d/squash_the_creeps" target="_blank" rel="noopener">godot-demo-projects/3d/squash_the_creeps</a>. Before you publish a build that still contains them, open that folder's README and any license file and copy the credit line they require.</li>
+  </ul>
+  <p>Until you have read those files, the credits card (if you add one) should say, literally:</p>
+  <pre class="plain">Character and enemy models, and any unused music from the Godot "Squash the Creeps" starter.
+Source: https://github.com/godotengine/godot-docs-project-starters (3d_squash_the_creeps_starter.zip)
+and https://github.com/godotengine/godot-demo-projects/tree/master/3d/squash_the_creeps
+License: not stated in the Godot documentation. Replace this line with the notice from those repositories before release.</pre>
+  <p>The arena itself is CSG plus three <code>StandardMaterial3D</code> resources you created. No Kenney pack is required. The HUD uses the engine's default font.</p>
+
+  <h2 id="days">Where you build it</h2>
+  <ul>
+    <li><a href="../days/day10.html">Day 10</a>: 3D viewport, CSG arena, materials, <code>WorldEnvironment</code>, shadowed <code>DirectionalLight3D</code>, starter import, physics layers, Input Map, <code>CharacterBody3D</code> with <code>SpringArm3D</code> mouse and stick orbit, camera-relative movement, jump.</li>
+    <li><a href="../days/day11.html">Day 11</a>: <code>Health</code>, authored clips, <code>AnimationTree</code>, <code>Area3D</code> hitboxes, dodge i-frames, navigation bake, chaser, projectile spitter, hit-stop, screen shake, waves, HUD, pause, game over.</li>
+  </ul>
+
+  <h2 id="stretch">Stretch goals</h2>
+  <ul>
+    <li>Mouse-wheel <code>spring_length</code> between 2 and 6, the Day 10 challenge.</li>
+    <li>A <code>pickups</code> layer heart that calls <code>Health.heal(25)</code>, the Day 11 challenge, plus a fifth wave dictionary.</li>
+    <li>Bake the CSG root to a <code>MeshInstance3D</code> (toolbar <kbd class="ui">CSG &gt; Bake Mesh Instance</kbd>, Godot 4.4+) once the layout stops changing. Keep the collision.</li>
+    <li>Turn on <code>NavigationAgent3D</code> avoidance only after the path-following already works, and connect <code>velocity_computed</code> instead of writing the raw path velocity.</li>
+    <li>A lock-on that sets <code>CameraYaw</code> toward the nearest <code>enemies</code> node while you hold a new <code>focus</code> action.</li>
+    <li>Replace <code>player.glb</code> and <code>mob.glb</code> with meshes you made, after you have settled the starter license, and keep the node names <code>Model</code>, <code>Pivot</code>, and <code>Rig</code>.</li>
+  </ul>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

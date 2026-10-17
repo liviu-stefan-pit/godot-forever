@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 11 - 3D Brawler II: combat, AI, animation, juice | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day11" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 1 · Day 11 · Game 4: Arena Brawler 3D</div>
+    <h1>3D Brawler II: combat, AI, animation, juice</h1>
+    <p class="lead">The arena from Day 10 can be walked. Today it becomes a fight: authored attack clips, an AnimationTree, Area3D hitboxes, a dodge with i-frames, two navigation enemies (one of them shoots), hit-stop, screen shake, four waves, and a HUD that can pause or end the run.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Block 1: Concepts.</strong> Hitboxes vs hurtboxes, state machines, navigation, i-frames, hit-stop.</td></tr>
+    <tr><td>0:20 – 1:05</td><td><strong>Block 2: Health and the six clips.</strong> A Health node, the attack volume, and AnimationPlayer keys on Pivot and Rig.</td></tr>
+    <tr><td>1:05 – 1:45</td><td><strong>Block 3: AnimationTree.</strong> State machine, travel, and the return-to-idle transitions.</td></tr>
+    <tr><td>1:45 – 2:00</td><td><strong>Break.</strong> Look away from the screen.</td></tr>
+    <tr><td>2:00 – 2:35</td><td><strong>Block 4: Combat script and juice.</strong> Attacks, dodge i-frames, hit-stop, camera shake.</td></tr>
+    <tr><td>2:35 – 3:15</td><td><strong>Block 5: Enemies.</strong> Bake a NavigationRegion3D, a chasing mob, a projectile mob.</td></tr>
+    <tr><td>3:15 – 3:40</td><td><strong>Block 6: Waves, HUD, pause, game over.</strong></td></tr>
+    <tr><td>3:40 – 3:55</td><td><strong>Block 7: Challenge, quiz, wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>3 h 55 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Deal and receive damage through an <code>Area3D</code> hitbox and a reusable <code>Health</code> node, with one hit per swing.</li>
+    <li>Author six <code>AnimationPlayer</code> clips (the starter glb has no attack set) and drive them with an <code>AnimationTree</code> state machine.</li>
+    <li>Dodge with a 0.28 s i-frame window, and sell hits with <code>Engine.time_scale</code> plus <code>Camera3D</code> offset shake.</li>
+    <li>Bake a <code>NavigationRegion3D</code> from the CSG collision and steer a <code>NavigationAgent3D</code> chaser plus a projectile enemy.</li>
+    <li>Run four concrete waves to a pause menu and a win/lose screen.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 10's project opens: <code>C:\GodotProjects\g04-arena-brawler-3d</code>. <kbd>F5</kbd> shows the arena, mouse-look works, and <kbd>Space</kbd> jumps onto the dais.</li>
+    <li>If you skipped Day 10, do that page first. The fallback is not a second arena: you need <code>res://game/main.tscn</code> (CSG arena, <code>WorldEnvironment</code>, <code>Sun</code>, instanced player) and <code>res://player/player.tscn</code> with <code>Pivot/Rig/Model</code>, <code>CameraYaw/CameraPitch/SpringArm3D/Camera3D</code>, and <code>player.gd</code>.</li>
+    <li>Input Map still has <code>dash</code>, <code>attack</code>, <code>heavy_attack</code>, and <code>pause</code>. Physics layers 1–7 are named. <code>art/mob.glb</code> is imported.</li>
+    <li>Today replaces <code>res://player/player.gd</code> entirely. <kbd>Esc</kbd> will pause instead of only releasing the mouse.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>Hitbox and hurtbox</h3>
+  <p>The capsule on <code>Player</code> is the hurtbox: it is a <code>CharacterBody3D</code> on layer <code>player</code>. The thing that <em>deals</em> damage is a separate <code>Area3D</code> on layer <code>player_attacks</code> whose mask is <code>enemies</code>. An area reports bodies on the layers in its <strong>mask</strong>, and only while <code>monitoring</code> is on. Layers are "what I am"; the mask is "what I scan". Bit values, if you set them in code: layer 1 = <code>1</code>, 2 = <code>2</code>, 3 = <code>4</code>, 4 = <code>8</code>, 5 = <code>16</code>.</p>
+  <h3>Why the clips key Rig, and Pivot only moves</h3>
+  <p><code>player.gd</code> writes <code>Pivot.rotation.y</code> every physics frame so the creature faces its movement. A rotation track on <code>Pivot</code> would fight that write. Locomotion and the dodge hop key <code>Pivot.position</code> (the script never touches position). The swing keys <code>Rig.rotation</code>, which is a child, so the swing is added on top of the facing. The imported <code>player.glb</code> is not assumed to contain attack clips; if <code>Model</code> has its own <code>AnimationPlayer</code>, you will turn that one off.</p>
+  <h3>State machine, navigation, i-frames, hit-stop</h3>
+  <p>An <code>AnimationTree</code> does not store clips. It points at an <code>AnimationPlayer</code> and blends them. A transition whose <kbd class="ui">Advance Mode</kbd> is <kbd class="ui">Enabled</kbd> runs only when code calls <code>travel()</code>. <kbd class="ui">Auto</kbd> plus <kbd class="ui">Switch Mode: At End</kbd> returns to idle when the clip finishes. <code>NavigationAgent3D</code> does not move the body: you set <code>target_position</code>, call <code>get_next_path_position()</code> every physics frame, and feed the direction to <code>velocity</code> and <code>move_and_slide()</code>. I-frames are a timer that makes <code>take_damage</code> return. Hit-stop sets <code>Engine.time_scale</code> below 1 for a few real-time milliseconds; the wait must use <code>create_timer(..., true, false, true)</code> or the slowed clock stretches the wait and the game stays slow.</p>
+
+  <h3>Numbers you will type, and not "tune later"</h3>
+  <table>
+    <thead><tr><th>What</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Player health, speed, acceleration, friction</td><td>100, 6 m/s, 28, 36</td></tr>
+      <tr><td>Jump velocity</td><td>6 m/s (about 1.8 m)</td></tr>
+      <tr><td>Light attack</td><td>12 damage, 0.45 s lock, hit window 0.12–0.28 s, 35% move speed while locked</td></tr>
+      <tr><td>Heavy attack</td><td>28 damage, 0.75 s lock, hit window 0.30–0.50 s</td></tr>
+      <tr><td>Dodge</td><td>11 m/s, 0.45 s long, i-frames for the first 0.28 s, cooldown 0.55 s, floor only</td></tr>
+      <tr><td>Hit-stop light / heavy / when you are hit</td><td>time scale 0.08 for 0.045 s / 0.05 for 0.070 s / 0.12 for 0.040 s (real time)</td></tr>
+      <tr><td>Shake light / heavy / when you are hit</td><td>0.08 / 0.20 / 0.16 on the camera offsets</td></tr>
+      <tr><td>Knockback</td><td>3 m/s if damage is under 20, else 7 m/s, plus 2 m/s upward</td></tr>
+      <tr><td>Chaser</td><td>health 40, speed 3.4, damage 8, start swing at 1.7 m, cooldown 1.1 s, score 100</td></tr>
+      <tr><td>Spitter</td><td>health 28, speed 2.6, projectile damage 10, cooldown 1.8 s, prefers 8 m, backs off under 5.5 m, score 150</td></tr>
+      <tr><td>Projectile</td><td>11 m/s, lifetime 2.5 s</td></tr>
+      <tr><td>Waves (chasers, spitters)</td><td>(3, 0), (4, 1), (5, 2), (6, 3). Clear bonus <code>200 * wave number</code>. 2.5 s between waves.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="build-1">Block 2: Health, the hitbox, and six clips</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Write the Health component.</strong> In the <kbd class="ui">FileSystem</kbd> dock, right-click <code>components</code> and choose <kbd class="ui">Create New &gt; Script...</kbd>. Path <code>res://components/health.gd</code>, template empty, click <kbd class="ui">Create</kbd>. Replace the file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://components/health.gd">
+extends Node
+class_name Health
+
+signal health_changed(current: int, maximum: int)
+signal died
+
+@export var max_health: int = 100
+
+var current: int = 0
+
+
+func _ready() -> void:
+    current = max_health
+    health_changed.emit(current, max_health)
+
+
+func take_damage(amount: int) -> void:
+    if amount <= 0 or current <= 0:
+        return
+    current = maxi(current - amount, 0)
+    health_changed.emit(current, max_health)
+    if current == 0:
+        died.emit()
+
+
+func heal(amount: int) -> void:
+    if amount <= 0 or current <= 0:
+        return
+    current = mini(current + amount, max_health)
+    health_changed.emit(current, max_health)
+      </script>
+      <code>class_name Health</code> makes the type available everywhere after the next script reload. Healing a corpse does nothing (<code>current &lt;= 0</code> returns).
+    </li>
+    <li><strong>Add Health to the player.</strong> Open <code>res://player/player.tscn</code>. Select <code>Player</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a plain <code>Node</code> (search <code>Node</code>, not <code>Node3D</code>), rename it <code>Health</code>. Right-click <code>Health</code> and choose <kbd class="ui">Attach Script</kbd>. In the dialog click the folder icon next to <kbd class="ui">Path</kbd> and pick <code>res://components/health.gd</code>, or type that path. Click <kbd class="ui">Load</kbd> (not Create). Leave <kbd class="ui">Max Health</kbd> at <code>100</code>.</li>
+    <li><strong>Add the attack volume.</strong> Select <code>Pivot</code> (so the box swings with facing), add an <code>Area3D</code> named <code>AttackHitbox</code>. Set its <kbd class="ui">Position</kbd> to <code>(0, 0.8, -1.05)</code>. <kbd class="ui">Collision &gt; Layer</kbd> only <code>player_attacks</code>. <kbd class="ui">Mask</kbd> only <code>enemies</code>. Turn <kbd class="ui">Monitoring</kbd> off for now (the script opens it during the hit window). Add a child <code>CollisionShape3D</code>, shape <kbd class="ui">New BoxShape3D</kbd>, <kbd class="ui">Size</kbd> <code>(1.4, 1.0, 1.3)</code>. The orange box should sit in front of the creature, not inside the capsule.</li>
+    <li><strong>Silence a player inside the glb, if there is one.</strong> Expand <code>Model</code>. If you see an <code>AnimationPlayer</code> under the imported scene, select it and turn <kbd class="ui">Active</kbd> off, and clear <kbd class="ui">Autoplay</kbd> if it shows a name. We author clips on our own player. If there is no such node, the glb has no clips, which this day expects.</li>
+    <li><strong>Add our AnimationPlayer.</strong> Select <code>Player</code>, add an <code>AnimationPlayer</code>, keep the name. Confirm <kbd class="ui">Root Node</kbd> is <code>..</code> (the Player). Click the <kbd class="ui">Animation</kbd> workspace button only if you want a bigger view; the bottom <kbd class="ui">Animation</kbd> panel is enough. Click <kbd class="ui">Animation</kbd> in that panel, choose <kbd class="ui">New</kbd>, and name the clip <code>idle</code>.</li>
+    <li><strong>Key idle, run, and jump on Pivot's position.</strong> Select the <code>Pivot</code> node. With the playhead at <code>0</code>, click the key icon beside <kbd class="ui">Position</kbd> in the Inspector (it looks like a key). Move the playhead to <code>0.30</code>, set <kbd class="ui">Position</kbd> to <code>(0, 0.08, 0)</code>, click the key icon again. At <code>0.60</code>, key <code>(0, 0, 0)</code>. Set the clip length to <code>0.60</code> (the length field in the Animation panel) and turn the loop button on so <kbd class="ui">Loop Mode</kbd> is Linear. Also key <code>Rig</code>'s <kbd class="ui">Rotation</kbd> to <code>(0, 0, 0)</code> at time 0, so this clip owns that property and a finished swing can blend back. Then create <code>run</code> the same way: length <code>0.40</code>, loop on, Pivot position <code>(0, 0, 0)</code> at 0, <code>(0, 0.06, 0)</code> at 0.20, <code>(0, 0, 0)</code> at 0.40, and Rig rotation <code>(0, 0, 0)</code> at 0. Create <code>jump</code>: length <code>0.40</code>, loop on (the airborne pose holds), Pivot position <code>(0, 0.12, 0)</code> at 0.20 and <code>(0, 0, 0)</code> at both ends, Rig rotation <code>(-12, 0, 0)</code> at 0.20 and <code>(0, 0, 0)</code> at 0.</li>
+    <li><strong>Key the two attacks and the dodge.</strong> New clip <code>attack</code>, length <code>0.45</code>, loop off. Key <code>Rig</code> rotation (degrees): <code>(0, 0, 0)</code> at 0, <code>(0, 35, 0)</code> at 0.12, <code>(0, -75, 0)</code> at 0.22, <code>(0, 0, 0)</code> at 0.45. New clip <code>heavy_attack</code>, length <code>0.75</code>, loop off. Rig rotation: <code>(0, 0, 0)</code> at 0, <code>(18, 55, 0)</code> at 0.28, <code>(-12, -85, 0)</code> at 0.42, <code>(0, 0, 0)</code> at 0.75. New clip <code>dodge</code>, length <code>0.45</code>, loop off. Pivot position: <code>(0, 0, 0)</code> at 0, <code>(0, 0.15, -0.55)</code> at 0.12, <code>(0, 0, 0)</code> at 0.45. Rig rotation: <code>(0, 0, 0)</code> at 0, <code>(0, 0, 28)</code> at 0.12, <code>(0, 0, 0)</code> at 0.45. Save the scene.</li>
+  </ol>
+  <div class="checkpoint"><p>With <code>AnimationPlayer</code> selected, the animation dropdown lists <code>idle</code>, <code>run</code>, <code>jump</code>, <code>attack</code>, <code>heavy_attack</code>, and <code>dodge</code>. Press the panel's play button on <code>attack</code>: the mesh cocks and swings, then rests, and <code>Pivot</code> itself does not spin (only <code>Rig</code> does). Play <code>dodge</code>: the body hops along its forward (<code>-Z</code>) and rolls. If the whole player yaws, the track is on <code>Pivot:rotation</code>; delete that track and key <code>Rig</code> instead. Stop the preview with the stop button in the Animation panel before you press <kbd>F5</kbd>, or the clip keeps writing the pose.</p></div>
+
+  <h2 id="build-2">Block 3: The AnimationTree</h2>
+  <ol class="steps">
+    <li><strong>Add the tree.</strong> In <code>player.tscn</code>, select <code>Player</code>, add an <code>AnimationTree</code>. In the Inspector set <kbd class="ui">Tree Root</kbd> to <kbd class="ui">New AnimationNodeStateMachine</kbd>. Assign <kbd class="ui">Anim Player</kbd> by clicking Assign and picking the <code>AnimationPlayer</code> (do not type the path). Turn <kbd class="ui">Active</kbd> on. Leave <kbd class="ui">Advance Expression Base Node</kbd> at its default; we do not use expression conditions.</li>
+    <li><strong>Open the graph.</strong> Select <code>AnimationTree</code>. In the bottom panel, open the <kbd class="ui">AnimationTree</kbd> tab. You get a 2D graph with <code>Start</code> and <code>End</code>. Right-click empty space, choose <kbd class="ui">Add Animation</kbd>, and add <code>idle</code>, <code>run</code>, <code>jump</code>, <code>attack</code>, <code>heavy_attack</code>, and <code>dodge</code>. Each node is named after the clip. Do not rename them: the script travels to those strings. Drag from <code>Start</code> to <code>idle</code>. Do not connect anything to <code>End</code>.</li>
+    <li><strong>Connect transitions.</strong> Drag from the right side of a state to another state. Click the arrow and set the Inspector. Default <kbd class="ui">Advance Mode</kbd> is <kbd class="ui">Enabled</kbd>, which means "only when <code>travel()</code> asks". Use that plus <kbd class="ui">Switch Mode: Immediate</kbd> and <kbd class="ui">Xfade Time</kbd> <code>0.12</code> for: <code>idle</code> to <code>run</code>, <code>run</code> to <code>idle</code>, <code>idle</code> to <code>jump</code>, <code>run</code> to <code>jump</code>, <code>jump</code> to <code>idle</code>, <code>jump</code> to <code>run</code>, and from <code>idle</code>, <code>run</code>, and <code>jump</code> to each of <code>attack</code>, <code>heavy_attack</code>, and <code>dodge</code>. Use <kbd class="ui">Xfade Time</kbd> <code>0.05</code> on the three attack/dodge entries.</li>
+    <li><strong>Auto-return when the action clip ends.</strong> Add <code>attack</code> to <code>idle</code>, <code>heavy_attack</code> to <code>idle</code>, and <code>dodge</code> to <code>idle</code>. On those three arrows set <kbd class="ui">Advance Mode</kbd> to <kbd class="ui">Auto</kbd>, <kbd class="ui">Switch Mode</kbd> to <kbd class="ui">At End</kbd>, and <kbd class="ui">Xfade Time</kbd> to <code>0.08</code>. Auto with an empty condition is always allowed, and At End waits for the clip. If a clip was left looping, also tick <kbd class="ui">Break Loop At End</kbd>. Save.</li>
+  </ol>
+  <div class="callout note"><span class="callout-title">Missing arrow is not fatal</span>
+    <p><code>travel()</code> teleports to the destination when no path of transitions exists. The arrows above are there so idle and run crossfade instead of popping. The Auto arrows are the ones that actually matter: without them, the attack pose never hands back to idle on its own.</p></div>
+  <div class="checkpoint"><p>Click <code>AnimationTree</code> and look at the graph: <code>Start</code> feeds <code>idle</code>, and <code>attack</code>, <code>heavy_attack</code>, and <code>dodge</code> each have an arrow back to <code>idle</code> whose Advance Mode reads Auto. The Output panel is empty. If the graph is blank, <kbd class="ui">Tree Root</kbd> is empty.</p></div>
+
+  <h2 id="build-3">Block 4: Combat script, dodge, hit-stop, shake</h2>
+  <ol class="steps">
+    <li><strong>Add the juice node.</strong> Open <code>res://game/main.tscn</code>. Select <code>Main</code>, add a <code>Node</code> named <code>Feel</code>. Attach a new script <code>res://game/feel.gd</code> and replace it:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/feel.gd">
+extends Node
+
+const SHAKE_DECAY: float = 6.0
+
+var _strength: float = 0.0
+var _camera: Camera3D
+var _stop_token: int = 0
+
+
+func _ready() -> void:
+    add_to_group("feel")
+    process_mode = Node.PROCESS_MODE_ALWAYS
+
+
+func _process(delta: float) -> void:
+    if _camera == null or not is_instance_valid(_camera):
+        _camera = get_viewport().get_camera_3d()
+    if _camera == null:
+        return
+    _strength = move_toward(_strength, 0.0, SHAKE_DECAY * delta)
+    if _strength <= 0.001:
+        _camera.h_offset = 0.0
+        _camera.v_offset = 0.0
+        return
+    _camera.h_offset = randf_range(-_strength, _strength)
+    _camera.v_offset = randf_range(-_strength * 0.65, _strength * 0.65)
+
+
+func shake(amount: float) -> void:
+    _strength = maxf(_strength, amount)
+
+
+func hit_stop(scale: float, real_seconds: float) -> void:
+    _stop_token += 1
+    var token := _stop_token
+    Engine.time_scale = scale
+    await get_tree().create_timer(real_seconds, true, false, true).timeout
+    if token == _stop_token and is_inside_tree():
+        Engine.time_scale = 1.0
+      </script>
+      <p><code>h_offset</code> and <code>v_offset</code> nudge the lens without fighting the spring arm, which overwrites the camera's position. The fourth argument of <code>create_timer</code> is <code>ignore_time_scale</code>. The token ignores an older timer finishing after a newer hit-stop started.</p>
+    </li>
+    <li><strong>Replace <code>player.gd</code>.</strong> Open <code>res://player/player.gd</code>, select all, and paste the full file. This keeps Day 10's movement and adds combat. Pause is no longer handled here.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://player/player.gd">
+extends CharacterBody3D
+
+const SPEED: float = 6.0
+const ACCELERATION: float = 28.0
+const FRICTION: float = 36.0
+const JUMP_VELOCITY: float = 6.0
+const TURN_SPEED: float = 12.0
+const MOUSE_SENSITIVITY: float = 0.0025
+const STICK_LOOK_SPEED: float = 2.2
+const PITCH_MIN: float = deg_to_rad(-50.0)
+const PITCH_MAX: float = deg_to_rad(35.0)
+const LIGHT_DAMAGE: int = 12
+const HEAVY_DAMAGE: int = 28
+const LIGHT_LOCK: float = 0.45
+const HEAVY_LOCK: float = 0.75
+const LIGHT_WINDOW_START: float = 0.12
+const LIGHT_WINDOW_END: float = 0.28
+const HEAVY_WINDOW_START: float = 0.30
+const HEAVY_WINDOW_END: float = 0.50
+const ATTACK_MOVE_SCALE: float = 0.35
+const DODGE_SPEED: float = 11.0
+const DODGE_TIME: float = 0.45
+const DODGE_IFRAMES: float = 0.28
+const DODGE_COOLDOWN: float = 0.55
+
+@onready var _pivot: Node3D = $Pivot
+@onready var _camera_yaw: Node3D = $CameraYaw
+@onready var _camera_pitch: Node3D = $CameraYaw/CameraPitch
+@onready var _spring_arm: SpringArm3D = $CameraYaw/CameraPitch/SpringArm3D
+@onready var _hitbox: Area3D = $Pivot/AttackHitbox
+@onready var _anim_tree: AnimationTree = $AnimationTree
+@onready var _health: Health = $Health
+
+var _yaw: float = 0.0
+var _pitch: float = deg_to_rad(-12.0)
+var _playback: AnimationNodeStateMachinePlayback
+var _action_lock: float = 0.0
+var _hit_clock: float = 0.0
+var _hit_heavy: bool = false
+var _dodge_left: float = 0.0
+var _dodge_cd: float = 0.0
+var _dodge_dir: Vector3 = Vector3(0.0, 0.0, -1.0)
+var _invuln_left: float = 0.0
+var _dead: bool = false
+var _hit_ids: Array[int] = []
+var _captured_this_frame: bool = false
+
+
+func _ready() -> void:
+    add_to_group("player")
+    collision_layer = 2
+    collision_mask = 1 | 4
+    floor_snap_length = 0.4
+    floor_constant_speed = true
+    _spring_arm.add_excluded_object(get_rid())
+    _spring_arm.collision_mask = 1
+    _hitbox.collision_layer = 8
+    _hitbox.collision_mask = 4
+    _hitbox.monitoring = false
+    _hitbox.body_entered.connect(_on_attack_hitbox_body_entered)
+    _health.died.connect(_on_health_died)
+    _playback = _anim_tree.get("parameters/playback") as AnimationNodeStateMachinePlayback
+    if _playback != null:
+        _playback.start(&"idle")
+    Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+    _apply_look()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+    if event is InputEventMouseButton:
+        var button := event as InputEventMouseButton
+        if button.pressed and button.button_index == MOUSE_BUTTON_LEFT:
+            if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+                Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+                _captured_this_frame = true
+                get_viewport().set_input_as_handled()
+                return
+    if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+        var motion := event as InputEventMouseMotion
+        _yaw -= motion.screen_relative.x * MOUSE_SENSITIVITY
+        _pitch -= motion.screen_relative.y * MOUSE_SENSITIVITY
+        _pitch = clampf(_pitch, PITCH_MIN, PITCH_MAX)
+        _apply_look()
+
+
+func _process(delta: float) -> void:
+    if _dead:
+        return
+    var look := Input.get_vector("look_left", "look_right", "look_up", "look_down")
+    if look.length_squared() > 0.0001:
+        _yaw -= look.x * STICK_LOOK_SPEED * delta
+        _pitch -= look.y * STICK_LOOK_SPEED * delta
+        _pitch = clampf(_pitch, PITCH_MIN, PITCH_MAX)
+        _apply_look()
+
+
+func _physics_process(delta: float) -> void:
+    if _dead:
+        return
+    _dodge_cd = maxf(_dodge_cd - delta, 0.0)
+    _invuln_left = maxf(_invuln_left - delta, 0.0)
+    if _dodge_left > 0.0:
+        _dodge_left = maxf(_dodge_left - delta, 0.0)
+    if _action_lock > 0.0:
+        _action_lock = maxf(_action_lock - delta, 0.0)
+        _hit_clock += delta
+    var input_2d := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+    var wish := Vector3.ZERO
+    if input_2d.length_squared() > 0.0001:
+        var cam_basis := Basis.from_euler(Vector3(0.0, _yaw, 0.0))
+        wish = (cam_basis * Vector3(input_2d.x, 0.0, input_2d.y)).normalized()
+    _try_actions(wish)
+    if _dodge_left > 0.0:
+        velocity.x = _dodge_dir.x * DODGE_SPEED
+        velocity.z = _dodge_dir.z * DODGE_SPEED
+        _pivot.scale = Vector3(1.0, 0.65, 1.0)
+    else:
+        _pivot.scale = Vector3.ONE
+        var speed_scale := ATTACK_MOVE_SCALE if _action_lock > 0.0 else 1.0
+        var horizontal := Vector3(velocity.x, 0.0, velocity.z)
+        var rate: float = ACCELERATION if wish.length_squared() > 0.0 else FRICTION
+        horizontal = horizontal.move_toward(wish * SPEED * speed_scale, rate * delta)
+        velocity.x = horizontal.x
+        velocity.z = horizontal.z
+        if wish.length_squared() > 0.0001 and _action_lock <= 0.0:
+            var target_yaw := atan2(-wish.x, -wish.z)
+            var weight := 1.0 - exp(-TURN_SPEED * delta)
+            _pivot.rotation.y = lerp_angle(_pivot.rotation.y, target_yaw, weight)
+    if not is_on_floor():
+        velocity += get_gravity() * delta
+    elif velocity.y < 0.0:
+        velocity.y = 0.0
+    if Input.is_action_just_pressed("jump") and is_on_floor() and _dodge_left <= 0.0 and _action_lock <= 0.0:
+        velocity.y = JUMP_VELOCITY
+    move_and_slide()
+    _update_hitbox()
+    _update_anim(wish)
+    _captured_this_frame = false
+
+
+func take_damage(amount: int, from_pos: Vector3) -> void:
+    if _dead or _invuln_left > 0.0:
+        return
+    _health.take_damage(amount)
+    var away := global_position - from_pos
+    away.y = 0.0
+    if away.length_squared() > 0.001:
+        var knock := 7.0 if amount >= 20 else 3.0
+        velocity += away.normalized() * knock
+        velocity.y = maxf(velocity.y, 2.0)
+    _juice(0.12, 0.04, 0.16)
+
+
+func _try_actions(wish: Vector3) -> void:
+    if Input.is_action_just_pressed("dash") and _dodge_cd <= 0.0 and is_on_floor() and _dodge_left <= 0.0:
+        _start_dodge(wish)
+        return
+    if _action_lock > 0.0 or _dodge_left > 0.0:
+        return
+    if Input.is_action_just_pressed("heavy_attack"):
+        _start_attack(true)
+    elif Input.is_action_just_pressed("attack") and not _captured_this_frame:
+        _start_attack(false)
+
+
+func _start_attack(heavy: bool) -> void:
+    _hit_heavy = heavy
+    _action_lock = HEAVY_LOCK if heavy else LIGHT_LOCK
+    _hit_clock = 0.0
+    _hit_ids.clear()
+    _travel(&"heavy_attack" if heavy else &"attack")
+
+
+func _start_dodge(wish: Vector3) -> void:
+    _action_lock = 0.0
+    _set_hitbox_open(false)
+    if wish.length_squared() > 0.001:
+        _dodge_dir = wish
+    else:
+        _dodge_dir = -_pivot.global_basis.z
+        _dodge_dir.y = 0.0
+        if _dodge_dir.length_squared() < 0.001:
+            _dodge_dir = Vector3(0.0, 0.0, -1.0)
+        else:
+            _dodge_dir = _dodge_dir.normalized()
+    _dodge_left = DODGE_TIME
+    _dodge_cd = DODGE_COOLDOWN
+    _invuln_left = DODGE_IFRAMES
+    _travel(&"dodge")
+
+
+func _update_hitbox() -> void:
+    var open := false
+    if _action_lock > 0.0:
+        var start := HEAVY_WINDOW_START if _hit_heavy else LIGHT_WINDOW_START
+        var finish := HEAVY_WINDOW_END if _hit_heavy else LIGHT_WINDOW_END
+        open = _hit_clock >= start and _hit_clock <= finish
+    _set_hitbox_open(open)
+    if not open:
+        return
+    var bodies: Array[Node3D] = _hitbox.get_overlapping_bodies()
+    for body in bodies:
+        _try_hit(body)
+
+
+func _set_hitbox_open(open: bool) -> void:
+    if _hitbox.monitoring == open:
+        return
+    _hitbox.monitoring = open
+    if not open:
+        _hit_ids.clear()
+
+
+func _on_attack_hitbox_body_entered(body: Node3D) -> void:
+    _try_hit(body)
+
+
+func _try_hit(body: Node) -> void:
+    if _dead or not _hitbox.monitoring:
+        return
+    if not body.is_in_group("enemies"):
+        return
+    var id := body.get_instance_id()
+    if id in _hit_ids:
+        return
+    _hit_ids.append(id)
+    if body.has_method("take_damage"):
+        body.call("take_damage", HEAVY_DAMAGE if _hit_heavy else LIGHT_DAMAGE, global_position)
+    if _hit_heavy:
+        _juice(0.05, 0.07, 0.20)
+    else:
+        _juice(0.08, 0.045, 0.08)
+
+
+func _update_anim(wish: Vector3) -> void:
+    if _playback == null or _dead:
+        return
+    if _dodge_left > 0.0 or _action_lock > 0.0:
+        return
+    if not is_on_floor():
+        _travel(&"jump")
+    elif wish.length_squared() > 0.01 or Vector2(velocity.x, velocity.z).length() > 0.8:
+        _travel(&"run")
+    else:
+        _travel(&"idle")
+
+
+func _travel(state_name: StringName) -> void:
+    if _playback == null:
+        return
+    if _playback.get_current_node() == state_name:
+        return
+    _playback.travel(state_name)
+
+
+func _juice(scale: float, real_seconds: float, shake_amount: float) -> void:
+    var feel := get_tree().get_first_node_in_group("feel")
+    if feel == null:
+        return
+    feel.call("hit_stop", scale, real_seconds)
+    feel.call("shake", shake_amount)
+
+
+func _on_health_died() -> void:
+    _dead = true
+    _set_hitbox_open(false)
+    velocity = Vector3.ZERO
+    set_physics_process(false)
+
+
+func _apply_look() -> void:
+    _camera_yaw.rotation.y = _yaw
+    _camera_pitch.rotation.x = _pitch
+      </script>
+    </li>
+  </ol>
+  <div class="checkpoint"><p>Press <kbd>F5</kbd>. Walk and jump still work. Left click (mouse captured) plays the swing and you slow to 35% speed for 0.45 s; right click plays the longer wind-up. <kbd>Shift</kbd> hops forward, the body squashes, and you cannot be hit during the first 0.28 s (nothing can hit you yet, so confirm the clip and the squash). The click that first captures the mouse does not also attack. <kbd>Esc</kbd> does nothing until Block 6. If the Output panel says <code>parameters/playback</code> failed or the character never leaves the bind pose, <kbd class="ui">Tree Root</kbd> is missing or <kbd class="ui">Active</kbd> is off. If the pose vibrates, the imported AnimationPlayer inside <code>Model</code> is still active.</p></div>
+
+  <h2 id="build-4">Block 5: Navigation bake, chaser, spitter</h2>
+  <ol class="steps">
+    <li><strong>Add the navigation region and reparent the arena.</strong> Open <code>main.tscn</code>. Select <code>Main</code>, add a <code>NavigationRegion3D</code>, keep the name. Drag <code>Arena</code> onto <code>NavigationRegion3D</code> so the CSG tree becomes its child. Baking only scans the region's children (source mode <kbd class="ui">Root Node Children</kbd>). Do not move <code>Player</code> under the region.</li>
+    <li><strong>Create the navmesh resource.</strong> Select <code>NavigationRegion3D</code>. In the Inspector click <kbd class="ui">Navigation Mesh</kbd> and choose <kbd class="ui">New NavigationMesh</kbd>. Click it and set <kbd class="ui">Agent Radius</kbd> <code>0.5</code>, <kbd class="ui">Agent Height</kbd> <code>1.6</code>, <kbd class="ui">Agent Max Climb</kbd> <code>0.3</code>, <kbd class="ui">Agent Max Slope</kbd> <code>45</code> (degrees), <kbd class="ui">Cell Size</kbd> <code>0.25</code>. Leave <kbd class="ui">Geometry &gt; Parsed Geometry Type</kbd> on <kbd class="ui">Mesh Instances</kbd>. That mode parses <code>MeshInstance3D</code>, <code>CSGShape3D</code>, and <code>GridMap</code>. Static Colliders only sees <code>StaticBody3D</code> nodes, which this arena does not have.</li>
+    <li><strong>Bake.</strong> With <code>NavigationRegion3D</code> selected, click <kbd class="ui">Bake Navmesh</kbd> on the viewport toolbar (the button the 3D navigation docs call "Bake Navmesh"). A translucent mesh should cover the floor, the ramp, and the dais, with holes around the pillars and the two blocks. Save the scene so the bake is stored on the resource. If the mesh is missing, <code>Arena</code> is not a child of the region, or <kbd class="ui">Use Collision</kbd> is off on the CSG shapes.</li>
+    <li><strong>Build the chaser scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>, root <code>CharacterBody3D</code> named <code>Chaser</code>, save as <code>res://enemies/chaser.tscn</code>. Add <code>CollisionShape3D</code> with a <code>CapsuleShape3D</code> radius <code>0.5</code>, height <code>1.4</code>, node position <code>(0, 0.7, 0)</code>. <kbd class="ui">Layer</kbd> only <code>enemies</code>. <kbd class="ui">Mask</kbd> <code>world</code> and <code>player</code>. Add <code>Pivot</code> (Node3D), and under it <code>Rig</code> (Node3D). Drag <code>art/mob.glb</code> onto <code>Rig</code> and rename the instance <code>Model</code>. Fit <code>Rig</code> the same way as the player: feet on the capsule bottom, and <kbd class="ui">Rotation Y</kbd> <code>180</code> only if it walks backward later. Add <code>NavigationAgent3D</code>. Set <kbd class="ui">Path Desired Distance</kbd> <code>0.4</code>, <kbd class="ui">Target Desired Distance</kbd> <code>1.2</code>, <kbd class="ui">Radius</kbd> <code>0.45</code>, <kbd class="ui">Height</kbd> <code>1.6</code>. Leave avoidance off.</li>
+    <li><strong>Chaser hurtbox extras and the bite.</strong> Add a <code>Node</code> named <code>Health</code> using <code>res://components/health.gd</code>. Set <kbd class="ui">Max Health</kbd> to <code>40</code>. Under <code>Pivot</code>, add an <code>Area3D</code> named <code>AttackArea</code> at position <code>(0, 0.7, -0.9)</code>. Layer only <code>enemy_attacks</code>, mask only <code>player</code>, <kbd class="ui">Monitoring</kbd> off. Child <code>CollisionShape3D</code>, <code>BoxShape3D</code> size <code>(1.2, 0.9, 1.2)</code>. In the <kbd class="ui">Node</kbd> tab's <kbd class="ui">Groups</kbd> list, add <code>enemies</code> on the root.</li>
+    <li><strong>Chaser script.</strong> Attach <code>res://enemies/chaser.gd</code> to <code>Chaser</code> and replace it:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://enemies/chaser.gd">
+extends CharacterBody3D
+
+const SPEED: float = 3.4
+const DAMAGE: int = 8
+const ATTACK_RANGE: float = 1.7
+const ATTACK_COOLDOWN: float = 1.1
+const SWING_DELAY: float = 0.15
+const SWING_OPEN: float = 0.20
+const SCORE: int = 100
+
+@onready var _pivot: Node3D = $Pivot
+@onready var _agent: NavigationAgent3D = $NavigationAgent3D
+@onready var _health: Health = $Health
+@onready var _attack_area: Area3D = $Pivot/AttackArea
+
+var _attack_cd: float = 0.4
+var _dead: bool = false
+var _swinging: bool = false
+var _nav_ready: bool = false
+
+
+func _ready() -> void:
+    add_to_group("enemies")
+    collision_layer = 4
+    collision_mask = 1 | 2
+    _attack_area.collision_layer = 16
+    _attack_area.collision_mask = 2
+    _attack_area.monitoring = false
+    _attack_area.body_entered.connect(_on_attack_area_body_entered)
+    _health.died.connect(_on_died)
+    _agent.path_desired_distance = 0.4
+    _agent.target_desired_distance = 1.2
+    actor_setup.call_deferred()
+
+
+func actor_setup() -> void:
+    await get_tree().physics_frame
+    _nav_ready = true
+
+
+func _physics_process(delta: float) -> void:
+    if _dead:
+        return
+    _attack_cd = maxf(_attack_cd - delta, 0.0)
+    var player := get_tree().get_first_node_in_group("player") as Node3D
+    if player != null and _nav_ready:
+        _agent.target_position = player.global_position
+    var dir := Vector3.ZERO
+    if not _agent.is_navigation_finished():
+        var next := _agent.get_next_path_position()
+        dir = global_position.direction_to(next)
+        dir.y = 0.0
+    if dir.length_squared() > 0.001:
+        dir = dir.normalized()
+        velocity.x = dir.x * SPEED
+        velocity.z = dir.z * SPEED
+        var face := atan2(-dir.x, -dir.z)
+        _pivot.rotation.y = lerp_angle(_pivot.rotation.y, face, 1.0 - exp(-10.0 * delta))
+    else:
+        velocity.x = move_toward(velocity.x, 0.0, 20.0 * delta)
+        velocity.z = move_toward(velocity.z, 0.0, 20.0 * delta)
+    if not is_on_floor():
+        velocity += get_gravity() * delta
+    move_and_slide()
+    if player != null:
+        _try_swing(player)
+
+
+func _try_swing(player: Node3D) -> void:
+    if _swinging or _attack_cd > 0.0:
+        return
+    var flat := player.global_position - global_position
+    flat.y = 0.0
+    if flat.length() > ATTACK_RANGE:
+        return
+    _attack_cd = ATTACK_COOLDOWN
+    _swinging = true
+    _open_bite()
+
+
+func _open_bite() -> void:
+    await get_tree().create_timer(SWING_DELAY).timeout
+    if not is_inside_tree() or _dead:
+        return
+    _attack_area.monitoring = true
+    await get_tree().create_timer(SWING_OPEN).timeout
+    if is_inside_tree():
+        _attack_area.monitoring = false
+    _swinging = false
+
+
+func _on_attack_area_body_entered(body: Node3D) -> void:
+    if _dead or not body.is_in_group("player"):
+        return
+    if body.has_method("take_damage"):
+        body.call("take_damage", DAMAGE, global_position)
+        _attack_area.monitoring = false
+
+
+func take_damage(amount: int, from_pos: Vector3) -> void:
+    if _dead:
+        return
+    _health.take_damage(amount)
+    var away := global_position - from_pos
+    away.y = 0.0
+    if away.length_squared() > 0.001:
+        var knock := 7.0 if amount >= 20 else 3.0
+        velocity += away.normalized() * knock
+
+
+func _on_died() -> void:
+    if _dead:
+        return
+    _dead = true
+    set_physics_process(false)
+    var main := get_tree().current_scene
+    if main != null and main.has_method("register_kill"):
+        main.call("register_kill", SCORE)
+    queue_free()
+      </script>
+    </li>
+    <li><strong>Projectile scene.</strong> New scene, root <code>Area3D</code> named <code>Projectile</code>, save <code>res://enemies/projectile.tscn</code>. <kbd class="ui">Layer</kbd> only <code>enemy_attacks</code>, <kbd class="ui">Mask</kbd> only <code>player</code>, <kbd class="ui">Monitoring</kbd> on. Add <code>CollisionShape3D</code> with <code>SphereShape3D</code> radius <code>0.18</code>. Add <code>MeshInstance3D</code>, mesh <kbd class="ui">New SphereMesh</kbd>, radius <code>0.18</code>. On the mesh set <kbd class="ui">Material Override</kbd> to <kbd class="ui">New StandardMaterial3D</kbd>, <kbd class="ui">Albedo &gt; Color</kbd> <code>e24b4b</code>, tick <kbd class="ui">Emission &gt; Enabled</kbd>, emission color <code>ff6b4a</code>, <kbd class="ui">Energy Multiplier</kbd> <code>2</code>. Attach <code>res://enemies/projectile.gd</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://enemies/projectile.gd">
+extends Area3D
+
+const SPEED: float = 11.0
+const LIFETIME: float = 2.5
+const DAMAGE: int = 10
+
+var _direction: Vector3 = Vector3.ZERO
+var _life: float = LIFETIME
+var _spent: bool = false
+
+
+func _ready() -> void:
+    collision_layer = 16
+    collision_mask = 2
+    monitoring = true
+    body_entered.connect(_on_body_entered)
+
+
+func setup(direction: Vector3) -> void:
+    _direction = Vector3(direction.x, 0.0, direction.z)
+    if _direction.length_squared() < 0.001:
+        _direction = Vector3(0.0, 0.0, -1.0)
+    else:
+        _direction = _direction.normalized()
+
+
+func _physics_process(delta: float) -> void:
+    if _spent:
+        return
+    _life -= delta
+    if _life <= 0.0:
+        queue_free()
+        return
+    if _direction == Vector3.ZERO:
+        return
+    var motion := _direction * SPEED * delta
+    var query := PhysicsRayQueryParameters3D.create(global_position, global_position + motion, 1 | 2)
+    var space := get_world_3d().direct_space_state
+    var hit := space.intersect_ray(query)
+    if not hit.is_empty():
+        var collider: Object = hit["collider"]
+        if collider is Node:
+            _impact(collider as Node)
+        else:
+            _spent = true
+            queue_free()
+        return
+    global_position += motion
+
+
+func _on_body_entered(body: Node3D) -> void:
+    _impact(body)
+
+
+func _impact(body: Node) -> void:
+    if _spent:
+        return
+    _spent = true
+    if body.is_in_group("player") and body.has_method("take_damage"):
+        body.call("take_damage", DAMAGE, global_position)
+    queue_free()
+      </script>
+      <p>The area catches the player. The ray catches the CSG arena: <code>use_collision</code> does not emit <code>body_entered</code> on an area, because the collider is not a node you parented. Mask <code>1 | 2</code> is <code>world</code> and <code>player</code> only, so a shot does not die on another mob.</p>
+    </li>
+    <li><strong>Spitter scene.</strong> Duplicate the chaser approach in a new scene <code>res://enemies/spitter.tscn</code>, root <code>CharacterBody3D</code> named <code>Spitter</code>. Same capsule, layers, <code>Pivot/Rig/Model</code> from <code>mob.glb</code>, <code>NavigationAgent3D</code> (target desired distance <code>0.5</code>), and <code>Health</code> with <kbd class="ui">Max Health</kbd> <code>28</code>. No attack area. So you can tell them apart, add a <code>MeshInstance3D</code> named <code>Hat</code> under <code>Pivot</code>, <code>SphereMesh</code> radius <code>0.22</code>, position <code>(0, 1.45, 0)</code>, and drag <code>res://game/mat_accent.tres</code> onto <kbd class="ui">Material Override</kbd>. Group <code>enemies</code>. Attach <code>res://enemies/spitter.gd</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://enemies/spitter.gd">
+extends CharacterBody3D
+
+const SPEED: float = 2.6
+const PREFERRED: float = 8.0
+const TOO_CLOSE: float = 5.5
+const TOO_FAR: float = 9.0
+const FIRE_COOLDOWN: float = 1.8
+const SCORE: int = 150
+const PROJECTILE_SCENE: PackedScene = preload("res://enemies/projectile.tscn")
+
+@onready var _pivot: Node3D = $Pivot
+@onready var _agent: NavigationAgent3D = $NavigationAgent3D
+@onready var _health: Health = $Health
+
+var _fire_cd: float = 0.8
+var _dead: bool = false
+var _nav_ready: bool = false
+
+
+func _ready() -> void:
+    add_to_group("enemies")
+    collision_layer = 4
+    collision_mask = 1 | 2
+    _health.died.connect(_on_died)
+    _agent.path_desired_distance = 0.5
+    _agent.target_desired_distance = 0.5
+    actor_setup.call_deferred()
+
+
+func actor_setup() -> void:
+    await get_tree().physics_frame
+    _nav_ready = true
+
+
+func _physics_process(delta: float) -> void:
+    if _dead:
+        return
+    _fire_cd = maxf(_fire_cd - delta, 0.0)
+    var player := get_tree().get_first_node_in_group("player") as Node3D
+    var flat := Vector3.ZERO
+    if player != null and _nav_ready:
+        flat = player.global_position - global_position
+        flat.y = 0.0
+        _aim_agent(flat)
+    var dir := Vector3.ZERO
+    if not _agent.is_navigation_finished():
+        var next := _agent.get_next_path_position()
+        dir = global_position.direction_to(next)
+        dir.y = 0.0
+    if dir.length_squared() > 0.001:
+        dir = dir.normalized()
+        velocity.x = dir.x * SPEED
+        velocity.z = dir.z * SPEED
+    else:
+        velocity.x = move_toward(velocity.x, 0.0, 16.0 * delta)
+        velocity.z = move_toward(velocity.z, 0.0, 16.0 * delta)
+    if flat.length_squared() > 0.001:
+        var face := atan2(-flat.x, -flat.z)
+        _pivot.rotation.y = lerp_angle(_pivot.rotation.y, face, 1.0 - exp(-8.0 * delta))
+    if not is_on_floor():
+        velocity += get_gravity() * delta
+    move_and_slide()
+    if player != null:
+        _try_fire(flat)
+
+
+func _aim_agent(flat: Vector3) -> void:
+    var dist := flat.length()
+    if dist < TOO_CLOSE and dist > 0.001:
+        _agent.target_position = global_position - flat.normalized() * 4.0
+    elif dist > TOO_FAR:
+        _agent.target_position = global_position + flat.normalized() * (dist - PREFERRED)
+    else:
+        _agent.target_position = global_position
+
+
+func _try_fire(flat: Vector3) -> void:
+    if _fire_cd > 0.0:
+        return
+    var dist := flat.length()
+    if dist < TOO_CLOSE or dist > TOO_FAR + 1.5:
+        return
+    _fire_cd = FIRE_COOLDOWN
+    var shot := PROJECTILE_SCENE.instantiate() as Area3D
+    get_tree().current_scene.add_child(shot)
+    var aim := flat.normalized()
+    shot.global_position = global_position + Vector3(0.0, 0.9, 0.0) + aim * 1.3
+    shot.call("setup", aim)
+
+
+func take_damage(amount: int, from_pos: Vector3) -> void:
+    if _dead:
+        return
+    _health.take_damage(amount)
+    var away := global_position - from_pos
+    away.y = 0.0
+    if away.length_squared() > 0.001:
+        var knock := 7.0 if amount >= 20 else 3.0
+        velocity += away.normalized() * knock
+
+
+func _on_died() -> void:
+    if _dead:
+        return
+    _dead = true
+    set_physics_process(false)
+    var main := get_tree().current_scene
+    if main != null and main.has_method("register_kill"):
+        main.call("register_kill", SCORE)
+    queue_free()
+      </script>
+    </li>
+  </ol>
+
+  <pre class="scene-tree">Chaser (CharacterBody3D)     [chaser.gd]  group "enemies"
+├── CollisionShape3D
+├── Pivot (Node3D)
+│   ├── Rig (Node3D)
+│   │   └── Model             mob.glb
+│   └── AttackArea (Area3D)   layer enemy_attacks, mask player
+│       └── CollisionShape3D
+├── NavigationAgent3D
+└── Health                    max_health 40
+
+Spitter (CharacterBody3D)    [spitter.gd]  group "enemies"
+├── CollisionShape3D
+├── Pivot
+│   ├── Rig / Model
+│   └── Hat (MeshInstance3D)
+├── NavigationAgent3D
+└── Health                    max_health 28</pre>
+
+  <div class="checkpoint"><p>Temporarily drag one <code>Chaser</code> into <code>main.tscn</code> at <code>(4, 0.2, 0)</code> and press <kbd>F5</kbd>. It walks around a pillar to reach you, bites for 8 damage when it is within 1.7 m (your health will matter once the HUD exists; for now the creature should lunge and you should stumble). One light swing (12) does not kill it; three do (36, leaving 4); a heavy (28) plus a light (12) kills it. A shot from a similarly placed <code>Spitter</code> travels and vanishes on the wall or on you. Delete both test instances before Block 6 so the wave spawner is the only source. If the chaser stands still, the navmesh was not baked or <code>get_next_path_position()</code> is not called each physics frame. If it walks through the wall, the region is not the parent of <code>Arena</code>.</p></div>
+
+  <h2 id="build-5">Block 6: Waves, HUD, pause, game over</h2>
+  <ol class="steps">
+    <li><strong>Place six spawn markers.</strong> In <code>main.tscn</code>, add a <code>Node3D</code> named <code>Spawns</code> under <code>Main</code>. Add six <code>Marker3D</code> children, <code>Spawn1</code> through <code>Spawn6</code>, at <code>(0, 0.2, -14)</code>, <code>(12, 0.2, -8)</code>, <code>(14, 0.2, 4)</code>, <code>(0, 0.2, 14)</code>, <code>(-14, 0.2, 4)</code>, and <code>(-12, 0.2, -8)</code>. They sit inside the ring, clear of the pillars.</li>
+    <li><strong>Main script.</strong> Right-click <code>Main</code>, attach <code>res://game/main.gd</code>, replace the file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/main.gd">
+extends Node3D
+
+signal wave_changed(index: int, total: int)
+signal score_changed(score: int)
+signal game_finished(won: bool, score: int)
+
+const WAVE_BONUS: int = 200
+const BETWEEN_WAVES: float = 2.5
+const WAVES: Array[Dictionary] = [
+    {"chasers": 3, "spitters": 0},
+    {"chasers": 4, "spitters": 1},
+    {"chasers": 5, "spitters": 2},
+    {"chasers": 6, "spitters": 3},
+]
+
+@onready var _spawns: Node3D = $Spawns
+
+var _chaser_scene: PackedScene = preload("res://enemies/chaser.tscn")
+var _spitter_scene: PackedScene = preload("res://enemies/spitter.tscn")
+var _next_wave: int = 0
+var _score: int = 0
+var _waiting: bool = true
+var _finished: bool = false
+
+
+func _ready() -> void:
+    score_changed.emit(_score)
+    call_deferred("_begin_wave")
+
+
+func _physics_process(_delta: float) -> void:
+    if _finished or _waiting:
+        return
+    if get_tree().get_nodes_in_group("enemies").is_empty():
+        _waiting = true
+        _between()
+
+
+func register_kill(points: int) -> void:
+    if _finished:
+        return
+    _score += points
+    score_changed.emit(_score)
+
+
+func notify_player_died() -> void:
+    if _finished:
+        return
+    _finished = true
+    Engine.time_scale = 1.0
+    game_finished.emit(false, _score)
+
+
+func _begin_wave() -> void:
+    if _finished:
+        return
+    if _next_wave >= WAVES.size():
+        _finished = true
+        Engine.time_scale = 1.0
+        game_finished.emit(true, _score)
+        return
+    var spec: Dictionary = WAVES[_next_wave]
+    var chasers := int(spec["chasers"])
+    var spitters := int(spec["spitters"])
+    _next_wave += 1
+    wave_changed.emit(_next_wave, WAVES.size())
+    _spawn(chasers, spitters)
+    _waiting = false
+
+
+func _between() -> void:
+    _score += WAVE_BONUS * _next_wave
+    score_changed.emit(_score)
+    await get_tree().create_timer(BETWEEN_WAVES).timeout
+    if _finished or not is_inside_tree():
+        return
+    _begin_wave()
+
+
+func _spawn(chasers: int, spitters: int) -> void:
+    var marks: Array[Marker3D] = []
+    for child in _spawns.get_children():
+        if child is Marker3D:
+            marks.append(child as Marker3D)
+    if marks.is_empty():
+        push_error("Spawns has no Marker3D children.")
+        return
+    var index := 0
+    for _n in chasers:
+        _place(_chaser_scene, marks[index % marks.size()], index)
+        index += 1
+    for _n in spitters:
+        _place(_spitter_scene, marks[index % marks.size()], index)
+        index += 1
+
+
+func _place(scene: PackedScene, mark: Marker3D, salt: int) -> void:
+    var enemy := scene.instantiate() as Node3D
+    add_child(enemy)
+    var offset := Vector3(0.7 * float(salt % 3) - 0.7, 0.0, 0.5 * float(salt % 2))
+    enemy.global_position = mark.global_position + offset
+      </script>
+    </li>
+    <li><strong>Build the HUD.</strong> Select <code>Main</code>, add a <code>CanvasLayer</code> named <code>HUD</code>. Set <kbd class="ui">Layer</kbd> to <code>10</code>. In the Inspector's <kbd class="ui">Node &gt; Process &gt; Mode</kbd>, choose <kbd class="ui">Always</kbd>. A paused tree skips <code>_input</code> on ordinary nodes; Always is why <kbd>Esc</kbd> can unpause. Click the <kbd class="ui">2D</kbd> workspace button (top center). The arena disappears there; that is the UI view. Switch back to <kbd class="ui">3D</kbd> whenever you need the world.</li>
+    <li><strong>Health, wave, score.</strong> Under <code>HUD</code>, add a <code>VBoxContainer</code> named <code>Column</code>. Select it, and in the toolbar above the 2D viewport open the anchor preset popup (the control-layout icon). Choose the top-left cell. Set offsets so the box sits at the top-left with room for three rows: <kbd class="ui">Offset Left</kbd> <code>24</code>, <kbd class="ui">Offset Top</kbd> <code>24</code>, <kbd class="ui">Offset Right</kbd> <code>320</code>, <kbd class="ui">Offset Bottom</kbd> <code>120</code>. Set <kbd class="ui">Mouse &gt; Filter</kbd> to <kbd class="ui">Ignore</kbd> so the box does not eat clicks. Add a <code>ProgressBar</code> named <code>HealthBar</code> (<kbd class="ui">Max Value</kbd> <code>100</code>, <kbd class="ui">Value</kbd> <code>100</code>, <kbd class="ui">Custom Minimum Size</kbd> <code>(280, 22)</code>). Add two <code>Label</code> nodes, <code>WaveLabel</code> text <code>Wave 1 / 4</code> and <code>ScoreLabel</code> text <code>Score 0</code>. Right-click each of <code>HealthBar</code>, <code>WaveLabel</code>, and <code>ScoreLabel</code> and choose <kbd class="ui">Access as Unique Name</kbd>. A <code>%</code> mark appears. <code>%HealthBar</code> in a script resolves that node from anywhere in this scene.</li>
+    <li><strong>Pause and game-over panels.</strong> Under <code>HUD</code>, add a <code>Control</code> named <code>PauseMenu</code>. Anchor preset <kbd class="ui">Full Rect</kbd>. Turn <kbd class="ui">Visible</kbd> off. Add a child <code>ColorRect</code> named <code>Dim</code>, also Full Rect, color <code>000000</code> with alpha about <code>120</code>. Add a <code>PanelContainer</code> named <code>PausePanel</code>, anchor preset Center, custom minimum size <code>(280, 160)</code>. Inside it a <code>VBoxContainer</code>, then a <code>Label</code> with text <code>Paused</code>, a <code>Button</code> named <code>ResumeButton</code> text <code>Resume</code>, and a <code>Button</code> named <code>QuitButton</code> text <code>Quit</code>. Mark <code>PauseMenu</code>, <code>ResumeButton</code>, and <code>QuitButton</code> as unique names. Duplicate the pattern for <code>GameOver</code> (another full-rect <code>Control</code>, hidden): dim, centered panel, <code>Label</code> <code>GameOverTitle</code> text <code>You fell</code>, <code>Label</code> <code>GameOverScore</code> text <code>Score 0</code>, <code>Button</code> <code>RetryButton</code> text <code>Retry</code>, <code>Button</code> <code>GameOverQuitButton</code> text <code>Quit</code>. Unique-name the control, both labels, and both buttons.</li>
+    <li><strong>HUD script.</strong> Attach <code>res://ui/hud.gd</code> to <code>HUD</code>. Create the <code>ui</code> folder if the dialog does not. Replace the file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://ui/hud.gd">
+extends CanvasLayer
+
+@onready var _health_bar: ProgressBar = %HealthBar
+@onready var _wave_label: Label = %WaveLabel
+@onready var _score_label: Label = %ScoreLabel
+@onready var _pause_menu: Control = %PauseMenu
+@onready var _game_over: Control = %GameOver
+@onready var _game_over_title: Label = %GameOverTitle
+@onready var _game_over_score: Label = %GameOverScore
+
+var _over: bool = false
+
+
+func _ready() -> void:
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    _pause_menu.visible = false
+    _game_over.visible = false
+    %ResumeButton.pressed.connect(_on_resume_pressed)
+    %QuitButton.pressed.connect(_on_quit_pressed)
+    %RetryButton.pressed.connect(_on_retry_pressed)
+    %GameOverQuitButton.pressed.connect(_on_quit_pressed)
+    var player := get_tree().get_first_node_in_group("player")
+    if player != null:
+        var health := player.get_node("Health") as Health
+        health.health_changed.connect(_on_health_changed)
+        health.died.connect(_on_player_died)
+        _on_health_changed(health.current, health.max_health)
+    var main := get_parent()
+    if main.has_signal("wave_changed"):
+        main.wave_changed.connect(_on_wave_changed)
+    if main.has_signal("score_changed"):
+        main.score_changed.connect(_on_score_changed)
+    if main.has_signal("game_finished"):
+        main.game_finished.connect(_on_game_finished)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+    if _over:
+        return
+    if not event.is_action_pressed("pause"):
+        return
+    _set_paused(not get_tree().paused)
+    get_viewport().set_input_as_handled()
+
+
+func _set_paused(paused: bool) -> void:
+    get_tree().paused = paused
+    _pause_menu.visible = paused
+    if paused:
+        Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+    else:
+        Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _on_resume_pressed() -> void:
+    _set_paused(false)
+
+
+func _on_quit_pressed() -> void:
+    Engine.time_scale = 1.0
+    get_tree().paused = false
+    get_tree().quit()
+
+
+func _on_retry_pressed() -> void:
+    Engine.time_scale = 1.0
+    get_tree().paused = false
+    Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+    get_tree().reload_current_scene()
+
+
+func _on_health_changed(current: int, maximum: int) -> void:
+    _health_bar.max_value = float(maximum)
+    _health_bar.value = float(current)
+
+
+func _on_wave_changed(index: int, total: int) -> void:
+    _wave_label.text = "Wave %d / %d" % [index, total]
+
+
+func _on_score_changed(score: int) -> void:
+    _score_label.text = "Score %d" % score
+
+
+func _on_player_died() -> void:
+    var main := get_parent()
+    if main.has_method("notify_player_died"):
+        main.call("notify_player_died")
+
+
+func _on_game_finished(won: bool, score: int) -> void:
+    _over = true
+    _pause_menu.visible = false
+    Engine.time_scale = 1.0
+    get_tree().paused = true
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+    _game_over.visible = true
+    _game_over_title.text = "Arena clear" if won else "You fell"
+    _game_over_score.text = "Score %d" % score
+      </script>
+      Signals here are connected in code (<code>pressed.connect</code>). The same wires can be made from the <kbd class="ui">Node</kbd> tab's <kbd class="ui">Signals</kbd> list by double-clicking <code>pressed</code>; do not do both, or the handler runs twice.
+    </li>
+  </ol>
+
+  <pre class="scene-tree">Main (Node3D)                      [main.gd]
+├── WorldEnvironment
+├── Sun (DirectionalLight3D)
+├── NavigationRegion3D             baked NavigationMesh, static colliders
+│   └── Arena (CSGCombiner3D)
+├── Spawns (Node3D)
+│   └── Spawn1..Spawn6 (Marker3D)
+├── Player                         instance of player.tscn
+├── Feel (Node)                    [feel.gd]  group "feel"
+└── HUD (CanvasLayer)              [hud.gd]  process Always
+    ├── Column (VBoxContainer)
+    │   ├── HealthBar (ProgressBar)    unique
+    │   ├── WaveLabel (Label)          unique
+    │   └── ScoreLabel (Label)         unique
+    ├── PauseMenu (Control)            unique, hidden
+    └── GameOver (Control)             unique, hidden</pre>
+
+  <div class="checkpoint"><p>Press <kbd>F5</kbd>. Wave 1 spawns 3 chasers and the label reads <code>Wave 1 / 4</code>. Killing one adds <code>100</code> (a spitter later adds <code>150</code>). Clearing the wave adds <code>200</code>, waits 2.5 s, then wave 2 brings 4 chasers and 1 hatted spitter. <kbd>Esc</kbd> shows Paused, the cursor returns, and the mobs freeze; Resume captures the mouse and continues. Dying shows <code>You fell</code> and the score; Retry reloads the arena at wave 1 with time scale back at 1. Quitting closes the window. If wave 1 never starts, <code>Spawns</code> has no <code>Marker3D</code> children (read the Output panel). If the health bar stays full while you are bitten, <code>Health</code> on the player is not connected: the node must be named <code>Health</code> and use <code>health.gd</code>. If <kbd>Esc</kbd> only works once, <code>HUD</code> is not <kbd class="ui">Process Mode: Always</kbd>.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Attack keys on <code>Pivot.rotation</code>.</strong> The controller writes that property to face movement. Key <code>Rig.rotation</code> for swings and <code>Pivot.position</code> for bob and the hop.</li>
+    <li><strong>Hitbox monitoring left on.</strong> The box then damages every enemy it overlaps, including between swings. The script forces it off outside the window; don't key <code>monitoring</code> on in the idle clip.</li>
+    <li><strong>Changing collision inside <code>body_entered</code>.</strong> Turning a shape off in that callback needs <code>set_deferred</code>. This lesson only records the hit there and toggles <code>monitoring</code> from <code>_physics_process</code> and from the timed swing.</li>
+    <li><strong>Navmesh baked from static colliders.</strong> Parsed Geometry Type stays on Mesh Instances, which includes <code>CSGShape3D</code>. <code>Arena</code> must be a child of <code>NavigationRegion3D</code>. Bake again after you move a pillar.</li>
+    <li><strong><code>get_next_path_position()</code> called from a signal.</strong> The docs warn that this can recurse. Call it from <code>_physics_process</code> only.</li>
+    <li><strong>Hit-stop that never ends.</strong> <code>create_timer</code> without <code>ignore_time_scale</code> waits in slowed time. The Feel script passes <code>true</code> for that flag. Also set <code>Engine.time_scale = 1.0</code> before retry, which the HUD does.</li>
+    <li><strong>Pause script on a normal node.</strong> <code>_unhandled_input</code> does not run while the tree is paused unless Process Mode is Always. That is the HUD, not the player.</li>
+    <li><strong>Two connections on one button.</strong> An editor signal plus <code>pressed.connect</code> in <code>_ready</code> runs the click twice. This page uses code only.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, about 25 min)</h2>
+  <div class="challenge">
+    <h3>A pickup on the reserved layer</h3>
+    <p>Day 10 left layer 6 named <code>pickups</code>. Add an <code>Area3D</code> scene that heals 25, sits on layer <code>pickups</code>, scans <code>player</code>, and frees itself after one heal. Drop two into the arena. They must not heal a dead player (the Health component already refuses that).</p>
+    <details><summary>Hints</summary>
+      <p>Mask is the player's layer, not the pickup's own layer. Connect <code>body_entered</code>, check the <code>player</code> group, and call <code>heal</code> on the <code>Health</code> child. A <code>MeshInstance3D</code> with a green albedo is enough to see it. For a fifth wave, append one more dictionary to <code>WAVES</code> in <code>main.gd</code>; the label's total comes from <code>WAVES.size()</code>, so you do not hard-code 4 anywhere else.</p>
+    </details>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>An <code>Area3D</code> hitbox reports an enemy body when:</p>
+      <ul>
+        <li>Its collision layer is <code>enemies</code> and the enemy's layer is empty.</li>
+        <li>Its mask includes the <code>enemies</code> layer and <code>monitoring</code> is true.</li>
+        <li><kbd class="ui">Use Collision</kbd> is ticked on the area.</li>
+        <li>It is a child of <code>Camera3D</code>.</li>
+      </ul>
+      <p class="explain">Layer is what the area is (so other areas can find it). The mask is what it scans. <code>body_entered</code> and <code>get_overlapping_bodies()</code> both require <code>monitoring</code>.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>How long are you invulnerable during a dodge?</p>
+      <ul>
+        <li>The whole 0.45 s dash, plus the 0.55 s cooldown.</li>
+        <li>The first 0.28 s. After that the dash is still moving, and a hit connects.</li>
+        <li>Only while <code>is_on_floor()</code> is false.</li>
+        <li>Until the current wave ends.</li>
+      </ul>
+      <p class="explain"><code>DODGE_IFRAMES</code> is 0.28 s and <code>DODGE_TIME</code> is 0.45 s. <code>take_damage</code> returns early only while <code>_invuln_left</code> is positive.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>What actually moves a <code>NavigationAgent3D</code> enemy?</p>
+      <ul>
+        <li>Setting <code>target_position</code> once. The agent applies velocity itself.</li>
+        <li>Parenting the enemy under <code>NavigationRegion3D</code>.</li>
+        <li>Calling <code>get_next_path_position()</code> every physics frame, then writing <code>velocity</code> and calling <code>move_and_slide()</code>.</li>
+        <li>Enabling avoidance and waiting for the navmesh to push the body.</li>
+      </ul>
+      <p class="explain">The agent only plans. Avoidance is a separate velocity filter and this day leaves it off. The path is empty until the region has a baked mesh and the server has synced.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>A state-machine transition left on Advance Mode Enabled will:</p>
+      <ul>
+        <li>Fire every frame because the condition is empty.</li>
+        <li>Be taken when code calls <code>AnimationNodeStateMachinePlayback.travel()</code>.</li>
+        <li>Delete the clip when it finishes.</li>
+        <li>Run only if the AnimationPlayer's Active box is off.</li>
+      </ul>
+      <p class="explain">Enabled means "usable by travel". Auto is what fires on its own. The attack, heavy, and dodge returns use Auto plus Switch Mode At End so they wait for the clip.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>Hit-stop returns to normal speed because:</p>
+      <ul>
+        <li><code>get_tree().paused</code> ignores <code>Engine.time_scale</code>.</li>
+        <li><code>move_and_slide()</code> resets time scale when the body lands.</li>
+        <li><code>create_timer</code> is called with <code>ignore_time_scale</code> true, so the short wait is real time, and the newest call is the one that restores <code>1.0</code>.</li>
+        <li>The AnimationTree's Xfade Time is 0.05 s.</li>
+      </ul>
+      <p class="explain">A timer that respects time scale would wait <code>0.045 / 0.08</code> seconds of real time and feel stuck. Overlapping hits use <code>_stop_token</code> so an older timer cannot restore the clock early and cut a newer freeze short. Retry also forces time scale back to 1.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/physics/physics_introduction.html" target="_blank" rel="noopener">Physics introduction</a>: layers versus masks, the rule the hitboxes use.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_area3d.html" target="_blank" rel="noopener">Area3D</a>: <code>body_entered</code>, <code>monitoring</code>, <code>get_overlapping_bodies()</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/animation/introduction.html" target="_blank" rel="noopener">Introduction to the animation features</a>, and <a href="https://docs.godotengine.org/en/stable/tutorials/animation/animation_tree.html" target="_blank" rel="noopener">Using AnimationTree</a>: the player holds the clips, the tree travels.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/getting_started/first_3d_game/09.adding_animations.html" target="_blank" rel="noopener">First 3D game: animations</a>: keying a child so code can still rotate a Pivot.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/navigation/navigation_introduction_3d.html" target="_blank" rel="noopener">Using navigation maps in 3D</a>: the Bake Navmesh button and <code>get_next_path_position()</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/navigation/navigation_using_navigationagents.html" target="_blank" rel="noopener">Using NavigationAgents</a>, and <a href="https://docs.godotengine.org/en/stable/classes/class_navigationagent3d.html" target="_blank" rel="noopener">NavigationAgent3D</a>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/pausing_games.html" target="_blank" rel="noopener">Pausing games</a>: <code>get_tree().paused</code> and Process Mode Always.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li><kbd>F5</kbd> starts wave 1 with three chasers. Light and heavy attacks, the dodge i-frames, and the spitter's shots all match the numbers table.</li>
+    <li>Clearing a wave waits 2.5 s, adds <code>200 * wave</code>, and the fourth clear shows <code>Arena clear</code>.</li>
+    <li><kbd>Esc</kbd> pauses and Resume continues. Retry after a loss reloads wave 1 with <code>Engine.time_scale</code> at 1.</li>
+    <li>The file map below is the project. No test chasers are left sitting in <code>main.tscn</code>.</li>
+  </ul>
+  <table>
+    <thead><tr><th>Path</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td><code>res://game/main.tscn</code> <code>main.gd</code></td><td>Arena, nav region, spawns, waves, score.</td></tr>
+      <tr><td><code>res://game/feel.gd</code></td><td>Hit-stop and camera-offset shake. Group <code>feel</code>.</td></tr>
+      <tr><td><code>res://game/mat_stone.tres</code> <code>mat_accent.tres</code> <code>mat_dais.tres</code></td><td>CSG materials from Day 10. The spitter hat reuses accent.</td></tr>
+      <tr><td><code>res://player/player.tscn</code> <code>player.gd</code></td><td>Controller, clips, AnimationTree, AttackHitbox. Group <code>player</code>.</td></tr>
+      <tr><td><code>res://components/health.gd</code></td><td><code>class_name Health</code>. Player 100, chaser 40, spitter 28.</td></tr>
+      <tr><td><code>res://enemies/chaser.tscn</code> <code>chaser.gd</code></td><td>Navigation melee. Group <code>enemies</code>. Score 100.</td></tr>
+      <tr><td><code>res://enemies/spitter.tscn</code> <code>spitter.gd</code></td><td>Ranged mob. Score 150.</td></tr>
+      <tr><td><code>res://enemies/projectile.tscn</code> <code>projectile.gd</code></td><td>Area3D shot, 10 damage, 11 m/s, 2.5 s.</td></tr>
+      <tr><td><code>res://ui/hud.gd</code></td><td>On the <code>HUD</code> CanvasLayer in <code>main.tscn</code>. Pause and game over.</td></tr>
+      <tr><td><code>res://art/player.glb</code> <code>mob.glb</code></td><td>Official starter models. License is not stated in the docs; see the game page before you ship them.</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Tomorrow:</strong> Day 12 leaves this project and starts Torchlight Dungeon: a GridMap level and a first-person <code>CharacterBody3D</code>. Arena Brawler stays as you saved it.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

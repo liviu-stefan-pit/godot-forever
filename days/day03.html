@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 3 - Dodger I: player, enemies, spawning | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day03" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 1 · Day 3 · Training game 1: Dodger</div>
+    <h1>Dodger I: player, enemies, spawning</h1>
+    <p class="lead">Today you create your first real project and build the whole core loop of a 2D arcade dodger: a player you steer with the keyboard, creeps that fly in from the screen edges, and a game-over when one touches you. You will move through the editor click by click, and you will learn the two ideas that every later 2D game leans on: collision layers/masks and Path2D-based spawning.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Block 1: Concepts.</strong> The plan, the three physics-node choices, the collision layers/masks mini lesson and the Path2D/PathFollow2D mini lesson (no editor needed).</td></tr>
+    <tr><td>0:20 – 0:50</td><td><strong>Block 2: Project setup.</strong> Create <code>g01-dodger</code>, import the official art and fonts, set the 480x720 viewport, stretch mode and physics layer names.</td></tr>
+    <tr><td>0:50 – 1:50</td><td><strong>Block 3: The Player scene.</strong> Area2D, AnimatedSprite2D with SpriteFrames, CapsuleShape2D, Input Map actions, <code>player.gd</code>, first signal connection.</td></tr>
+    <tr><td>1:50 – 2:05</td><td><strong>Break.</strong> Stand up, drink water, look at something far away.</td></tr>
+    <tr><td>2:05 – 2:50</td><td><strong>Block 4: The Mob scene.</strong> RigidBody2D, gravity scale, layers and masks, random animation, VisibleOnScreenNotifier2D, <code>mob.gd</code>.</td></tr>
+    <tr><td>2:50 – 3:45</td><td><strong>Block 5: The Main scene.</strong> Timers, Marker2D, the clockwise Path2D, PathFollow2D, <code>main.gd</code>, wiring every signal, first F5 run.</td></tr>
+    <tr><td>3:45 – 4:00</td><td><strong>Block 6: Quiz + wrap-up.</strong> Check yourself and back up the project. The challenge below is optional extra time.</td></tr>
+    <tr class="total"><td>Total</td><td>4 h 0 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Create a Godot project, set a portrait 480x720 viewport with <code>canvas_items</code> stretch and aspect <code>keep</code>, and import an asset pack into <code>res://</code>.</li>
+    <li>Build a <code>Player</code> scene (Area2D + AnimatedSprite2D + CollisionShape2D) that moves with the arrow keys or WASD, stays on screen, flips its animation and emits a custom <code>hit</code> signal.</li>
+    <li>Build a <code>Mob</code> scene (RigidBody2D) with a random animation that frees itself when it leaves the screen.</li>
+    <li>Explain, with the Dodger as the example, what a collision <em>layer</em> and a collision <em>mask</em> are and set them so mobs ignore each other but the player detects them.</li>
+    <li>Draw a clockwise <code>Path2D</code>, use a <code>PathFollow2D</code> to pick a random edge position and an inward direction, and spawn mobs from a <code>Timer</code>.</li>
+    <li>Wire six signals in the editor and run a playable loop (move, dodge, die, restart) with <kbd>F5</kbd>.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 1 is done: Godot 4.x (standard, non-.NET build) is installed and the editor indentation is <strong>Spaces, size 4</strong> (<kbd class="menu">Editor &gt; Editor Settings &gt; Text Editor &gt; Behavior &gt; Indent</kbd>, <kbd class="ui">Type</kbd> = Spaces). Every listing today uses 4 spaces, and a tab character in a GDScript file that uses spaces is an error.</li>
+    <li>Day 2 is done: you know what a node, a scene, an Input Map action and a signal are. You do <em>not</em> need anything from the <code>g00-sandbox</code> project today. This game starts in a brand-new project.</li>
+    <li>The folder <code>C:\GodotProjects</code> exists (you created it on Day 1). Today you add <code>C:\GodotProjects\g01-dodger</code> inside it.</li>
+    <li>Internet access for one download: the official starter assets
+      <a href="https://github.com/godotengine/godot-docs-project-starters/releases/download/latest-4.x/dodge_the_creeps_2d_assets.zip" target="_blank" rel="noopener">dodge_the_creeps_2d_assets.zip</a> (images, a font, a music loop and a game-over sound). You will download and unpack it in step 6 of the setup block.</li>
+    <li>A keyboard (the game is keyboard-controlled; touch comes later as a stretch goal) and Windows PowerShell available from the Start menu.</li>
+  </ul>
+
+  <div class="callout tip"><span class="callout-title">Bring-up if you skipped something</span>
+    <p><strong>Skipped Day 1?</strong> Install Godot, open it once, then set <kbd class="menu">Editor &gt; Editor Settings &gt; Text Editor &gt; Behavior &gt; Indent</kbd> to Spaces / 4 (use the search box at the top of the Editor Settings window and type <code>indent</code>). <strong>Skipped Day 2?</strong> Read it before tonight: today uses signals, Input Map actions and <code>@export</code> without re-introducing them, but it does tell you every click. Nothing else carries over.</p></div>
+
+  <h2 id="concepts">Concepts you need first</h2>
+
+  <h3>The plan: three small scenes, one Main scene</h3>
+  <p>This game is the official <a href="https://docs.godotengine.org/en/stable/getting_started/first_2d_game/index.html" target="_blank" rel="noopener">"Dodge the Creeps"</a> tutorial, made portrait-shaped and extended. Godot's scene system means every <em>kind of thing</em> in the game gets its own scene file that you can build and test in isolation, and then <em>instance</em> (like a prefab) into a bigger scene. Today's scenes:</p>
+  <pre class="scene-tree">player.tscn
+Player (Area2D)                 [player.gd]
+├── AnimatedSprite2D            (animations: walk, up)
+└── CollisionShape2D            (CapsuleShape2D)
+
+mob.tscn
+Mob (RigidBody2D)               [mob.gd]
+├── AnimatedSprite2D            (animations: fly, swim, walk)
+├── CollisionShape2D            (CapsuleShape2D, rotated 90°)
+└── VisibleOnScreenNotifier2D
+
+main.tscn
+Main (Node)                     [main.gd]
+├── Player                      (instance of player.tscn)
+├── MobTimer (Timer)
+├── ScoreTimer (Timer)
+├── StartTimer (Timer)
+├── StartPosition (Marker2D)
+└── MobPath (Path2D)
+    └── MobSpawnLocation (PathFollow2D)</pre>
+  <p>Tomorrow (Day 4) adds a <code>HUD</code> scene, juice and saving. The names above are fixed for the whole game: scripts refer to nodes by name (<code>$MobPath/MobSpawnLocation</code>), so a typo in a node name is a runtime error, not a cosmetic one.</p>
+
+  <h3>Why these three node types?</h3>
+  <ul>
+    <li><strong>Player = <code>Area2D</code>.</strong> An Area2D <em>detects</em> overlaps but never pushes or gets pushed. We move it ourselves with <code>position += velocity * delta</code> and ask it "did a body enter you?" via the <code>body_entered</code> signal. For a game where touching an enemy simply ends the run, that is the simplest tool. (Official tutorials point out that <code>CharacterBody2D</code> is the better choice for most real characters that must slide along walls: you will use it on Day 5.)</li>
+    <li><strong>Mob = <code>RigidBody2D</code>.</strong> A rigid body is simulated by the physics engine. We give it a <code>linear_velocity</code> once, set <code>gravity_scale</code> to 0, and it keeps flying in a straight line. It is also a <em>body</em>, which is what the player's <code>body_entered</code> signal reports.</li>
+    <li><strong>Main = plain <code>Node</code>.</strong> It has no position or look of its own; it only runs game logic and owns the timers. Using Node instead of Node2D communicates "this is a manager, not a thing you can see".</li>
+  </ul>
+  <div class="callout tip"><span class="callout-title">Coming from Unity/Unreal?</span>
+    <p>A scene is a prefab <em>and</em> a level at the same time. An <code>Area2D</code> + <code>CollisionShape2D</code> is the equivalent of a Collider with "Is Trigger" ticked. A Godot <em>signal</em> is like a C# event / UnityEvent, but it is a first-class part of every node. <code>Timer</code> is a node you drop in the scene instead of writing a coroutine or a Tick function.</p></div>
+
+  <h3>Mini lesson 1: collision layers and masks</h3>
+  <p>Every physics object in Godot (anything that extends <code>CollisionObject2D</code>: Area2D, RigidBody2D, CharacterBody2D, StaticBody2D...) has two 32-bit fields, shown in the Inspector under <kbd class="ui">Collision</kbd> as two grids of checkboxes:</p>
+  <ul>
+    <li><strong>Layer</strong> (<code>collision_layer</code>): the layers this object <em>lives in</em>. "What am I?" Default: layer 1.</li>
+    <li><strong>Mask</strong> (<code>collision_mask</code>): the layers this object <em>looks at</em>. "What do I care about?" Default: layer 1.</li>
+  </ul>
+  <p>The rule: <strong>object A notices object B only if B's layer is ticked in A's mask.</strong> It is one-directional. A body and an area follow it independently, which is why you can build "the player sees enemies but enemies ignore the player" setups. Layers do not have meaning on their own: <em>you</em> give them names (<kbd class="menu">Project &gt; Project Settings &gt; Layer Names &gt; 2D Physics</kbd>), and today you name the first three.</p>
+  <table>
+    <thead><tr><th>Layer #</th><th>Name</th><th>Bit value</th><th>Who lives here in Dodger</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><code>world</code></td><td>1</td><td>Nothing yet (walls/floors in later games; this is also the default layer of every new object, which is why we move things off it)</td></tr>
+      <tr><td>2</td><td><code>player</code></td><td>2</td><td><code>Player</code></td></tr>
+      <tr><td>3</td><td><code>enemies</code></td><td>4</td><td>every <code>Mob</code></td></tr>
+    </tbody>
+  </table>
+  <p>And who looks at whom:</p>
+  <table>
+    <thead><tr><th>Object</th><th>Layer (lives in)</th><th>Mask (looks at)</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td><code>Player</code> (Area2D)</td><td>2 <code>player</code></td><td>3 <code>enemies</code></td><td>Reports <code>body_entered</code> when a mob overlaps it</td></tr>
+      <tr><td><code>Mob</code> (RigidBody2D)</td><td>3 <code>enemies</code></td><td>none (all unchecked)</td><td>Collides with nothing, so mobs never bump each other and pass straight through everything</td></tr>
+    </tbody>
+  </table>
+  <p>In code the same idea reads <code>set_collision_layer_value(2, true)</code> and <code>set_collision_mask_value(3, true)</code> (layer numbers start at 1), or you can assign the raw bit field, <code>collision_layer = 2</code>, <code>collision_mask = 4</code>. Today you tick the checkboxes; later games set them in code when they spawn projectiles.</p>
+  <div class="callout docs"><span class="callout-title">Docs: the official variant</span>
+    <p>The official tutorial leaves everything on layer 1 and only <em>unchecks mask 1 on the mob</em> so mobs ignore each other. That works for a two-object game, but it stops scaling the moment you add a third kind of object. Naming layers from the first game is a habit worth building. Read <a href="https://docs.godotengine.org/en/stable/tutorials/physics/physics_introduction.html" target="_blank" rel="noopener">Physics introduction &gt; Collision layers and masks</a> after today's build.</p></div>
+  <div class="callout tip"><span class="callout-title">Coming from Unity?</span>
+    <p>Unity has one global Layer Collision Matrix. Godot stores the matrix <em>per object</em> (layer + mask). More flexible, a little more to set up, and a common source of "why doesn't my bullet hit anything" bugs: if collisions are not happening, check the layer/mask pair first.</p></div>
+
+  <h3>Mini lesson 2: Path2D and PathFollow2D</h3>
+  <p>We want mobs to appear at a random point on the border of the screen and fly inwards. Rather than computing four edges by hand, we draw the border as a <em>path</em> once, in the editor:</p>
+  <ul>
+    <li><code>Path2D</code> stores a <code>Curve2D</code>: an ordered list of points (optionally with Bézier handles). It draws the curve in the editor and nothing else.</li>
+    <li><code>PathFollow2D</code> is a <em>child</em> of a Path2D. Set its <code>progress</code> (distance in pixels along the curve) or <code>progress_ratio</code> (0.0 = start, 1.0 = end) and it positions itself on the curve. With its <code>rotates</code> property on (the default) it also turns to face the direction the curve is travelling in at that point.</li>
+    <li>So <code>spawn.progress_ratio = randf()</code> picks a uniformly random point on the whole perimeter, and <code>spawn.rotation</code> tells us which way the border runs there.</li>
+  </ul>
+  <p>The path has four points, one per screen corner, and it must be drawn <strong>clockwise</strong> (on screen, with Y pointing down):</p>
+  <pre class="plain">  P1 (0,0) ──────────► P2 (480,0)
+     ▲                      │
+     │      clockwise       ▼
+  P4 (0,720) ◄──────── P3 (480,720)
+
+  Along the top edge the path travels to the right  -> rotation = 0
+  Rotating 90° (PI / 2) clockwise points it DOWN     -> into the screen.
+  Along the right edge the path travels down         -> rotation = PI / 2
+  Adding PI / 2 again points it LEFT                 -> into the screen.</pre>
+  <p>That is the trick in <code>main.gd</code>: <code>direction = spawn.rotation + PI / 2.0</code> is "perpendicular to the border, pointing inward" for every edge. If you draw the path counter-clockwise, the same formula points <em>outward</em> and every mob flies off-screen the moment it spawns. We then add a random wobble of ±45° (<code>PI / 4</code>) so the creeps do not all arrive in perfectly straight lines. Godot angles are in <em>radians</em>; <code>PI</code> is a half turn and <code>TAU</code> a full turn.</p>
+
+  <div class="callout version"><span class="callout-title">Version note</span>
+    <p>Today's steps were verified against the current docs (Godot 4.4-4.6 era). Menu names such as the Project Manager's <kbd class="ui">Create</kbd> button can look slightly different in older 4.x editors (for example the new-project dialog's layout), but every property, node and signal name used today exists since Godot 4.0.</p></div>
+
+  <h2 id="build-1">Block 2: Create the project and import the assets</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Return to the Project Manager.</strong> If the editor is still open on <code>g00-sandbox</code>, save with <kbd>Ctrl</kbd>+<kbd>S</kbd>, then use the <strong>Menu bar</strong> (very top-left): <kbd class="menu">Project &gt; Quit to Project List</kbd>. If Godot is closed, start it; it opens the Project Manager.</li>
+    <li><strong>Start a new project.</strong> In the Project Manager click <kbd class="ui">Create</kbd> (top-left). The <kbd class="ui">Create New Project</kbd> dialog opens.</li>
+    <li><strong>Name and place it.</strong> Type <code>g01-dodger</code> into <kbd class="ui">Project Name</kbd>. For <kbd class="ui">Project Path</kbd> click <kbd class="ui">Browse</kbd> and choose <code>C:\GodotProjects</code>. If there is a <kbd class="ui">Create Folder</kbd> button next to the name, click it. The path shown must now end with <code>C:\GodotProjects\g01-dodger</code>. Godot refuses a non-empty folder, so this is a brand-new folder.</li>
+    <li><strong>Pick the renderer.</strong> Select <kbd class="ui">Mobile</kbd>. Why: it is a modern renderer that is still light enough for phones, and every 2D game from here on uses it, so lighting and particles will look the same on your PC and on an Android device. (If the editor later shows a Vulkan/graphics-device error on your PC, pick <kbd class="ui">Compatibility</kbd> instead: the game looks identical, and the setting lives in <kbd class="menu">Project &gt; Project Settings &gt; Rendering &gt; Renderer</kbd>.) Leave <kbd class="ui">Version Control Metadata</kbd> on <kbd class="ui">Git</kbd>, then click <kbd class="ui">Create</kbd>.</li>
+    <li><strong>Switch to the 2D workspace.</strong> The editor opens an empty project, probably showing the 3D view. In the <strong>Workspace buttons</strong> (top center), click <kbd class="ui">2D</kbd>. All of today is 2D except where we say otherwise.</li>
+    <li><strong>Download the assets.</strong> Press the <kbd>Win</kbd> key, type <code>PowerShell</code>, press <kbd>Enter</kbd>. In the blue window paste the block below and press <kbd>Enter</kbd>. It downloads the official zip to your temp folder, unpacks it, and opens the unpacked folder in Explorer. (You can also click the zip link in "Before you start" and unpack it with right-click &gt; Extract All.)
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+$zip = "$env:TEMP\dodge_the_creeps_2d_assets.zip"
+$url = "https://github.com/godotengine/godot-docs-project-starters/releases/download/latest-4.x/dodge_the_creeps_2d_assets.zip"
+Invoke-WebRequest -Uri $url -OutFile $zip
+Expand-Archive -Path $zip -DestinationPath "$env:TEMP\dodge_assets" -Force
+explorer "$env:TEMP\dodge_assets"
+      </script>
+    </li>
+    <li><strong>Find the two folders.</strong> In the Explorer window you should see a folder named <code>art</code> and a folder named <code>fonts</code>. If you only see one folder (the zip sometimes wraps its content), open it: the two folders are inside.</li>
+    <li><strong>Drag them into the editor.</strong> Arrange the Explorer window next to the Godot window. Select both <code>art</code> and <code>fonts</code>, drag them onto the <strong>FileSystem dock</strong> (bottom-left) and drop them on the <code>res://</code> entry at the top of the dock. Godot copies them into the project and imports every file (a short progress bar). <em>Fallback if dropping does nothing:</em> copy both folders in Explorer into <code>C:\GodotProjects\g01-dodger</code>, then click back into the Godot window; it rescans and imports by itself.</li>
+    <li><strong>Check what arrived.</strong> In the FileSystem dock click the small arrow next to <code>art</code>. You should see the player images (<code>playerGrey_up1</code>, <code>playerGrey_up2</code>, <code>playerGrey_walk1</code>, <code>playerGrey_walk2</code>), six enemy images (two each for flying, swimming and walking), <code>House In a Forest Loop.ogg</code> and <code>gameover.wav</code>. <code>fonts</code> contains <code>Xolonium-Regular.ttf</code>. You use the sounds and the font tomorrow.</li>
+    <li><strong>Open Project Settings.</strong> In the Menu bar click <kbd class="menu">Project &gt; Project Settings...</kbd>. A window with a settings tree on the left opens. If you cannot see a setting mentioned below, switch on the <kbd class="ui">Advanced Settings</kbd> toggle in the top-right of that window.</li>
+    <li><strong>Set the portrait window size.</strong> In the left tree open <kbd class="ui">Display</kbd> and click <kbd class="ui">Window</kbd>. Under <kbd class="ui">Size</kbd> set <kbd class="ui">Viewport Width</kbd> to <code>480</code> and <kbd class="ui">Viewport Height</kbd> to <code>720</code> (the script name of these is <code>display/window/size/viewport_width</code> and <code>viewport_height</code>). Why portrait: this game is designed for a tall phone-like play field, and 480x720 is small enough to fit on any monitor.</li>
+    <li><strong>Set stretching.</strong> On the same page scroll to <kbd class="ui">Stretch</kbd>. Set <kbd class="ui">Mode</kbd> to <code>canvas_items</code> and <kbd class="ui">Aspect</kbd> to <code>keep</code>. Why: with <code>canvas_items</code> the game is re-rendered sharply at whatever window size you drag it to (instead of scaling a blurry bitmap), and <code>keep</code> preserves the 2:3 shape by adding black bars rather than stretching the art.</li>
+    <li><strong>Name the physics layers.</strong> In the left tree scroll to <kbd class="ui">Layer Names</kbd> and click <kbd class="ui">2D Physics</kbd>. Click into the text field of <kbd class="ui">Layer 1</kbd> and type <code>world</code>; <kbd class="ui">Layer 2</kbd> = <code>player</code>; <kbd class="ui">Layer 3</kbd> = <code>enemies</code>. Press <kbd>Enter</kbd> after each. Names are only labels, but you will see them as tooltips on the Inspector checkboxes.</li>
+    <li><strong>Close the window.</strong> Click <kbd class="ui">Close</kbd> at the bottom. Settings are saved automatically into <code>project.godot</code>.</li>
+  </ol>
+
+  <div class="checkpoint"><p>The FileSystem dock lists <code>art/</code>, <code>fonts/</code> and <code>icon.svg</code>. Re-open <kbd class="menu">Project &gt; Project Settings...</kbd> to confirm: Viewport 480 x 720, Stretch Mode <code>canvas_items</code>, Aspect <code>keep</code>, and three named 2D physics layers. <em>If <code>art</code> is empty:</em> the import is still running (watch the bottom-right spinner) or the folders were dropped one level too deep; drag the inner folders out, or re-copy them from <code>%TEMP%\dodge_assets</code>.</p></div>
+
+  <div class="callout note"><span class="callout-title">Project organization</span>
+    <p>This is a small game, so scenes and scripts live directly in <code>res://</code> next to <code>art/</code> and <code>fonts/</code>, exactly like the official tutorial. In bigger projects (Day 5 onward) you will create folders such as <code>player/</code> or <code>enemies/</code>. Keep the file names from this page: later pages refer to <code>player.tscn</code>, <code>mob.tscn</code>, <code>main.tscn</code>, <code>hud.tscn</code> and their <code>.gd</code> scripts.</p></div>
+
+  <h2 id="build-2">Block 3: The Player scene</h2>
+  <p>A good root node reflects what the thing <em>is</em>. The player must detect overlaps, so its root is an <code>Area2D</code>.</p>
+  <ol class="steps">
+    <li><strong>Create the root node.</strong> In the <strong>Scene dock</strong> (top-left), the empty scene shows four buttons. Click <kbd class="ui">Other Node</kbd>. The <kbd class="ui">Create New Node</kbd> dialog opens. Type <code>Area2D</code> in the search field, click <kbd class="ui">Area2D</kbd> in the list, then click <kbd class="ui">Create</kbd>. The node appears at the top of the Scene dock with a yellow warning triangle.</li>
+    <li><strong>Read the warning.</strong> Hover over the triangle. It says the node has no shape, so it cannot detect anything. This is expected: you add the shape after the visuals so you can size it to the sprite.</li>
+    <li><strong>Rename it.</strong> Click the node, press <kbd>F2</kbd>, type <code>Player</code>, press <kbd>Enter</kbd>. (Double-clicking the name works too.) Node names matter: <code>Player</code> is how <code>Main</code> will find it.</li>
+    <li><strong>Save the scene.</strong> Press <kbd>Ctrl</kbd>+<kbd>S</kbd>. In the file dialog the path is <code>res://</code>; type <code>player.tscn</code> as the file name and click <kbd class="ui">Save</kbd>. The file appears in the <strong>FileSystem dock</strong>. Save again after every group of steps; most "it works in the editor but not in the game" problems today are unsaved scenes.</li>
+    <li><strong>Add the sprite node.</strong> With <code>Player</code> selected, click the <kbd class="ui">+</kbd> (Add Child Node) button at the top of the Scene dock (or press <kbd>Ctrl</kbd>+<kbd>A</kbd>). Search <code>AnimatedSprite2D</code>, select it, click <kbd class="ui">Create</kbd>. It appears as a child of <code>Player</code>. Why this node: it plays frame-by-frame animations from a <code>SpriteFrames</code> resource, i.e. a list of named animations.</li>
+    <li><strong>Open the SpriteFrames editor.</strong> Select <code>AnimatedSprite2D</code>. In the <strong>Inspector</strong> (right side) the <kbd class="ui">Sprite Frames</kbd> property already holds a new <code>SpriteFrames</code> resource, and the <strong>Bottom panel</strong> shows a <kbd class="ui">SpriteFrames</kbd> tab. If the bottom panel is collapsed, click the <kbd class="ui">SpriteFrames</kbd> label at the bottom of the editor to open it. (If the Inspector shows <code>[empty]</code> instead, click it and choose <kbd class="ui">New SpriteFrames</kbd>, then click the resource to open the editor.)</li>
+    <li><strong>Rename the first animation.</strong> On the left of the SpriteFrames panel is the animation list with one entry, <code>default</code>. Double-click it, type <code>walk</code>, press <kbd>Enter</kbd>.</li>
+    <li><strong>Add a second animation.</strong> Click the <kbd class="ui">Add Animation</kbd> button (the "+ page" icon above the list). A new row named <code>new_animation</code> appears. Double-click it, type <code>up</code>, press <kbd>Enter</kbd>.</li>
+    <li><strong>Fill <code>walk</code>.</strong> Click <code>walk</code> in the list. In the FileSystem dock open <code>art</code>, click <code>playerGrey_walk1.png</code>, hold <kbd>Ctrl</kbd> and click <code>playerGrey_walk2.png</code>. Drag the two selected files into the big empty <kbd class="ui">Animation Frames</kbd> area on the right of the SpriteFrames panel and release. Two frames appear, <code>walk1</code> first.</li>
+    <li><strong>Fill <code>up</code>.</strong> Click <code>up</code> in the list and drag <code>playerGrey_up1.png</code> and <code>playerGrey_up2.png</code> in the same way.</li>
+    <li><strong>Preview.</strong> With <code>up</code> still selected, click the <kbd class="ui">Play Animation</kbd> button (triangle icon above the frames). The character animates in the panel. Click <kbd class="ui">Stop</kbd>. Leave the speed at its default (5 FPS) and make sure <kbd class="ui">Loop</kbd> is on for both animations; the player only plays while moving, so slow is fine.</li>
+    <li><strong>Select the starting animation.</strong> Click <code>AnimatedSprite2D</code> in the Scene dock. In the Inspector set <kbd class="ui">Animation</kbd> (inside the <code>AnimatedSprite2D</code> section) to <code>walk</code> using its dropdown. The viewport shows the player image, which is large.</li>
+    <li><strong>Scale the sprite down.</strong> Still in the Inspector scroll to <kbd class="ui">Transform</kbd>. Set <kbd class="ui">Scale</kbd> to <code>0.5</code> for X and <code>0.5</code> for Y (<code>scale</code> = <code>(0.5, 0.5)</code>). If a chain icon links X and Y, typing one value changes both. Why scale instead of editing the PNGs: the art is authored large for crisp rendering at other sizes.</li>
+    <li><strong>Add the hitbox node.</strong> Select <code>Player</code> in the Scene dock (not the sprite!), press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>CollisionShape2D</code>, click <kbd class="ui">Create</kbd>. The yellow triangle on <code>Player</code> disappears only when this shape has a <em>shape resource</em>; do that next.</li>
+    <li><strong>Give it a capsule.</strong> Select <code>CollisionShape2D</code>. In the Inspector click the <kbd class="ui">Shape</kbd> field (<code>[empty]</code>) and choose <kbd class="ui">New CapsuleShape2D</kbd>. A blue capsule appears in the viewport, centered on the player.</li>
+    <li><strong>Size the capsule to the sprite.</strong> In the Viewport (center), drag the two round handles of the capsule (the blue dots on the sides and the top/bottom) until the capsule covers the character's body, slightly <em>inside</em> the visible edges. A hitbox a few pixels smaller than the art feels fair to the player. The collision shape is a separate node and is <em>not</em> affected by the sprite's 0.5 scale, so you size it in final pixels. Zoom the viewport with the mouse wheel if the handles are too small to grab. The yellow warning on <code>Player</code> is gone.</li>
+    <li><strong>Protect the children from accidental drags.</strong> Select <code>Player</code> in the Scene dock. In the viewport toolbar (a row of small icons above the Viewport) click the icon <em>to the right of the lock</em>; its tooltip says it groups the node with its children so clicking any child in the viewport selects the parent. From now on, to select a child (for example to resize the capsule again) click it in the Scene dock instead.</li>
+    <li><strong>Set the player's collision layer and mask.</strong> Select <code>Player</code>. In the Inspector open the <kbd class="ui">Collision</kbd> group (an <code>Area2D</code> has <kbd class="ui">Layer</kbd> and <kbd class="ui">Mask</kbd> grids). In <kbd class="ui">Layer</kbd> click box <code>1</code> to <em>uncheck</em> it and click box <code>2</code> to check it (hover: the tooltip says <code>player</code>). In <kbd class="ui">Mask</kbd> uncheck <code>1</code> and check <code>3</code> (<code>enemies</code>). This is the table from the mini lesson: the player lives on layer 2 and watches layer 3.</li>
+    <li><strong>Save.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+  </ol>
+
+  <pre class="scene-tree">Player (Area2D)                 [player.gd - added below]
+├── AnimatedSprite2D            (Scale 0.5, animations: walk, up)
+└── CollisionShape2D            (CapsuleShape2D)</pre>
+
+  <div class="checkpoint"><p>Scene dock shows exactly the three nodes above, no warning triangles. Selecting <code>Player</code> shows <kbd class="ui">Collision &gt; Layer</kbd> with only box 2 ticked and <kbd class="ui">Mask</kbd> with only box 3 ticked. The capsule in the viewport covers the character's body. <em>If the sprite looks huge:</em> the scale of <code>AnimatedSprite2D</code> is still 1.</p></div>
+
+  <h3>The four movement actions</h3>
+  <p>An <em>Input Map action</em> is a named input ("move_left") that maps to any number of keys, buttons or sticks. Your code asks for the action and never for a specific key, which is what makes remapping and gamepad support free later. You did this on Day 2; here it is again as steps because the Dodger needs exactly these four names.</p>
+  <ol class="steps">
+    <li><strong>Open the Input Map.</strong> Menu bar: <kbd class="menu">Project &gt; Project Settings...</kbd>, then click the <kbd class="ui">Input Map</kbd> tab at the top of the window.</li>
+    <li><strong>Add the first action.</strong> Click the text field <kbd class="ui">Add New Action</kbd>, type <code>move_right</code>, click <kbd class="ui">Add</kbd> (or press <kbd>Enter</kbd>). A row named <code>move_right</code> appears in the list below.</li>
+    <li><strong>Bind a key.</strong> On that row click the <kbd class="ui">+</kbd> button at the right. The <kbd class="ui">Event Configuration</kbd> window opens with <kbd class="ui">Listening for Input...</kbd>. Press the <kbd>Right arrow</kbd> key on your keyboard; the window shows "Right". Click <kbd class="ui">OK</kbd>.</li>
+    <li><strong>Add the WASD key too.</strong> Click <kbd class="ui">+</kbd> on the same row again, press <kbd>D</kbd>, click <kbd class="ui">OK</kbd>. The row now has two events.</li>
+    <li><strong>Repeat for the other three actions.</strong> Add them with exactly these names (lower case, underscore) and keys:
+      <table>
+        <thead><tr><th>Action name</th><th>Key 1</th><th>Key 2</th></tr></thead>
+        <tbody>
+          <tr><td><code>move_right</code></td><td><kbd>Right arrow</kbd></td><td><kbd>D</kbd></td></tr>
+          <tr><td><code>move_left</code></td><td><kbd>Left arrow</kbd></td><td><kbd>A</kbd></td></tr>
+          <tr><td><code>move_up</code></td><td><kbd>Up arrow</kbd></td><td><kbd>W</kbd></td></tr>
+          <tr><td><code>move_down</code></td><td><kbd>Down arrow</kbd></td><td><kbd>S</kbd></td></tr>
+        </tbody>
+      </table>
+    </li>
+    <li><strong>Close.</strong> Click <kbd class="ui">Close</kbd>. The actions are stored in <code>project.godot</code>.</li>
+  </ol>
+  <div class="checkpoint"><p>The Input Map list (with <kbd class="ui">Show Built-in Actions</kbd> off) shows four custom actions, each with two key events. If you misspell an action name here, the game will print <code>The InputMap action "move_left" doesn't exist</code> later, so double-check them now.</p></div>
+
+  <h3>player.gd</h3>
+  <p>Now the script. A few decisions in the listing, so they do not surprise you:</p>
+  <ul>
+    <li><code>Input.get_vector("move_left", "move_right", "move_up", "move_down")</code> returns the movement direction as one <code>Vector2</code> from your four actions. It replaces four <code>if</code> checks <em>and</em> the normalization: diagonal keyboard input gives a vector of length 1, so moving diagonally is not faster. (The manual version is in the box below the listing; read it once so you know what the function does for you.)</li>
+    <li>The script uses <code>_process</code>, not <code>_physics_process</code>: an Area2D has no physics integration to keep in sync, so we move it once per rendered frame, multiplied by <code>delta</code> (the time since the last frame) so speed does not depend on frame rate.</li>
+    <li><code>position.clamp(Vector2.ZERO, screen_size)</code> keeps the center of the player inside the window rectangle.</li>
+    <li><code>class_name Player</code> registers a global type so <code>main.gd</code> can write <code>var player: Player</code> and get typed autocomplete.</li>
+    <li>The <code>hit</code> signal is custom: the Player announces "I got hit" and does not know or care who listens. <code>Main</code> will listen.</li>
+    <li>The collision shape is switched off with <code>set_deferred</code>, never directly. The physics engine is busy calling <code>_on_body_entered</code>; changing physics state in the middle of that callback is not allowed, and <code>set_deferred</code> says "do it at the end of this frame".</li>
+  </ul>
+  <ol class="steps">
+    <li><strong>Attach a script.</strong> In the Scene dock right-click <code>Player</code> and choose <kbd class="ui">Attach Script</kbd>. In the <kbd class="ui">Attach Node Script</kbd> dialog leave <kbd class="ui">Language</kbd> = GDScript and the template as it is. Set <kbd class="ui">Path</kbd> to <code>res://player.gd</code> and click <kbd class="ui">Create</kbd>. The editor jumps to the Script workspace with a new file open.</li>
+    <li><strong>Replace the whole file.</strong> Click inside the code, press <kbd>Ctrl</kbd>+<kbd>A</kbd> to select everything, and paste this listing over it. Then press <kbd>Ctrl</kbd>+<kbd>S</kbd>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://player.gd">
+extends Area2D
+class_name Player
+
+## Emitted when a mob touches the player. Main listens and ends the game.
+signal hit
+
+## Movement speed in pixels per second.
+@export var speed: float = 400.0
+
+## Size of the game window; the player is kept inside this rectangle.
+var screen_size: Vector2
+
+@onready var _sprite: AnimatedSprite2D = $AnimatedSprite2D
+@onready var _shape: CollisionShape2D = $CollisionShape2D
+
+
+func _ready() -> void:
+    screen_size = get_viewport_rect().size
+    # hide()  # Remove the leading "# " in the step "Hide at start" below.
+
+
+func _process(delta: float) -> void:
+    var direction: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+    var velocity: Vector2 = direction * speed
+
+    if velocity.length() > 0.0:
+        _sprite.play()
+    else:
+        _sprite.stop()
+
+    position += velocity * delta
+    position = position.clamp(Vector2.ZERO, screen_size)
+
+    if velocity.x != 0.0:
+        _sprite.animation = &"walk"
+        _sprite.flip_v = false
+        _sprite.flip_h = velocity.x < 0.0
+    elif velocity.y != 0.0:
+        _sprite.animation = &"up"
+        _sprite.flip_v = velocity.y > 0.0
+
+
+## Called by Main at the start of every game.
+func start(pos: Vector2) -> void:
+    position = pos
+    show()
+    _shape.disabled = false
+
+
+func _on_body_entered(_body: Node2D) -> void:
+    hide()
+    hit.emit()
+    # Cannot change physics state inside a physics callback: defer it.
+    _shape.set_deferred("disabled", true)
+      </script>
+    </li>
+    <li><strong>Go back to the 2D workspace.</strong> Click <kbd class="ui">2D</kbd> in the Workspace buttons (top center).</li>
+    <li><strong>Check the exported property.</strong> Select <code>Player</code> in the Scene dock. The Inspector now shows a <code>Player</code> section with <kbd class="ui">Speed</kbd> = 400. Changing it here would override the script default for this scene only.</li>
+  </ol>
+
+  <details>
+    <summary>What <code>Input.get_vector()</code> replaces (manual version, for reference only)</summary>
+    <p>Do not type this: it is what the single <code>get_vector</code> line does for you.</p>
+    <script type="text/x-code" data-lang="gdscript" data-file="reference only - do not type">
+var direction: Vector2 = Vector2.ZERO
+if Input.is_action_pressed("move_right"):
+    direction.x += 1.0
+if Input.is_action_pressed("move_left"):
+    direction.x -= 1.0
+if Input.is_action_pressed("move_down"):
+    direction.y += 1.0
+if Input.is_action_pressed("move_up"):
+    direction.y -= 1.0
+if direction.length() > 0.0:
+    direction = direction.normalized()  # without this, (1, 1) has length 1.41: diagonals are 41% faster
+    </script>
+    <p>Normalizing means "keep the direction, set the length to 1", then you multiply by <code>speed</code>. <code>get_vector</code> additionally supports analog sticks (partial tilt = partial speed), which matters when you add gamepad support.</p>
+  </details>
+
+  <h3>Your first signal connection (do it the editor way)</h3>
+  <p>The player must be told when a mob touches it. <code>Area2D</code> has a built-in <code>body_entered(body)</code> signal that fires when a physics body enters the area. We connect that signal to the function <code>_on_body_entered</code> in <code>player.gd</code>. There are two equivalent ways to connect a signal; today you see both.</p>
+  <ol class="steps">
+    <li><strong>Select the emitter.</strong> In the Scene dock click <code>Player</code>.</li>
+    <li><strong>Open the signal list.</strong> In the dock on the right, next to the <kbd class="ui">Inspector</kbd> tab, click the <kbd class="ui">Node</kbd> tab, then its <kbd class="ui">Signals</kbd> sub-tab. You see the signals of <code>Player</code> grouped by class: your custom <code>hit()</code> at the top (the script declared it) and the <code>Area2D</code> signals such as <code>body_entered(body: Node2D)</code> below.</li>
+    <li><strong>Connect.</strong> Double-click <code>body_entered(body: Node2D)</code>. The <kbd class="ui">Connect a Signal</kbd> dialog opens. The receiver is <code>Player</code> itself and the <kbd class="ui">Receiver Method</kbd> is already <code>_on_body_entered</code>, which is the function you pasted. Leave everything else as it is and click <kbd class="ui">Connect</kbd>.</li>
+    <li><strong>See the result.</strong> In the Signals list the entry now has a small green connection icon on the right. Open <code>player.gd</code> (Script workspace): a green arrow icon sits in the left gutter next to <code>func _on_body_entered</code>. Because the function already existed, Godot only registered the link; if it had not existed, Godot would have created an empty one for you.</li>
+  </ol>
+  <div class="callout docs"><span class="callout-title">The code way (signal connection #1 of 3 explained both ways)</span>
+    <p>The same connection written in code goes in <code>_ready()</code>:</p>
+    <script type="text/x-code" data-lang="gdscript" data-file="alternative - do NOT add it as well">
+func _ready() -> void:
+    body_entered.connect(_on_body_entered)
+    </script>
+    <p>The editor way stores the link in the <code>.tscn</code> file and shows it in the Signals list; the code way is easier to search and diff, and you need it for nodes that you create in code. <strong>Never do both</strong> for the same signal and function: Godot prints "Signal 'body_entered' is already connected" and the function would run twice. Today you use the editor way; from Day 5 on you will use whichever is shorter for the situation.</p></div>
+
+  <ol class="steps">
+    <li><strong>Test the Player scene alone.</strong> Press <kbd>F6</kbd> (<strong>Run Current Scene</strong>, top-right Play buttons). A 480x720 window opens. The player sits half-hidden in the top-left corner because the root node is at <code>(0, 0)</code>.</li>
+    <li><strong>Move it.</strong> Press the arrow keys (and WASD). The character should move in every direction, never faster diagonally, and never leave the window. Left/right plays <code>walk</code> (mirrored when moving left); up/down plays <code>up</code> (flipped vertically when moving down); standing still freezes the animation. Close the window with <kbd>F8</kbd> or the window's X.</li>
+    <li><strong>Hide at start.</strong> Open <code>player.gd</code> and remove the leading <code># </code> from the line <code># hide()</code> in <code>_ready()</code> so it reads <code>hide()</code>. Why: in the real game the player should be invisible until <code>Main</code> calls <code>start()</code>. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>. (Running the Player scene alone now shows an empty window; that is correct.)</li>
+  </ol>
+
+  <div class="checkpoint"><p>Before step "Hide at start": F6 shows a moving, animated, screen-clamped player and the Output panel (bottom) is empty of red text. <em>If you see <code>Attempt to call function 'play' in base 'null instance'</code></em>, a node name does not match: the scene must contain <code>AnimatedSprite2D</code> and <code>CollisionShape2D</code> spelled exactly so. <em>If nothing moves</em>, an Input Map action is misspelled or the script is attached to the wrong node (the script icon should be next to <code>Player</code>, not a child). <em>If the animation never plays</em>, the animations must be named exactly <code>walk</code> and <code>up</code>.</p></div>
+
+  <h2 id="build-3">Block 4: The Mob scene</h2>
+  <p>Mobs are simple: spawn at a screen edge, pick a direction and a speed, fly straight, delete yourself once you are off-screen. A <code>RigidBody2D</code> does the "fly straight" part for free once it has a <code>linear_velocity</code> and no gravity.</p>
+  <ol class="steps">
+    <li><strong>Create a new scene.</strong> Menu bar: <kbd class="menu">Scene &gt; New Scene</kbd>. A new empty tab opens next to <code>player.tscn</code> above the viewport. In the Scene dock click <kbd class="ui">Other Node</kbd>, search <code>RigidBody2D</code>, select it, click <kbd class="ui">Create</kbd>.</li>
+    <li><strong>Rename and save.</strong> Select it, press <kbd>F2</kbd>, type <code>Mob</code>, <kbd>Enter</kbd>. Press <kbd>Ctrl</kbd>+<kbd>S</kbd> and save as <code>res://mob.tscn</code>.</li>
+    <li><strong>Add the three children.</strong> With <code>Mob</code> selected press <kbd>Ctrl</kbd>+<kbd>A</kbd> and add <code>AnimatedSprite2D</code>. Select <code>Mob</code> again and add <code>CollisionShape2D</code>. Select <code>Mob</code> again and add <code>VisibleOnScreenNotifier2D</code>. The tree must be: <code>Mob</code> with the three as direct children (not nested in each other). The notifier will tell us when the mob has left the screen. A common slip is adding a node while a <em>child</em> is selected, which nests it under that child.</li>
+    <li><strong>Turn off gravity.</strong> Select <code>Mob</code>. In the Inspector find <kbd class="ui">Gravity Scale</kbd> (<code>gravity_scale</code>) in the <code>RigidBody2D</code> section and set it to <code>0</code>. Without this, every mob would fall to the bottom of the screen like a rock.</li>
+    <li><strong>Set the mob's collision layer.</strong> Still on <code>Mob</code>, open <kbd class="ui">Collision</kbd> in the Inspector (under <code>CollisionObject2D</code>). In <kbd class="ui">Layer</kbd>: uncheck <code>1</code>, check <code>3</code> (<code>enemies</code>).</li>
+    <li><strong>Set the mob's mask.</strong> In <kbd class="ui">Mask</kbd>: uncheck <code>1</code> so that <em>no box is ticked</em>. The mob now does not look at anything, so mobs fly through each other and the player's area (which is not a solid body anyway) does the detecting. This is the "don't collide with each other" requirement, solved by the layer/mask table instead of by a special case.</li>
+    <li><strong>Build the animations.</strong> Select <code>AnimatedSprite2D</code>. In the SpriteFrames panel at the bottom rename <code>default</code> to <code>fly</code>. Click <kbd class="ui">Add Animation</kbd> twice and name the new ones <code>swim</code> and <code>walk</code>.</li>
+    <li><strong>Fill the frames.</strong> For each animation, select it in the list and drag the matching pair of images from <code>art/</code> into the <kbd class="ui">Animation Frames</kbd> area: <code>fly</code> gets the two <em>flying</em> frames (<code>enemyFlyingAlt_1</code>, <code>enemyFlyingAlt_2</code>), <code>swim</code> the two <em>swimming</em> frames (<code>enemySwimming_1</code>, <code>enemySwimming_2</code>), <code>walk</code> the two <em>walking</em> frames (<code>enemyWalking_1</code>, <code>enemyWalking_2</code>). The exact file names come from the zip; if yours differ slightly, match by the flying / swimming / walking word and the _1/_2 suffix.</li>
+    <li><strong>Slow the animations.</strong> For each of the three animations, select it and set <kbd class="ui">Animation Speed</kbd> (the FPS field above the frames) to <code>3</code>. The speed belongs to each animation separately, so you must do it three times. Use the <kbd class="ui">Play Animation</kbd> button to preview each one.</li>
+    <li><strong>Scale the sprite.</strong> Select <code>AnimatedSprite2D</code> in the Scene dock and set <kbd class="ui">Transform &gt; Scale</kbd> to <code>0.75</code> and <code>0.75</code>.</li>
+    <li><strong>Add the hitbox shape.</strong> Select <code>CollisionShape2D</code>, click its <kbd class="ui">Shape</kbd> field and choose <kbd class="ui">New CapsuleShape2D</kbd>.</li>
+    <li><strong>Rotate the capsule.</strong> The enemy art is wider than tall, but a capsule is tall by default. In the Inspector under <kbd class="ui">Transform</kbd> set <kbd class="ui">Rotation</kbd> to <code>90</code> (degrees). The capsule now lies on its side. Drag its handles so it covers the creature, a little smaller than the picture.</li>
+    <li><strong>Group the children (optional but recommended).</strong> Select <code>Mob</code> and click the same "group with children" toolbar icon you used on <code>Player</code> (or press <kbd>Ctrl</kbd>+<kbd>G</kbd>), so clicking in the viewport selects the root.</li>
+    <li><strong>Save.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+  </ol>
+
+  <pre class="scene-tree">Mob (RigidBody2D)               [mob.gd - added below]   Layer: 3 (enemies)   Mask: none   Gravity Scale: 0
+├── AnimatedSprite2D            (Scale 0.75; animations fly, swim, walk at 3 FPS)
+├── CollisionShape2D            (CapsuleShape2D, Rotation 90°)
+└── VisibleOnScreenNotifier2D</pre>
+
+  <h3>mob.gd</h3>
+  <p>In <code>_ready()</code> each mob picks one of its three animation names at random with <code>Array.pick_random()</code>, so a swarm has visual variety without any extra art or logic. <code>sprite_frames.get_animation_names()</code> returns a <code>PackedStringArray</code>; wrapping it in <code>Array(...)</code> gives us an <code>Array</code>, which has <code>pick_random()</code>. When the notifier reports the mob left the screen, we free it. Without that, thousands of invisible mobs would pile up and slow the game.</p>
+  <ol class="steps">
+    <li><strong>Attach the script.</strong> Right-click <code>Mob</code> in the Scene dock &gt; <kbd class="ui">Attach Script</kbd>, set <kbd class="ui">Path</kbd> to <code>res://mob.gd</code>, click <kbd class="ui">Create</kbd>. In the editor press <kbd>Ctrl</kbd>+<kbd>A</kbd> and replace everything with:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://mob.gd">
+extends RigidBody2D
+class_name Mob
+
+@onready var _sprite: AnimatedSprite2D = $AnimatedSprite2D
+
+
+func _ready() -> void:
+    # Pick one of the animations (fly, swim, walk) at random.
+    var mob_types: Array = Array(_sprite.sprite_frames.get_animation_names())
+    _sprite.play(mob_types.pick_random())
+
+
+func _on_visible_on_screen_notifier_2d_screen_exited() -> void:
+    queue_free()
+      </script>
+      Save with <kbd>Ctrl</kbd>+<kbd>S</kbd> and click <kbd class="ui">2D</kbd> in the Workspace buttons to return to the viewport.
+    </li>
+    <li><strong>Connect the second signal (editor way again).</strong> In the Scene dock click <code>VisibleOnScreenNotifier2D</code>. In the <kbd class="ui">Node</kbd> tab &gt; <kbd class="ui">Signals</kbd> double-click <code>screen_exited()</code>. In the dialog the receiver is <code>Mob</code> and the method name is <code>_on_visible_on_screen_notifier_2d_screen_exited</code>, i.e. the function you just pasted. Click <kbd class="ui">Connect</kbd>. A green icon appears next to the signal and next to the function.</li>
+    <li><strong>Save and test.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd>, then <kbd>F6</kbd>. A window opens with a creature at the top-left corner, animating slowly and not moving (nothing has given it a velocity yet). Close the window and press <kbd>F6</kbd> three or four more times: the animation (flying / swimming / walking) differs between runs.</li>
+  </ol>
+
+  <div class="callout docs"><span class="callout-title">Signal connection #2 in code (explained both ways)</span>
+    <p>The equivalent code line, if you had no editor button, would be in <code>_ready()</code> of <code>Mob</code>: <code>$VisibleOnScreenNotifier2D.screen_exited.connect(_on_visible_on_screen_notifier_2d_screen_exited)</code>. You do <em>not</em> add it now (it would double-connect). Notice the naming scheme the editor uses for the receiver: <code>_on_</code> + node name in snake case + <code>_</code> + signal name. Keeping that scheme makes code easy to scan.</p></div>
+
+  <div class="checkpoint"><p>F6 on <code>mob.tscn</code>: a creature appears, its animation changes between runs (fly, swim, walk), there are no errors, and the mob does not fall. <em>If it falls down</em>: <code>Gravity Scale</code> is not 0. <em>If the Debugger shows an error mentioning <code>get_animation_names</code> on a <code>null</code>/<code>Nil</code> value</em>, the <code>AnimatedSprite2D</code> has no <code>SpriteFrames</code> resource. <em>If the same animation always plays</em>, you may have only built one animation or <code>mob_types</code> holds one name.</p></div>
+
+  <h2 id="build-4">Block 5: The Main scene</h2>
+  <p><code>Main</code> brings it all together: it instances the player, owns three timers (spawn rhythm, scoring, start delay), knows where the player starts, and owns the path that mobs spawn on. Tomorrow it also instances the HUD.</p>
+  <ol class="steps">
+    <li><strong>Create the scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>. In the Scene dock click <kbd class="ui">Other Node</kbd>, search <code>Node</code>, select the plain <kbd class="ui">Node</kbd> at the top of the results (not Node2D), click <kbd class="ui">Create</kbd>. Rename it <code>Main</code> (<kbd>F2</kbd>) and save as <code>res://main.tscn</code>.</li>
+    <li><strong>Instance the player.</strong> With <code>Main</code> selected click the <strong>chain-link</strong> icon at the top of the Scene dock (<kbd class="ui">Instantiate Child Scene</kbd>). In the dialog double-click <code>player.tscn</code>. A node named <code>Player</code> appears under <code>Main</code>, drawn with a "scene" icon (a clapperboard). If it appeared under the wrong node, drag it onto <code>Main</code>.</li>
+    <li><strong>Add the MobTimer.</strong> Select <code>Main</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>Timer</code>, select <kbd class="ui">Timer</kbd>, click <kbd class="ui">Create</kbd>. Rename it <code>MobTimer</code>. In the Inspector set <kbd class="ui">Wait Time</kbd> (<code>wait_time</code>) to <code>0.5</code>. It will spawn a mob every half second.</li>
+    <li><strong>Add the ScoreTimer.</strong> Select <code>Main</code> again, add another <code>Timer</code>, rename it <code>ScoreTimer</code>, set <kbd class="ui">Wait Time</kbd> to <code>1</code>. It will add one point per second survived.</li>
+    <li><strong>Add the StartTimer.</strong> Select <code>Main</code>, add a third <code>Timer</code>, rename it <code>StartTimer</code>, set <kbd class="ui">Wait Time</kbd> to <code>2</code>, and tick <kbd class="ui">One Shot</kbd> (<code>one_shot</code>) so it fires once and stops. It gives the player a 2-second head start before the other two timers begin. Leave <kbd class="ui">Autostart</kbd> off on all three timers: code will start them.</li>
+    <li><strong>Add the start marker.</strong> Select <code>Main</code>, add a <code>Marker2D</code>, rename it <code>StartPosition</code>. In the Inspector set <kbd class="ui">Transform &gt; Position</kbd> to <code>240</code> and <code>450</code>. A Marker2D is just a position you can see and move in the editor; here it marks where the player starts (bottom-middle of the 480x720 field).</li>
+    <li><strong>Add the path node.</strong> Select <code>Main</code>, add a <code>Path2D</code>, rename it <code>MobPath</code>. When it is selected, a new group of buttons appears in the viewport toolbar: <kbd class="ui">Select Points</kbd>, <kbd class="ui">Add Point</kbd>, <kbd class="ui">Delete Point</kbd>, <kbd class="ui">Close Curve</kbd> and an options menu. Make sure its <kbd class="ui">Position</kbd> is <code>(0, 0)</code>.</li>
+    <li><strong>Frame the play field.</strong> You need to see the whole indigo rectangle (the 480x720 game window outline) in the viewport. Use the mouse wheel to zoom out, or the zoom buttons in the viewport corner, until the rectangle is fully visible with some margin. Drag with the middle mouse button (or hold <kbd>Space</kbd> and drag) to pan.</li>
+    <li><strong>Turn on snapping.</strong> In the viewport toolbar enable <kbd class="ui">Use Grid Snap</kbd> and <kbd class="ui">Use Smart Snap</kbd> (the magnet and the dotted-line icons just left of the lock icon; hover to read the tooltips). With snapping on, the points you click jump to the 8-pixel grid, so the corners land exactly on the window corners.</li>
+    <li><strong>Draw the path clockwise.</strong> Select <code>MobPath</code>, click <kbd class="ui">Add Point</kbd> (the middle button), then click, in this order: <strong>1</strong> top-left corner of the indigo rectangle, <strong>2</strong> top-right, <strong>3</strong> bottom-right, <strong>4</strong> bottom-left. A line connects them as you go. Remember the ASCII diagram: right along the top, down the right side, left along the bottom, up the left side.</li>
+    <li><strong>Close the curve.</strong> Click <kbd class="ui">Close Curve</kbd>. A fifth line appears from point 4 back to point 1, completing the rectangle. Then press <kbd>Q</kbd> (Select mode) so a stray click does not add another point.</li>
+    <li><strong>Add the follower.</strong> Select <code>MobPath</code> (not Main), press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>PathFollow2D</code>, click <kbd class="ui">Create</kbd>. Rename it <code>MobSpawnLocation</code>. It must be a <em>child</em> of <code>MobPath</code>. The script will move it around the path.</li>
+    <li><strong>Save.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+  </ol>
+
+  <pre class="scene-tree">Main (Node)                     [main.gd - added below]
+├── Player                      (instance of player.tscn)
+├── MobTimer (Timer)            Wait Time 0.5
+├── ScoreTimer (Timer)          Wait Time 1
+├── StartTimer (Timer)          Wait Time 2, One Shot on
+├── StartPosition (Marker2D)    Position (240, 450)
+└── MobPath (Path2D)            clockwise rectangle around the window
+    └── MobSpawnLocation (PathFollow2D)</pre>
+
+  <div class="checkpoint"><p>The Scene dock matches the tree above. In the viewport a closed rectangle coincides with the indigo window outline (corners within a few pixels is fine). <em>If the rectangle is open on one side</em> you forgot <kbd class="ui">Close Curve</kbd>: select <code>MobPath</code> and click it now. <em>If you drew the points in the wrong order</em> (counter-clockwise), the quickest fix is to select <code>MobPath</code>, press <kbd>Delete</kbd> (its <code>MobSpawnLocation</code> child goes with it), add a new <code>Path2D</code> named <code>MobPath</code>, redraw the four points clockwise, close the curve and add the <code>PathFollow2D</code> again. The direction matters.</p></div>
+
+  <h3>main.gd</h3>
+  <p>This script is the game director. Read the comments in the listing: they mark the two <em>Day 3 only</em> pieces (auto-start and "press Enter to restart") that you will delete tomorrow when the HUD takes over. Everything else stays.</p>
+  <ol class="steps">
+    <li><strong>Attach the script.</strong> Right-click <code>Main</code> &gt; <kbd class="ui">Attach Script</kbd>, <kbd class="ui">Path</kbd> = <code>res://main.gd</code>, <kbd class="ui">Create</kbd>. Select all and replace with the listing, then <kbd>Ctrl</kbd>+<kbd>S</kbd>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://main.gd">
+extends Node
+
+## Mob speed range in pixels per second.
+const SPEED_MIN: float = 150.0
+const SPEED_MAX: float = 250.0
+
+## The mob scene to spawn. Assigned in the Inspector.
+@export var mob_scene: PackedScene
+
+var score: int = 0
+
+var _running: bool = false
+
+@onready var _player: Player = $Player
+@onready var _mob_timer: Timer = $MobTimer
+@onready var _score_timer: Timer = $ScoreTimer
+@onready var _start_timer: Timer = $StartTimer
+@onready var _start_position: Marker2D = $StartPosition
+@onready var _spawn_location: PathFollow2D = $MobPath/MobSpawnLocation
+
+
+func _ready() -> void:
+    # DAY 3 ONLY: start immediately. Day 4 replaces this with the HUD's Start button.
+    new_game()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+    # DAY 3 ONLY: there is no HUD yet, so Enter or Space restarts after a game over.
+    if not _running and event.is_action_pressed("ui_accept"):
+        new_game()
+
+
+func new_game() -> void:
+    _running = true
+    score = 0
+    _player.start(_start_position.position)
+    _start_timer.start()
+
+
+func game_over() -> void:
+    _running = false
+    _score_timer.stop()
+    _mob_timer.stop()
+    print("Game over. Score: ", score)
+
+
+func _on_start_timer_timeout() -> void:
+    _mob_timer.start()
+    _score_timer.start()
+
+
+func _on_score_timer_timeout() -> void:
+    score += 1
+
+
+func _on_mob_timer_timeout() -> void:
+    var mob := mob_scene.instantiate() as Mob
+
+    # Pick a random point on the path. Its rotation follows the path direction.
+    _spawn_location.progress_ratio = randf()
+    mob.position = _spawn_location.position
+
+    # Perpendicular to the (clockwise) path = pointing into the screen.
+    var direction: float = _spawn_location.rotation + PI / 2.0
+    # A little randomness so the mobs do not all fly perfectly straight in.
+    direction += randf_range(-PI / 4.0, PI / 4.0)
+    mob.rotation = direction
+
+    var velocity := Vector2(randf_range(SPEED_MIN, SPEED_MAX), 0.0)
+    mob.linear_velocity = velocity.rotated(direction)
+
+    add_child(mob)
+      </script>
+    </li>
+    <li><strong>Return to 2D.</strong> Click <kbd class="ui">2D</kbd> (Workspace buttons).</li>
+    <li><strong>Assign the mob scene.</strong> Click <code>Main</code> in the Scene dock. In the Inspector find <kbd class="ui">Mob Scene</kbd> (under the <code>Main</code> script section; it shows <code>[empty]</code>). Drag <code>mob.tscn</code> from the FileSystem dock onto that field and release. Alternative: click the small dropdown arrow on the field, choose <kbd class="ui">Quick Load</kbd> and double-click <code>mob.tscn</code>. Forgetting this gives a <code>null</code> error the moment the first mob spawns.</li>
+  </ol>
+
+  <div class="callout note"><span class="callout-title">Why <code>@export var mob_scene: PackedScene</code> and not <code>preload</code>?</span>
+    <p>Both work. An export lets you swap the scene in the Inspector (for example to test a different mob) and shows the dependency visibly in the editor. <code>preload("res://mob.tscn")</code> is shorter and fine when you never swap. The course uses exports for scenes a script instantiates, as the official tutorial does.</p></div>
+
+  <h3>Wire the signals</h3>
+  <p>The script has four handler functions waiting for a connection: <code>game_over</code> (from the player's <code>hit</code>) and the three <code>_on_..._timeout</code> functions. Connection #3 is the player's <code>hit</code> signal. This one you see both ways again, because the receiver is <em>a different node's script</em> (<code>Main</code> listens to a child instance).</p>
+  <ol class="steps">
+    <li><strong>Select the player instance.</strong> In the Scene dock click the <code>Player</code> node under <code>Main</code>.</li>
+    <li><strong>Open its signals.</strong> <kbd class="ui">Node</kbd> tab &gt; <kbd class="ui">Signals</kbd>. At the top, under the heading showing <code>Player</code>, find <code>hit()</code> (your custom signal).</li>
+    <li><strong>Connect it to Main.</strong> Double-click <code>hit()</code>. In the dialog, the tree at the top shows the scene; make sure <code>Main</code> is highlighted as the receiver. Click into the <kbd class="ui">Receiver Method</kbd> box at the bottom, delete the suggested name and type <code>game_over</code>. Click <kbd class="ui">Connect</kbd>. A green icon appears on the signal and next to <code>func game_over</code> in <code>main.gd</code>. The player now announces its death to <code>Main</code> and to nobody else.</li>
+    <li><strong>Connect <code>StartTimer</code>.</strong> Click <code>StartTimer</code>, <kbd class="ui">Node</kbd> tab &gt; <kbd class="ui">Signals</kbd>, double-click <code>timeout()</code>, check that the method is <code>_on_start_timer_timeout</code> and the receiver is <code>Main</code>, click <kbd class="ui">Connect</kbd>.</li>
+    <li><strong>Connect <code>ScoreTimer</code>.</strong> Same: click <code>ScoreTimer</code>, double-click <code>timeout()</code>, method <code>_on_score_timer_timeout</code>, <kbd class="ui">Connect</kbd>.</li>
+    <li><strong>Connect <code>MobTimer</code>.</strong> Same: <code>MobTimer</code>, <code>timeout()</code>, method <code>_on_mob_timer_timeout</code>, <kbd class="ui">Connect</kbd>.</li>
+    <li><strong>Verify all four.</strong> Open <code>main.gd</code>: green icons sit in the gutter beside <code>game_over</code>, <code>_on_start_timer_timeout</code>, <code>_on_score_timer_timeout</code> and <code>_on_mob_timer_timeout</code>. Back in the 2D workspace press <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+  </ol>
+  <div class="callout docs"><span class="callout-title">Signal connection #3 in code (explained both ways)</span>
+    <p>Connecting a child's signal from the parent in code reads naturally in <code>main.gd</code>'s <code>_ready()</code>:</p>
+    <script type="text/x-code" data-lang="gdscript" data-file="alternative - do NOT add it as well">
+func _ready() -> void:
+    _player.hit.connect(game_over)
+    _start_timer.timeout.connect(_on_start_timer_timeout)
+    </script>
+    <p>From now on the course shows only the shortest working way for each connection and tells you which node, signal and function to use. For nodes that already exist in the scene, selecting the node and double-clicking the signal in the Node tab is shortest.</p></div>
+
+  <h3>First real run</h3>
+  <ol class="steps">
+    <li><strong>Press F5.</strong> In the top-right <strong>Play buttons</strong> click <kbd class="ui">Run Project</kbd> (or press <kbd>F5</kbd>). Because no main scene is defined yet, Godot asks whether to select one: click <kbd class="ui">Select Current</kbd> (the open scene is <code>main.tscn</code>). If you are not offered that, use the FileSystem dock instead: right-click <code>main.tscn</code> &gt; <kbd class="ui">Set As Main Scene</kbd>, or set <kbd class="menu">Project &gt; Project Settings &gt; Application &gt; Run &gt; Main Scene</kbd>.</li>
+    <li><strong>Play.</strong> The 480x720 window opens, the player appears at the bottom-middle, and two seconds later creeps start flying in from the edges. Dodge them with the arrow keys or WASD.</li>
+    <li><strong>Die.</strong> Let a creep touch you. The player vanishes, mobs stop spawning, and the <strong>Output panel</strong> (Bottom panel) prints <code>Game over. Score: N</code>, where <code>N</code> is the number of seconds you survived.</li>
+    <li><strong>Restart.</strong> Click the game window and press <kbd>Enter</kbd> or <kbd>Space</kbd>. The player reappears and a new run starts. Old creeps from the previous run may still be flying across the field. That is a known gap that tomorrow's <code>mobs</code> group fixes.</li>
+    <li><strong>See the hitboxes (debug tip).</strong> Stop the game (<kbd>F8</kbd>). In the Menu bar enable <kbd class="menu">Debug &gt; Visible Collision Shapes</kbd>, press <kbd>F5</kbd> again, and watch the translucent capsules while you play. Close to a mob you can see exactly why you died. Turn the option off again when you are done: it is a debug view only, and leaving it on makes later playtests look cluttered.</li>
+    <li><strong>Experiment (2 minutes).</strong> Select <code>MobTimer</code> and change <kbd class="ui">Wait Time</kbd> to <code>0.2</code>, press <kbd>F5</kbd>: a swarm. Change it back to <code>0.5</code>. Then select <code>Player</code> and try <kbd class="ui">Speed</kbd> = 600 in the Inspector. Change it back to 400. Tomorrow the game adjusts the spawn rate itself.</li>
+  </ol>
+
+  <div class="checkpoint"><p>You can move in 8 directions, creeps spawn from all four edges and fly inward, the animation flips correctly, touching a creep makes the player vanish and prints <code>Game over. Score: N</code>, and <kbd>Enter</kbd> restarts. <em>If no creeps appear:</em> <code>Mob Scene</code> is empty (<code>null</code> error in the Debugger), or you did not connect <code>StartTimer.timeout</code>. <em>If creeps fly out of the screen instead of in:</em> the path was drawn counter-clockwise. <em>If you never die:</em> check the layer/mask table (<code>Player</code> Mask must tick 3; <code>Mob</code> Layer must be 3 only) and that the player's <code>body_entered</code> signal shows a green icon. <em>If the editor says "Cannot call method 'instantiate' on a null value":</em> same as the first case.</p></div>
+
+  <h3>Read it back: the whole loop in one minute</h3>
+  <p>Understanding this flow is more valuable than memorizing any line. When the game starts (or restarts), <code>new_game()</code> resets the score, moves the (hidden) player to <code>StartPosition</code> and shows it, and starts <code>StartTimer</code>. Two seconds later <code>StartTimer.timeout</code> starts <code>MobTimer</code> and <code>ScoreTimer</code>. Every 0.5 s <code>MobTimer.timeout</code> runs <code>_on_mob_timer_timeout()</code>, which instantiates a mob, parks the follower at a random path position, aims the mob inwards and gives it a velocity. Every second <code>ScoreTimer.timeout</code> adds a point. When a mob's body overlaps the player's capsule, <code>Player._on_body_entered()</code> hides the player, emits <code>hit</code> and defers the shape's removal; <code>Main.game_over()</code> stops both timers. A mob that flies off-screen triggers <code>screen_exited</code> and removes itself.</p>
+  <table>
+    <thead><tr><th>Emitter</th><th>Signal</th><th>Receiver</th><th>Handler</th><th>Connected in</th></tr></thead>
+    <tbody>
+      <tr><td><code>Player</code> (Area2D)</td><td><code>body_entered</code></td><td><code>Player</code></td><td><code>_on_body_entered</code></td><td>player.tscn</td></tr>
+      <tr><td><code>VisibleOnScreenNotifier2D</code></td><td><code>screen_exited</code></td><td><code>Mob</code></td><td><code>_on_visible_on_screen_notifier_2d_screen_exited</code></td><td>mob.tscn</td></tr>
+      <tr><td><code>Player</code></td><td><code>hit</code> (custom)</td><td><code>Main</code></td><td><code>game_over</code></td><td>main.tscn</td></tr>
+      <tr><td><code>StartTimer</code></td><td><code>timeout</code></td><td><code>Main</code></td><td><code>_on_start_timer_timeout</code></td><td>main.tscn</td></tr>
+      <tr><td><code>ScoreTimer</code></td><td><code>timeout</code></td><td><code>Main</code></td><td><code>_on_score_timer_timeout</code></td><td>main.tscn</td></tr>
+      <tr><td><code>MobTimer</code></td><td><code>timeout</code></td><td><code>Main</code></td><td><code>_on_mob_timer_timeout</code></td><td>main.tscn</td></tr>
+    </tbody>
+  </table>
+  <div class="callout tip"><span class="callout-title">Design note: "call down, signal up"</span>
+    <p>Notice the direction of communication. <code>Main</code> (the parent) <em>calls</em> methods on its child: <code>_player.start(...)</code>. The child <code>Player</code> never reaches up to call <code>Main</code>; it <em>emits a signal</em> and whoever cares connects. That one rule keeps scenes reusable and testable on their own (you ran <code>player.tscn</code> and <code>mob.tscn</code> alone with F6 today, and nothing broke because they do not depend on <code>Main</code>).</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Pressing F5/F6 with unsaved scenes.</strong> Godot normally saves for you when you run, but a script edited in the Script workspace and not saved, or a scene tab with a <code>(*)</code> in its title, is a classic reason for "my change does nothing". <kbd>Ctrl</kbd>+<kbd>S</kbd> in the right place.</li>
+    <li><strong>A node name that does not match <code>$Path</code>.</strong> If you rename <code>AnimatedSprite2D</code>, <code>MobTimer</code> or <code>StartPosition</code> in the Scene dock, <code>$AnimatedSprite2D</code>/<code>$MobTimer</code>/<code>$StartPosition</code> become <code>null</code> and the game crashes with "Invalid access" or "on a null value". The editor will not warn you. Rename the node back, or change both.</li>
+    <li><strong>Adding a node to the wrong parent.</strong> New nodes become children of whatever is <em>selected</em>. If you added <code>CollisionShape2D</code> while <code>AnimatedSprite2D</code> was selected, it is nested under the sprite and gets scaled by 0.5. Drag it in the Scene dock back onto <code>Player</code>.</li>
+    <li><strong>Collision layer and mask mismatch.</strong> Mobs that pass through the player without effect: the player's <code>Mask</code> must include 3 and the mob's <code>Layer</code> must be 3. A mob that bounces off nothing but also never reports: the same pair. Rule of thumb: when a collision does not happen, open both objects' <kbd class="ui">Collision</kbd> grids and read them out loud as sentences ("The player looks at layer 3; the mob lives on layer 3").</li>
+    <li><strong>Disabling the collision shape directly inside the callback.</strong> <code>_shape.disabled = true</code> inside <code>_on_body_entered</code> can produce "Can't change this state while flushing queries" errors. Use <code>set_deferred("disabled", true)</code>.</li>
+    <li><strong>The path drawn counter-clockwise.</strong> Mobs fly away from the play field immediately. The code is right; the path direction is wrong.</li>
+    <li><strong>Connecting a signal twice.</strong> Using the Node tab <em>and</em> <code>.connect()</code> in code for the same signal and function. Symptom: an error "already connected" or a handler running twice (score +2 per second).</li>
+    <li><strong>Tabs in a script.</strong> If you paste a listing and the editor shows "Mixed use of tabs and spaces" or the indentation looks wrong, check <kbd class="menu">Editor &gt; Editor Settings &gt; Text Editor &gt; Behavior &gt; Indent &gt; Type</kbd> is Spaces. Select the file contents and use <kbd class="menu">Edit &gt; Convert Indent to Spaces</kbd> in the Script workspace (<kbd class="ui">Edit</kbd> menu above the code).</li>
+    <li><strong>Forgetting to set the main scene.</strong> F5 asks which scene to run; picking the wrong one (for example <code>player.tscn</code>) gives an empty window. Right-click <code>main.tscn</code> &gt; <kbd class="ui">Set As Main Scene</kbd>.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 20-30 min)</h2>
+  <div class="challenge">
+    <h3>Make the creeps vary, and make the game fairer</h3>
+    <p>Do any two of these. Only build on top of the Day 3 end state, and save a copy of the project folder first so you can restore it before Day 4 (Day 4 assumes the listings on this page).</p>
+    <ul>
+      <li><strong>Random size.</strong> Each spawned mob gets a random scale between 0.8 and 1.3 so the swarm is not uniform. <em>Hint:</em> in <code>_on_mob_timer_timeout()</code> set <code>mob.scale = Vector2.ONE * randf_range(0.8, 1.3)</code> before <code>add_child(mob)</code>. Scaling the root scales its collision shape and sprite together, which is why this is easier than scaling only the sprite. Check with <kbd class="menu">Debug &gt; Visible Collision Shapes</kbd> that the hitboxes grew too.</li>
+      <li><strong>Invulnerability grace.</strong> The player should not die in the first 0.5 s after <code>start()</code>. <em>Hint:</em> keep <code>_shape.disabled = true</code> for 0.5 s using <code>await get_tree().create_timer(0.5).timeout</code> inside <code>start()</code>, then set it to false; make sure <code>set_deferred</code> is used where the physics callback is involved.</li>
+      <li><strong>Edge-biased spawning.</strong> Spawn twice as many mobs from the top than from the sides. <em>Hint:</em> <code>progress_ratio</code> maps the whole perimeter (the top edge is the first 480 of 1800 pixels, about 0.27 of it). Think about how to pick the ratio from a weighted range.</li>
+      <li><strong>Debug text.</strong> Print how many mobs are alive every second with <code>get_child_count()</code> and confirm the number stays bounded (proof that <code>screen_exited</code> cleanup works).</li>
+    </ul>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>The player's <code>Area2D</code> has <kbd class="ui">Layer</kbd> = 2 and <kbd class="ui">Mask</kbd> = 3. A mob has <kbd class="ui">Layer</kbd> = 3 and an empty <kbd class="ui">Mask</kbd>. What happens when they overlap?</p>
+      <ul><li>Nothing: both need the other's layer in their mask</li><li>The player's <code>body_entered</code> fires; the mob does not react to the player</li><li>Both fire their signals</li><li>The mob is pushed away by the player</li></ul>
+      <p class="explain">Detection is one-directional: object A notices B when B's layer is in A's mask. The player's mask contains 3 (the mob's layer), so it notices the mob. The mob's mask is empty, so it notices nothing, which is also why mobs pass through each other.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>Why does <code>_on_body_entered</code> use <code>_shape.set_deferred("disabled", true)</code> rather than <code>_shape.disabled = true</code>?</p>
+      <ul><li>Because <code>disabled</code> is a read-only property</li><li>To make the shape disappear one second later for a visual effect</li><li>Because physics state cannot be changed while the engine is in the middle of processing collisions; deferring runs it safely at the end of the frame</li><li>Because it makes the signal fire only once per mob</li></ul>
+      <p class="explain">The callback runs inside the physics step. Changing monitoring or shape state there is unsafe, so <code>set_deferred()</code> queues the change for a safe moment. The effect (no more hits after the first) is a side effect of disabling the shape, not the reason for deferring.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>You draw <code>MobPath</code> counter-clockwise by mistake. The spawner code is unchanged (<code>direction = spawn.rotation + PI / 2.0</code>). What do you see?</p>
+      <ul><li>Mobs spawn on the edges but fly outwards, off the screen</li><li>The game crashes with a null error</li><li>Nothing changes: PathFollow2D ignores the order of points</li><li>Mobs spawn only on the top edge</li></ul>
+      <p class="explain"><code>PathFollow2D.rotation</code> follows the direction of travel of the curve. Reversing the order reverses the tangent, so adding PI / 2 (a 90° clockwise turn) now points away from the play field. Same formula, opposite direction.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>What does <code>Input.get_vector("move_left", "move_right", "move_up", "move_down")</code> give you for free compared with four <code>is_action_pressed()</code> checks?</p>
+      <ul><li>It makes the player move faster</li><li>It automatically clamps the position to the screen</li><li>It plays the correct animation</li><li>A single direction vector that is already limited to length 1 (so diagonals are not faster) and works with analog sticks</li></ul>
+      <p class="explain">It combines the actions into one <code>Vector2</code> with a circular dead zone and a maximum length of 1. Clamping to the screen is done separately with <code>position.clamp()</code>, and animation selection is custom code.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>A mob script says <code>_sprite.play(mob_types.pick_random())</code>. Where do the names it picks from come from?</p>
+      <ul><li>From a hard-coded list in <code>main.gd</code></li><li>From the <code>SpriteFrames</code> resource of the AnimatedSprite2D: <code>get_animation_names()</code> lists the animations you created (fly, swim, walk)</li><li>From the file names in <code>art/</code></li><li>From the Input Map</li></ul>
+      <p class="explain"><code>SpriteFrames</code> is a resource holding named animations. Reading its names at runtime means that adding a fourth animation in the editor makes the mob use it without touching the script.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/getting_started/first_2d_game/index.html" target="_blank" rel="noopener">Your first 2D game</a>: the official Dodge the Creeps tutorial this game is based on; compare its structure with today's.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/physics/physics_introduction.html" target="_blank" rel="noopener">Physics introduction</a>: the collision layers and masks section and the difference between the body types.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_area2d.html" target="_blank" rel="noopener">Area2D</a>: <code>body_entered</code> and the other overlap signals.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_rigidbody2d.html" target="_blank" rel="noopener">RigidBody2D</a>: <code>gravity_scale</code>, <code>linear_velocity</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_pathfollow2d.html" target="_blank" rel="noopener">PathFollow2D</a>: <code>progress</code>, <code>progress_ratio</code>, <code>rotates</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_visibleonscreennotifier2d.html" target="_blank" rel="noopener">VisibleOnScreenNotifier2D</a>: <code>screen_exited</code> and the notifier rectangle.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/inputs/input_examples.html" target="_blank" rel="noopener">Input examples</a>: <code>Input.get_vector()</code> and the other ways to read input.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li><kbd>F5</kbd> runs <code>main.tscn</code>: the player appears, creeps spawn from all four edges and fly inwards, and no red errors appear in the Output panel.</li>
+    <li>Touching a creep hides the player and prints <code>Game over. Score: N</code>; <kbd>Enter</kbd>/<kbd>Space</kbd> starts a new run.</li>
+    <li>The player has Layer 2 / Mask 3 and the mob has Layer 3 / empty Mask (check both in the Inspector, not from memory).</li>
+    <li>All six signal connections show green icons (player body_entered, notifier screen_exited, hit, three timeouts) and none is connected twice.</li>
+    <li>I backed up <code>C:\GodotProjects\g01-dodger</code> (right-click the folder in Explorer &gt; Compress to ZIP file, or run <code>git init</code> and commit if you use Git). Day 4 builds directly on this state.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> Day 4 gives Dodger a proper UI with anchors and containers, adds juice (tweens, a particle trail, screen shake, music and sound), a difficulty ramp, a saved high score and a pause, and ends with your first Windows .exe.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

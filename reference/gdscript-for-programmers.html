@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GDScript for programmers | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="reference" data-id="gdscript-for-programmers" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Reference · Language</div>
+    <h1>GDScript for programmers</h1>
+    <p class="lead">The whole language on one page, written for someone who already codes. Side-by-side comparisons with Python, JavaScript/TypeScript, C# and Lua, the gotchas that bite newcomers, and complete runnable snippets. Everything is checked against the GDScript reference and the <code>@GDScript</code> / <code>@GlobalScope</code> class pages.</p>
+    <div class="chips"><span class="chip blue">Reference</span><span class="chip green">Godot 4.x</span><span class="chip">Typed GDScript</span></div>
+  </header>
+
+  <div class="callout version"><span class="callout-title">Version notes used on this page</span>
+    <p>Typed dictionaries (<code>Dictionary[String, int]</code>) need <strong>4.4</strong>. Variadic functions (<code>...args</code>) and <code>@abstract</code> need <strong>4.5</strong>. <code>@export_tool_button</code> needs 4.4 or later (check the class reference of your version). The course prefers APIs available since 4.3; everything that is newer is marked below. On an older editor, skip those lines.</p></div>
+
+  <div class="callout tip"><span class="callout-title">How to run any snippet</span>
+    <p>Create a project, add a <code>Node</code> as the root of a scene, right-click it in the <strong>Scene</strong> dock &rarr; <kbd class="ui">Attach Script</kbd>, press <kbd>Ctrl</kbd>+<kbd>A</kbd> in the script editor and paste the listing over the whole file, save, then press <kbd>F6</kbd> (Run Current Scene). Output appears in the <strong>Output</strong> panel at the bottom. All listings use 4 spaces for indentation (set <kbd class="menu">Editor &gt; Editor Settings &gt; Text Editor &gt; Behavior &gt; Indent &gt; Type</kbd> to Spaces).</p></div>
+
+  <h2 id="cheat-table">1. The one-table translation</h2>
+  <p>If you only read one section, read this one. GDScript is whitespace-indented, dynamically typed by default and optionally statically typed (use the typed form: it is faster and catches bugs).</p>
+  <table>
+    <tr><th>Concept</th><th>GDScript</th><th>Python</th><th>JavaScript / TypeScript</th><th>C#</th><th>Lua</th></tr>
+    <tr><td>Variable</td><td><code>var hp: int = 10</code> or <code>var hp := 10</code></td><td><code>hp = 10</code></td><td><code>let hp = 10</code></td><td><code>int hp = 10;</code> / <code>var</code></td><td><code>local hp = 10</code></td></tr>
+    <tr><td>Constant</td><td><code>const MAX_HP = 100</code> (compile-time value only)</td><td><code>MAX_HP = 100</code> (convention)</td><td><code>const</code></td><td><code>const int</code></td><td><code>local x &lt;const&gt; = 1</code></td></tr>
+    <tr><td>Function</td><td><code>func add(a: int, b: int) -&gt; int:</code></td><td><code>def add(a, b):</code></td><td><code>function add(a, b) {}</code></td><td><code>int Add(int a, int b)</code></td><td><code>function add(a, b)</code></td></tr>
+    <tr><td>Null</td><td><code>null</code></td><td><code>None</code></td><td><code>null</code> / <code>undefined</code></td><td><code>null</code></td><td><code>nil</code></td></tr>
+    <tr><td>Boolean ops</td><td><code>and</code> <code>or</code> <code>not</code> (<code>&amp;&amp; || !</code> also work, but the words are recommended)</td><td>same words</td><td><code>&amp;&amp; || !</code></td><td><code>&amp;&amp; || !</code></td><td>same words</td></tr>
+    <tr><td>Not equal</td><td><code>!=</code></td><td><code>!=</code></td><td><code>!==</code></td><td><code>!=</code></td><td><code>~=</code></td></tr>
+    <tr><td>Ternary</td><td><code>a if cond else b</code></td><td>same</td><td><code>cond ? a : b</code></td><td><code>cond ? a : b</code></td><td><code>cond and a or b</code></td></tr>
+    <tr><td>Integer division</td><td><code>7 / 2 == 3</code> (both ints: truncates!)</td><td><code>7 // 2</code> (and <code>/</code> is float)</td><td><code>Math.trunc(7 / 2)</code></td><td><code>7 / 2 == 3</code> (same as GDScript)</td><td><code>7 // 2</code></td></tr>
+    <tr><td>Power</td><td><code>x ** y</code> (left-associative)</td><td><code>x ** y</code> (right-assoc.)</td><td><code>x ** y</code></td><td><code>Math.Pow(x, y)</code></td><td><code>x ^ y</code></td></tr>
+    <tr><td>String concat / format</td><td><code>"a" + str(n)</code> / <code>"%d items" % n</code> / <code>"{n}".format({"n": 1})</code></td><td>f-strings</td><td>template literals</td><td><code>$"{n}"</code></td><td><code>"a" .. n</code></td></tr>
+    <tr><td>List / dict</td><td><code>[1, 2]</code> (Array), <code>{"a": 1}</code> (Dictionary)</td><td><code>list</code>, <code>dict</code></td><td>Array, Object/Map</td><td><code>List&lt;T&gt;</code>, <code>Dictionary&lt;K,V&gt;</code></td><td>tables</td></tr>
+    <tr><td>Count-loop / for-each</td><td><code>for i in range(n):</code> / <code>for x in arr:</code></td><td>same</td><td><code>for (...)</code> / <code>for (const x of arr)</code></td><td><code>for</code> / <code>foreach</code></td><td><code>for i=1,n</code> / <code>for _,x in ipairs(t)</code></td></tr>
+    <tr><td>Switch</td><td><code>match x:</code> with patterns</td><td><code>match</code> (3.10+)</td><td><code>switch</code></td><td><code>switch</code> expression</td><td>if-chain</td></tr>
+    <tr><td>Class</td><td>the <em>file</em> is a class; <code>class_name Foo</code> registers it globally</td><td><code>class Foo:</code></td><td><code>class Foo {}</code></td><td><code>class Foo</code></td><td>table + metatable</td></tr>
+    <tr><td>Inherit / base call</td><td><code>extends Base</code> / <code>super()</code>, <code>super.method()</code></td><td><code>class Foo(Base)</code> / <code>super()</code></td><td><code>extends</code> / <code>super</code></td><td><code>: Base</code> / <code>base</code></td><td>setmetatable</td></tr>
+    <tr><td>Constructor</td><td><code>func _init(args):</code></td><td><code>__init__</code></td><td><code>constructor</code></td><td>constructor</td><td><code>new</code> by convention</td></tr>
+    <tr><td>Private</td><td><code>_name</code> by convention (not enforced)</td><td><code>_name</code></td><td><code>#name</code></td><td><code>private</code></td><td>closure / <code>_name</code></td></tr>
+    <tr><td>Event</td><td><code>signal hit(damage: int)</code>, <code>hit.emit(5)</code>, <code>hit.connect(callable)</code></td><td>-</td><td>EventTarget / emitter</td><td><code>event</code> / delegate</td><td>-</td></tr>
+    <tr><td>Lambda</td><td><code>func(x): return x * 2</code> (a Callable)</td><td><code>lambda x: x * 2</code></td><td><code>x =&gt; x * 2</code></td><td><code>x =&gt; x * 2</code></td><td><code>function(x) return x*2 end</code></td></tr>
+    <tr><td>Async</td><td><code>await signal_or_coroutine</code></td><td><code>await</code></td><td><code>await</code></td><td><code>await</code></td><td>coroutines</td></tr>
+    <tr><td>Type test</td><td><code>x is Node</code>, <code>x is not Node</code></td><td><code>isinstance</code></td><td><code>instanceof</code></td><td><code>is</code></td><td><code>type()</code></td></tr>
+    <tr><td>Null-safe access</td><td>none: no <code>?.</code>. Check <code>if node != null</code> or <code>is_instance_valid(node)</code></td><td>-</td><td><code>?.</code></td><td><code>?.</code></td><td>-</td></tr>
+    <tr><td>Exceptions</td><td>none: no <code>try/catch</code>. Errors print and the function returns (see Troubleshooting); validate inputs and check return codes</td><td><code>try/except</code></td><td><code>try/catch</code></td><td><code>try/catch</code></td><td><code>pcall</code></td></tr>
+  </table>
+  <div class="callout warn"><span class="callout-title">Things that do not exist</span>
+    <p>No exceptions, no operator overloading, no multiple inheritance, no generics beyond typed <code>Array[T]</code> and <code>Dictionary[K, V]</code>, no <code>?.</code>, no floor-division operator, no <code>private</code>/<code>public</code> keywords, no interfaces (use duck typing, <code>has_method()</code>, groups, or an abstract base class on 4.5+). Callables are invoked with <code>.call()</code>, not <code>()</code>.</p></div>
+
+  <h2 id="file-class">2. A file is a class</h2>
+  <p>Every <code>.gd</code> file is a class that implicitly extends <code>RefCounted</code> unless you write <code>extends</code>. A script attached to a node <em>is</em> that node's behaviour: the node is an instance of the script class. A script can be referenced by path (<code>load("res://x.gd")</code>, <code>preload(...)</code>) or, if it declares <code>class_name</code>, by a global name that is available in every other script and in the editor's "Create New Node" dialog.</p>
+  <script type="text/x-code" data-lang="gdscript" data-file="res://actors/health_pack.gd">
+@icon("res://icon.svg")
+class_name HealthPack
+extends Area2D
+## A pickup that heals the player. This doc comment shows up in the editor help.
+
+signal collected(amount: int)
+
+enum Size { SMALL, MEDIUM, LARGE }
+
+const HEAL_BY_SIZE: Dictionary = {
+    Size.SMALL: 10,
+    Size.MEDIUM: 25,
+    Size.LARGE: 50,
+}
+
+@export var pack_size: Size = Size.SMALL
+
+var _used: bool = false
+
+
+func _ready() -> void:
+    body_entered.connect(_on_body_entered)
+
+
+func heal_amount() -> int:
+    return HEAL_BY_SIZE[pack_size]
+
+
+func _on_body_entered(body: Node2D) -> void:
+    if _used or not body.is_in_group("player"):
+        return
+    _used = true
+    collected.emit(heal_amount())
+    queue_free()
+  </script>
+  <table>
+    <tr><th>Piece</th><th>Rule</th></tr>
+    <tr><td><code>extends</code></td><td>Names the base class (a native class, a <code>class_name</code>, <code>extends "res://path.gd"</code>, or an inner class). Defaults to <code>RefCounted</code>. Single inheritance only. Can be on the same line: <code>class_name MyNode extends Node</code>.</td></tr>
+    <tr><td><code>class_name</code></td><td>Registers a global type. Names must be unique in the project. Names starting with <code>Editor</code> are hidden from the node-creation dialogs.</td></tr>
+    <tr><td><code>@icon("res://path.svg")</code></td><td>Custom icon in the editor for a <code>class_name</code> script.</td></tr>
+    <tr><td><code>@tool</code></td><td>Runs the script inside the editor too. Place it first in the file. Be careful with <code>queue_free()</code> in tool scripts: it can crash the editor.</td></tr>
+    <tr><td><code>## comment</code></td><td>Documentation comment: appears in the Script help and as an Inspector tooltip when above an <code>@export</code> variable.</td></tr>
+    <tr><td><code>@abstract</code> <em>(4.5+)</em></td><td>Marks a class or method abstract. Abstract classes cannot be instantiated or attached to a node. Abstract methods have no body.</td></tr>
+    <tr><td><code>@static_unload</code></td><td>Top of file, before <code>class_name</code>: allows the script (with its static variables) to be unloaded when unused. The docs note a bug that currently prevents scripts being freed.</td></tr>
+  </table>
+  <script type="text/x-code" data-lang="gdscript" data-file="res://shapes.gd">
+extends Node
+## Inner classes, abstract methods (4.5+) and inheritance in one file.
+
+@abstract class Shape:
+    @abstract func area() -> float
+
+
+class Circle extends Shape:
+    var radius: float
+
+    func _init(r: float) -> void:
+        radius = r
+
+    func area() -> float:
+        return PI * radius * radius
+
+
+class Rect extends Shape:
+    var size: Vector2
+
+    func _init(s: Vector2) -> void:
+        size = s
+
+    func area() -> float:
+        return size.x * size.y
+
+
+func _ready() -> void:
+    var shapes: Array[Shape] = [Circle.new(2.0), Rect.new(Vector2(3, 4))]
+    for s: Shape in shapes:
+        print("area = %.2f" % s.area())
+  </script>
+  <div class="callout version"><span class="callout-title">4.5+ only</span>
+    <p>The listing above uses <code>@abstract</code>. On 4.3/4.4 remove the two <code>@abstract</code> lines and give <code>area()</code> a body such as <code>return 0.0</code>.</p></div>
+
+  <h3 id="code-order">Recommended code order (official style guide)</h3>
+  <pre class="plain">01. @tool, @icon, @static_unload
+02. class_name
+03. extends
+04. ## doc comment
+05. signals
+06. enums
+07. constants
+08. static variables
+09. @export variables
+10. remaining regular variables
+11. @onready variables
+12. _static_init()
+13. remaining static methods
+14. overridden virtual methods: _init(), _enter_tree(), _ready(), _process(), _physics_process(), others
+15. overridden custom methods
+16. remaining methods (public first, then _private)
+17. inner classes</pre>
+
+  <h2 id="syntax">3. Syntax basics</h2>
+  <ul>
+    <li><strong>Indentation</strong> defines blocks (like Python). Do not mix tabs and spaces in one file. The course uses 4 spaces. Colons end <code>if</code>, <code>for</code>, <code>while</code>, <code>match</code>, <code>func</code>, <code>class</code>.</li>
+    <li><strong>Comments</strong>: <code>#</code> to end of line; <code>##</code> documentation comments; <code>#region Name</code> / <code>#endregion</code> make foldable regions (no space after <code>#</code>).</li>
+    <li><strong>Semicolons</strong> are optional statement separators; parentheses around conditions are optional.</li>
+    <li><strong>Line continuation</strong>: a trailing <code>\</code>, or just break lines inside <code>()</code>, <code>[]</code>, <code>{}</code>.</li>
+    <li><strong>One-liners</strong>: <code>func square(a): return a * a</code>, <code>if x: return</code>.</li>
+    <li><strong>Identifiers</strong>: letters, digits, <code>_</code>; not starting with a digit; case-sensitive; most Unicode letters allowed.</li>
+    <li><strong>Literals</strong>: <code>12_345</code>, <code>0xFF</code>, <code>0b1010</code>, <code>3.14</code>, <code>5e-3</code>; strings <code>"x"</code>, <code>'x'</code>, <code>"""multi-line"""</code>, raw <code>r"C:\path"</code>; <code>&amp;"name"</code> is a StringName; <code>^"Path/To/Node"</code> is a NodePath; <code>$Path</code> and <code>%Unique</code> are node shortcuts.</li>
+    <li><strong>Escapes</strong>: <code>\n \t \r \" \' \\ \uXXXX \UXXXXXX</code>.</li>
+  </ul>
+  <h3 id="keywords">Reserved words</h3>
+  <p><code>if elif else for while match when break continue pass return class class_name extends is in as self super signal func static const enum var breakpoint preload await assert void</code> and the constants <code>PI TAU INF NAN</code>. The old coroutine keyword is still reserved but is not used: use <code>await</code>. Built-in type names and the operators <code>in</code>, <code>not</code>, <code>and</code>, <code>or</code> are reserved too.</p>
+
+  <h2 id="operators">4. Operators</h2>
+  <p>Precedence is the table order below, highest first. Every binary operator is <strong>left-associative</strong>, including <code>**</code>: <code>2 ** 2 ** 3</code> is <code>(2 ** 2) ** 3</code>, unlike Python. The ternary <code>if/else</code> is right-associative. An assignment is not an expression: you cannot write <code>if (a = b)</code> or chain <code>a = b = 1</code>.</p>
+  <table>
+    <tr><th>Operators</th><th>What a Python / JS / C# programmer should notice</th></tr>
+    <tr><td><code>()</code> <code>x[i]</code> <code>x.attr</code> <code>foo()</code></td><td>Call, index, attribute. Negative indexes work on <code>Array</code> and <code>String</code> (<code>arr[-1]</code> is the last item).</td></tr>
+    <tr><td><code>await x</code></td><td>Suspends the function. See <a href="#await">await</a>.</td></tr>
+    <tr><td><code>x is Node</code> <code>x is not Node</code></td><td>Inheritance test, like Python <code>isinstance</code> / C# <code>is</code>. Also <code>is_instance_of(x, Node)</code>.</td></tr>
+    <tr><td><code>x ** y</code></td><td>Power. Same idea as <code>pow(x, y)</code>.</td></tr>
+    <tr><td><code>~x</code> <code>+x</code> <code>-x</code></td><td>Bitwise NOT, identity, negation.</td></tr>
+    <tr><td><code>* / %</code></td><td>If <em>both</em> operands of <code>/</code> are <code>int</code>, the result is truncated toward zero: <code>5 / 2 == 2</code>. Write <code>5 / 2.0</code> or <code>float(x) / y</code> for a float. <code>%</code> is integer-only; floats use <code>fmod()</code>. Both <code>%</code> and <code>fmod()</code> truncate, so the remainder keeps the sign of the dividend. Use <code>posmod()</code> / <code>fposmod()</code> for a non-negative remainder. <code>%</code> is also string formatting.</td></tr>
+    <tr><td><code>+ -</code></td><td><code>+</code> adds numbers or concatenates <code>String</code>. It does not coerce: <code>"hp " + str(n)</code>, not <code>"hp " + n</code>.</td></tr>
+    <tr><td><code>&lt;&lt; &gt;&gt; &amp; ^ |</code></td><td>Shifts, bitwise AND, XOR, OR. Layer masks are built with these: <code>(1 &lt;&lt; 0) | (1 &lt;&lt; 2)</code> enables layers 1 and 3.</td></tr>
+    <tr><td><code>== != &lt; &gt; &lt;= &gt;=</code></td><td><code>1 == 1.0</code> is true, but mixed-type <code>==</code> can also be a runtime error. <code>is_same()</code> is stricter (type and reference). Floats: <code>is_equal_approx()</code> and <code>is_zero_approx()</code>, not <code>==</code>.</td></tr>
+    <tr><td><code>in</code> <code>not in</code></td><td>Array contains, dictionary has key, string contains substring. <code>for x in y</code> reuses the keyword.</td></tr>
+    <tr><td><code>not</code> <code>and</code> <code>or</code></td><td>Recommended. <code>!</code> <code>&amp;&amp;</code> <code>||</code> work and are documented as the unrecommended aliases. They short-circuit.</td></tr>
+    <tr><td><code>a if cond else b</code></td><td>Python order, not <code>cond ? a : b</code>.</td></tr>
+    <tr><td><code>x as Node</code></td><td>Cast. Objects: returns the same object if it is that type or a subtype, otherwise <code>null</code>. Built-ins convert when possible (<code>"123" as int</code>) and error when not (<code>Vector2() as int</code>).</td></tr>
+    <tr><td><code>= += -= *= /= **= %= &amp;= |= ^= &lt;&lt;= &gt;&gt;=</code></td><td>Assignment. Lowest precedence. Not an expression.</td></tr>
+  </table>
+  <div class="callout tip"><span class="callout-title">Typed math is faster and safer</span>
+    <p>Prefer <code>absf</code>/<code>absi</code>, <code>floorf</code>/<code>floori</code>, <code>ceili</code>, <code>roundi</code>, <code>clampf</code>/<code>clampi</code>, <code>lerpf</code>, <code>signf</code>, <code>snappedf</code> over the untyped <code>abs</code>, <code>floor</code>, <code>clamp</code>, <code>lerp</code>, <code>sign</code>, <code>snapped</code>. Vector and <code>Color</code> have their own methods (<code>Vector2.lerp</code>, <code>Color.lerp</code>). Untyped <code>clamp()</code> does not accept <code>Color</code>.</p></div>
+
+  <h2 id="control-flow">5. Control flow and match</h2>
+  <p><code>if</code> / <code>elif</code> / <code>else</code>, <code>while</code>, <code>for</code>, <code>break</code>, <code>continue</code>, <code>pass</code>, and <code>return</code> behave like Python. Parentheses around the condition are optional. A semicolon can separate statements on one line and is almost never wanted. <code>assert(cond)</code> or <code>assert(cond, "message")</code> runs in debug builds only and pauses the game when you run from the editor. Do not put side effects in an assert: release exports skip the expression entirely.</p>
+  <ul>
+    <li><code>for x in array</code> binds each element. Assigning to <code>x</code> does not write back. Mutating an object through <code>x</code> does. To replace elements, iterate <code>for i in array.size()</code>.</li>
+    <li><code>for key in dictionary</code> iterates <strong>keys</strong>, not pairs. Read the value with <code>dictionary[key]</code>.</li>
+    <li><code>for i in range(n)</code>, <code>range(start, end)</code>, <code>range(start, end, step)</code>. End is exclusive. <code>for i in 3</code> is <code>range(3)</code>. <code>for i in 2.2</code> is <code>range(ceil(2.2))</code>. <code>range</code> does not allocate an array.</li>
+    <li><code>for c in "Hello"</code> yields characters. A typed loop variable is allowed: <code>for name: String in names</code>.</li>
+    <li>There is no <code>for/else</code> and no <code>try</code>/<code>except</code>. Validate, return a result, or <code>assert</code>.</li>
+  </ul>
+  <p><code>match</code> is a strict pattern switch. It does not fall through (the Godot 3 <code>continue</code>-inside-match behaviour is gone). Patterns are tested top to bottom; the first hit runs and then execution leaves the <code>match</code>. <code>match</code> is stricter than <code>==</code>: <code>1</code> does not match <code>1.0</code>. <code>String</code> and <code>StringName</code> do match each other (<code>"hello"</code> matches <code>&amp;"hello"</code>).</p>
+  <table>
+    <tr><th>Pattern</th><th>Form</th><th>Notes</th></tr>
+    <tr><td>Literal</td><td><code>1:</code> <code>"test":</code> <code>null:</code></td><td>Exact value.</td></tr>
+    <tr><td>Constant expression</td><td><code>TYPE_FLOAT:</code> <code>Size.SMALL:</code></td><td>A constant, an identifier, or <code>A.B</code>.</td></tr>
+    <tr><td>Wildcard</td><td><code>_:</code></td><td>The <code>default</code> arm. Matches anything.</td></tr>
+    <tr><td>Binding</td><td><code>var value:</code></td><td>Matches anything and names it. Scope is the arm.</td></tr>
+    <tr><td>Array</td><td><code>[1, _, "test"]:</code> <code>[42, ..]:</code></td><td>Length must match unless the last subpattern is <code>..</code> (open-ended).</td></tr>
+    <tr><td>Dictionary</td><td><code>{"name": "Ada", "age": var age}:</code> <code>{"name", "age"}:</code> <code>{"k": 1, ..}:</code></td><td>Keys are constant patterns. A bare key checks presence. <code>..</code> ignores extra keys. Size must match unless open-ended.</td></tr>
+    <tr><td>Multiple</td><td><code>1, 2, 3:</code></td><td>Comma-separated. No bindings allowed in a multi-pattern arm.</td></tr>
+    <tr><td>Guard</td><td><code>[var x, var y] when y == x:</code></td><td><code>when</code> is an arbitrary expression, evaluated only after the pattern matches. A false guard tries the next arm.</td></tr>
+  </table>
+  <script type="text/x-code" data-lang="gdscript" data-file="res://sandbox/match_demo.gd">
+extends Node
+
+func _ready() -> void:
+    print(describe(1))
+    print(describe(Vector2(0, 4)))
+    print(describe({"name": "Ada", "age": 36, "extra": true}))
+
+
+func describe(value: Variant) -> String:
+    match value:
+        1, 2, 3:
+            return "small int"
+        "hello", &"hello":
+            return "hello as String or StringName"
+        [0, 0]:
+            return "origin"
+        [var x, var y] when y == 0:
+            return "on x axis at %d" % x
+        [var x, var y]:
+            return "point (%.1f, %.1f)" % [x, y]
+        {"name": var who, ..}:
+            return "named %s" % who
+        _:
+            return "something else (%s)" % type_string(typeof(value))
+  </script>
+
+  <h2 id="functions">6. Functions, lambdas, Callable</h2>
+  <p>Functions belong to the class. Lookup order is local, then member, then global. <code>self</code> is the instance and is optional for member access; it is not a declared first parameter (unlike Python). A function with no <code>return</code> returns <code>null</code>. A typed non-<code>void</code> function must return on every path. <code>void</code> may <code>return</code> early but must not return a value. Defaults must trail required parameters. A one-line function is <code>func square(a: int) -&gt; int: return a * a</code>.</p>
+  <p>Naming a method without calling it produces a <code>Callable</code> (<code>var step: Callable = add1</code>). Call it with <code>step.call(1)</code>. You cannot write <code>step(1)</code>: the language forbids the call operator on <code>Callable</code> so that ordinary calls stay fast. <code>callable.bind(extra)</code> appends arguments. <code>callable.callv(array)</code> unpacks an array. There is no spread syntax at the call site (<code>f(...args)</code> is a parse error).</p>
+  <p>A lambda is <code>var double := func(x: int) -&gt; int: return x * 2</code>, then <code>double.call(4)</code>. The name in <code>func my_lambda(x):</code> is only for the debugger. Lambdas capture locals <strong>by value, once</strong>, at creation. Reassigning the outer local does not update the capture, and assigning inside the lambda shadows it (warning <code>CONFUSABLE_CAPTURE_REASSIGNMENT</code>). Arrays, dictionaries, and objects are references, so mutating their contents is visible outside; reassigning the variable is not. Lambdas cannot be <code>static</code>. An explicit <code>return</code> is required to return a value from a lambda.</p>
+  <p><code>static func</code> has no <code>self</code> and no instance members. It can read static variables. Since <strong>4.5</strong>, a rest parameter collects extra arguments: <code>func sum(first: int, ...values: Array) -&gt; int</code>. At most one, and it must be last. You cannot type it as <code>Array[int]</code> yet; the rest type is a plain <code>Array</code>. On 4.3/4.4, take an <code>Array</code> parameter instead.</p>
+  <script type="text/x-code" data-lang="gdscript" data-file="res://sandbox/callables.gd">
+extends Node
+
+func _ready() -> void:
+    var values: Array[int] = [1, 2, 3]
+    print(map_ints(values, add1))
+    var factor: int = 10
+    var scaled := func(n: int) -> int: return n * factor
+    print(scaled.call(3))
+    get_tree().process_frame.connect(_on_process_frame.bind("once"), CONNECT_ONE_SHOT)
+
+
+func add1(n: int) -> int:
+    return n + 1
+
+
+func map_ints(items: Array[int], fn: Callable) -> Array[int]:
+    var out: Array[int] = []
+    for n: int in items:
+        out.append(fn.call(n))
+    return out
+
+
+func _on_process_frame(tag: String) -> void:
+    print(tag)
+  </script>
+  <p><code>CONNECT_ONE_SHOT</code>, <code>CONNECT_DEFERRED</code>, and <code>CONNECT_PERSIST</code> are connection flags on <code>Object</code>. <code>CONNECT_DEFERRED</code> runs the callback on idle, which is the safe way to react to a signal that fires in the middle of physics or during a script change.</p>
+
+  <h2 id="classes">7. Classes, super, memory</h2>
+  <p>One script file is one class. Without <code>extends</code> it extends <code>RefCounted</code> and is freed when nothing references it. <code>Node</code> and plain <code>Object</code> are not reference-counted: <code>queue_free()</code> (nodes, end of frame, children included) or <code>free()</code> (immediate; do not use it on a node you are still standing on). <code>weakref(obj)</code> does not keep a <code>RefCounted</code> alive; <code>weak.get_ref()</code> returns the object or <code>null</code>. <code>is_instance_valid(obj)</code> is the check for an object that may already have been freed.</p>
+  <p><code>class_name Foo</code> registers a global type. <code>extends "res://other.gd"</code> and <code>extends "res://other.gd".Inner</code> inherit from a file or an inner class. Single inheritance only. <code>super(args)</code> calls the same method on the base class. <code>super.other(args)</code> calls a different base method. If the base <code>_init</code> takes arguments, the derived <code>_init</code> must exist and call <code>super(...)</code>. <code>_init</code> runs after member initializers. <code>static func _static_init() -&gt; void</code> runs once when the class loads, after static variables, with no arguments and no return value.</p>
+  <p>Do not override native methods such as <code>get_class()</code> or <code>queue_free()</code>. The <code>NATIVE_METHOD_OVERRIDE</code> warning is an error by default. Virtual callbacks (<code>_ready</code>, <code>_process</code>, <code>_physics_process</code>, names that the docs mark virtual) are the supported extension points.</p>
+  <p>Inner classes use the <code>class</code> keyword and <code>Inner.new()</code>. <code>preload("res://x.gd")</code> is a compile-time constant; <code>load("res://x.gd")</code> reads at the call. Instantiate a script with <code>.new()</code>, a scene with <code>packed.instantiate()</code> then <code>add_child()</code>.</p>
+  <div class="callout version"><span class="callout-title">@abstract is 4.5+</span>
+    <p>An <code>@abstract class</code> cannot be instantiated or attached to a node. An <code>@abstract func</code> has no body. On 4.3 and 4.4, use a normal base class and a method that returns a sentinel.</p></div>
+
+  <h2 id="properties">8. Properties</h2>
+  <p>A property is a variable with <code>get</code> and/or <code>set</code>. Unlike the Godot 3 setter syntax, these blocks run even for assignments inside the same class, with or without <code>self.</code>. Reading or writing the property name <em>inside its own</em> getter or setter touches the stored value directly, so it does not recurse. Calling another function that then assigns the property <em>does</em> recurse. The initializer writes the stored value directly and does not call the setter. That includes <code>@export</code> and <code>@onready</code> initialization.</p>
+  <script type="text/x-code" data-lang="gdscript" data-file="res://sandbox/properties.gd">
+extends Node
+
+signal health_changed(current: int, maximum: int)
+
+var maximum: int = 100
+var health: int = 100:
+    set(value):
+        var clamped: int = clampi(value, 0, maximum)
+        if clamped == health:
+            return
+        health = clamped
+        health_changed.emit(health, maximum)
+
+
+func _ready() -> void:
+    health = 250
+    print(health)
+  </script>
+  <p>The split form reuses methods: <code>var health: int: get = get_health, set = set_health</code>. Both sides must use the same style. Inline getters and setters cannot carry their own type hints; the setter argument and getter result follow the variable type. External setter functions may be typed and must match or be wider.</p>
+  <p><code>@export</code> shows the property in the Inspector. The value is stored in the scene or resource and applied after <code>_init</code> and before <code>@onready</code>. Hints (all on <code>@GDScript</code>):</p>
+  <table>
+    <tr><th>Annotation</th><th>Inspector widget</th></tr>
+    <tr><td><code>@export</code></td><td>Default editor for the type, including a named enum.</td></tr>
+    <tr><td><code>@export_range(min, max, step, "or_greater", "or_less", "exp", "hide_slider", "prefer_slider", "suffix:px", "radians_as_degrees")</code></td><td>Slider. Hints are optional strings.</td></tr>
+    <tr><td><code>@export_enum("A", "B")</code></td><td>Named ints when you do not want a real enum.</td></tr>
+    <tr><td><code>@export_flags("A", "B")</code> and <code>@export_flags_2d_physics</code>, <code>_3d_physics</code>, <code>_2d_render</code>, <code>_3d_render</code>, <code>_2d_navigation</code>, <code>_3d_navigation</code></td><td>Bitmask. The physics/render/navigation variants list the project layer names.</td></tr>
+    <tr><td><code>@export_file("*.txt")</code> <code>@export_dir</code> <code>@export_global_file</code> <code>@export_global_dir</code> <code>@export_file_path</code></td><td>Paths. <code>global_*</code> can leave the project. <code>file_path</code> stores a raw path that breaks if the file moves.</td></tr>
+    <tr><td><code>@export_multiline</code> <code>@export_placeholder("...")</code> <code>@export_color_no_alpha</code> <code>@export_exp_easing</code> <code>@export_node_path("Node2D")</code></td><td>Long text, grey hint, color without alpha, easing curve, node path filtered by type.</td></tr>
+    <tr><td><code>@export_group("Combat")</code> <code>@export_subgroup("Advanced")</code> <code>@export_category("Data")</code></td><td>Inspector headings. A prefix argument (<code>@export_group("Combat", "combat_")</code>) groups matching names. Groups do not nest; use a subgroup. Empty name ends the group.</td></tr>
+    <tr><td><code>@export_storage</code></td><td>Serialized, hidden from the Inspector.</td></tr>
+    <tr><td><code>@export_custom(hint, hint_string)</code></td><td>Escape hatch using <code>PropertyHint</code>.</td></tr>
+    <tr><td><code>@export_tool_button("Bake")</code></td><td>4.4+. A button in the Inspector that calls a method. Check your editor version.</td></tr>
+  </table>
+  <p>Do not put <code>@onready</code> and <code>@export</code> on the same variable. <code>@onready</code> overwrites the exported value when <code>_ready</code> runs. That warning (<code>ONREADY_WITH_EXPORT</code>) is an error by default.</p>
+
+  <h2 id="signals">9. Signals</h2>
+  <p>A signal is a list of <code>Callable</code>s. Declare <code>signal health_changed(current: int, maximum: int)</code>. Emit with <code>health_changed.emit(health, maximum)</code>. Connect with <code>health_changed.connect(_on_health_changed)</code>. Disconnect with <code>disconnect</code>. <code>is_connected</code> avoids a double connection, which would call the method twice. Argument names in the declaration are documentation for the Signals dock; the engine does not force you to emit that many values, so emit what the callback expects.</p>
+  <p>In the editor: select the node, open the <strong>Node</strong> tab (next to the Inspector), <strong>Signals</strong>, double-click the signal, pick the target. In code, prefer the <code>Callable</code> form above. A custom signal on an autoload that another script emits can be marked <code>@warning_ignore("unused_signal")</code>.</p>
+  <p><code>Signal</code> and <code>Callable</code> are real types. <code>var pressed: Signal = $Button.pressed</code> and <code>var rotate: Callable = $Sprite2D.rotate</code> pass them around. <code>await health_changed</code> resumes with the arguments: one argument returns that value, several return an <code>Array</code>, none returns <code>null</code>.</p>
+
+  <h2 id="await">10. await</h2>
+  <p><code>await</code> turns the current function into a coroutine and returns control to the caller immediately. When the signal is emitted, or when the awaited coroutine returns, execution continues on the next line. If you need the return value, the caller must <code>await</code> too. Calling a coroutine and ignoring the result is legal and does not suspend the caller. <code>await</code> on an ordinary value returns it immediately and does not make the function a coroutine. Returning a signal from a plain function makes the caller await that signal.</p>
+  <p>There is no function-state object to inspect or resume by hand. That is deliberate: a function typed as <code>-&gt; int</code> cannot secretly return a suspended state.</p>
+  <script type="text/x-code" data-lang="gdscript" data-file="res://sandbox/await_demo.gd">
+extends Node
+
+func _ready() -> void:
+    _blink()
+
+
+func _blink() -> void:
+    var sprite: CanvasItem = $Icon
+    var faded: Color = sprite.modulate
+    faded.a = 0.2
+    sprite.modulate = faded
+    await get_tree().create_timer(0.4).timeout
+    if not is_instance_valid(sprite):
+        return
+    faded.a = 1.0
+    sprite.modulate = faded
+    await get_tree().physics_frame
+    print("one physics tick later")
+  </script>
+  <p><code>SceneTree.create_timer(seconds).timeout</code> is the delay. <code>process_frame</code> and <code>physics_frame</code> are signals on the tree. <code>create_timer</code> defaults to <code>process_always = true</code>, so it still finishes while the tree is paused; pass <code>false</code> if a pause should freeze the wait. After every <code>await</code>, the node may have been freed or the scene changed. Check <code>is_instance_valid</code> or <code>is_inside_tree()</code> before touching nodes.</p>
+
+  <h2 id="annotations">11. Annotations</h2>
+  <p>An annotation starts with <code>@</code> and applies to the next statement that is not itself an annotation. Several may share a line. Arguments are constant expressions.</p>
+  <table>
+    <tr><th>Annotation</th><th>Effect</th></tr>
+    <tr><td><code>@tool</code></td><td>First line. The script runs in the editor. <code>Engine.is_editor_hint()</code> separates editor runs from the game. <code>queue_free()</code> in a tool script can crash the editor.</td></tr>
+    <tr><td><code>@icon("res://icon.svg")</code></td><td>Icon for a <code>class_name</code> script.</td></tr>
+    <tr><td><code>@static_unload</code></td><td>Before <code>class_name</code>. Allows unloading the script and its static data. The docs note a bug that can still keep the script alive.</td></tr>
+    <tr><td><code>@onready var n: Node = $Path</code></td><td>Assigns just before <code>_ready</code>, when children exist. Equivalent to an assignment at the start of <code>_ready</code>.</td></tr>
+    <tr><td><code>@warning_ignore("unused_parameter")</code></td><td>Silences one warning on the next statement. <code>@warning_ignore_start</code> / <code>@warning_ignore_restore</code> bracket a region. Prefer an <code>_</code> prefix for unused parameters.</td></tr>
+    <tr><td><code>@rpc</code></td><td>Marks a function for multiplayer RPC. The course does not use networking; leave it alone unless you are reading the high-level multiplayer docs.</td></tr>
+    <tr><td><code>@abstract</code></td><td>4.5+. Abstract class or method.</td></tr>
+  </table>
+
+  <h2 id="types">12. Built-in types</h2>
+  <p>Built-ins are value types: assignment and argument passing copy them. <code>Object</code>, <code>Array</code>, <code>Dictionary</code>, and packed arrays are references. Copy an array or dictionary with <code>duplicate()</code> (<code>duplicate(true)</code> is deep). Only <code>Object</code> can be <code>null</code>. A typed <code>Vector2</code> is never null; it default-constructs.</p>
+  <table>
+    <tr><th>Type</th><th>Use it for</th></tr>
+    <tr><td><code>bool</code> <code>int</code> <code>float</code></td><td><code>int</code> is 64-bit. <code>float</code> is 64-bit, but <code>Vector2</code>/<code>Vector3</code>/<code>Vector4</code> and <code>PackedFloat32Array</code> store 32-bit floats.</td></tr>
+    <tr><td><code>String</code></td><td>Mutable text. <code>StringName</code> (<code>&amp;"idle"</code>) is interned, slower to create, very fast to compare: dictionary keys, animation names, groups. <code>NodePath</code> (<code>^"UI/Label"</code>) is a parsed path.</td></tr>
+    <tr><td><code>Vector2</code> <code>Vector2i</code> <code>Vector3</code> <code>Vector3i</code> <code>Vector4</code> <code>Vector4i</code></td><td>Components <code>x y z w</code>, also indexable. <code>Rect2</code> and <code>AABB</code> have <code>position</code>, <code>size</code>, and <code>end</code>.</td></tr>
+    <tr><td><code>Transform2D</code> <code>Transform3D</code> <code>Basis</code> <code>Quaternion</code> <code>Plane</code></td><td><code>Transform3D</code> is a <code>Basis</code> plus <code>origin</code>. <code>Basis</code> is the 3&times;3 rotation and scale.</td></tr>
+    <tr><td><code>Color</code></td><td><code>r g b a</code>, also <code>h s v</code>. Not a JSON type.</td></tr>
+    <tr><td><code>RID</code></td><td>Opaque server handle (physics, rendering). You rarely construct one.</td></tr>
+    <tr><td><code>Array</code> <code>Array[T]</code></td><td>Zero-based, grows, negative indexes. <code>Array[T]</code> checks writes. <code>front()</code> and <code>back()</code> are still typed as <code>Variant</code>. Nested <code>Array[Array[int]]</code> is not supported. You cannot assign an <code>Array[Node2D]</code> to an <code>Array[Node]</code>; build a new array or <code>assign()</code>. <code>Array</code> and <code>Array[Variant]</code> are the same.</td></tr>
+    <tr><td>Packed arrays</td><td><code>PackedByteArray</code>, <code>PackedInt32Array</code>, <code>PackedInt64Array</code>, <code>PackedFloat32Array</code>, <code>PackedFloat64Array</code>, <code>PackedStringArray</code>, <code>PackedVector2Array</code>, <code>PackedVector3Array</code>, <code>PackedVector4Array</code>, <code>PackedColorArray</code>. Less memory and faster iteration than <code>Array[T]</code> once you have tens of thousands of elements. They lack <code>map</code> and the other convenience methods. Below that size, a typed <code>Array</code> is the better default.</td></tr>
+    <tr><td><code>Dictionary</code> <code>Dictionary[K, V]</code></td><td>Any hashable key. Lua-style <code>{key = 1}</code> is a string key and cannot start with a digit. <code>d.waiting = 14</code> inserts. Bracket access on an <code>Object</code> calls properties and errors if missing; use <code>get</code>/<code>set</code>. Typed dictionaries are <strong>4.4+</strong>. Both parameters are required (<code>Dictionary[String, Variant]</code>). Nested typed dictionaries are not supported. Methods that return values are still <code>Variant</code>.</td></tr>
+  </table>
+  <p>Constants are compile-time. <code>const</code> may be typed; <code>:=</code> and <code>=</code> are the same for constants, and the type is inferred if you omit it. An untyped array literal is an untyped <code>Array</code>, so write <code>const IDS: Array[int] = [1, 2, 3]</code> when the element type matters. Enums are ints: <code>enum Size { SMALL, MEDIUM, LARGE }</code> or anonymous <code>enum { A, B }</code>. A value is not checked against the enum at runtime.</p>
+
+  <h2 id="formatting">13. String formatting</h2>
+  <p>Three tools, in the order the docs present them. <code>%</code> is printf-style. <code>String.format()</code> substitutes <code>{name}</code> or <code>{0}</code>. <code>+</code> concatenates strings only.</p>
+  <table>
+    <tr><th>Specifier</th><th>Meaning</th></tr>
+    <tr><td><code>%s</code></td><td>Same conversion as <code>str()</code>. The default choice.</td></tr>
+    <tr><td><code>%c</code></td><td>One Unicode character from a code point or a one-character string.</td></tr>
+    <tr><td><code>%d</code> <code>%o</code> <code>%x</code> <code>%X</code></td><td>Decimal, octal, hex. Floats are floored.</td></tr>
+    <tr><td><code>%f</code></td><td>Float. <code>%.2f</code> is two decimals. <code>%10.3f</code> pads to width 10.</td></tr>
+    <tr><td><code>%v</code></td><td>Any int or float vector, coordinates in parentheses, each formatted like <code>%f</code>.</td></tr>
+  </table>
+  <p>Several placeholders take an array: <code>"%s has %d" % ["mobs", 3]</code>. Modifiers before the type: <code>+</code> forces a sign, a number sets width, a leading <code>0</code> zero-pads, <code>-</code> pads on the right, <code>*</code> reads the width from the next value (<code>"%0*d" % [2, 3]</code> prints <code>03</code>). A literal percent is <code>%%</code>. There is no Python <code>%(name)s</code> form in GDScript.</p>
+  <p><code>"Waiting for {who}".format({"who": "Godot"})</code> and <code>"{0} / {1}".format([hp, maximum])</code>. <code>"{} {}".format(["a", "b"], "{}")</code> uses empty braces when you pass the placeholder string. This is the closer equivalent of an f-string or of C# <code>$""</code>, with none of the interpolation syntax.</p>
+
+  <h2 id="lifecycle">14. Lifecycle order</h2>
+  <p>Member initialization, then the tree. From the GDScript reference, for a node:</p>
+  <ol>
+    <li>The variable starts as <code>null</code> (objects and untyped) or as the type default (<code>0</code>, <code>false</code>, <code>Vector2()</code>).</li>
+    <li>Initializers run top to bottom. <code>@onready</code> initializers are skipped until step 5.</li>
+    <li><code>_init</code> runs. Children of a scene are not in the tree yet. <code>$Path</code> is not valid here.</li>
+    <li>If this is a scene or resource instance, <code>@export</code> values from the disk file are assigned (they do not call setters).</li>
+    <li><code>@onready</code> initializers run.</li>
+    <li><code>_ready</code> runs.</li>
+  </ol>
+  <p>Tree order, from the SceneTree tutorial and <code>Node</code>:</p>
+  <ul>
+    <li><code>_enter_tree</code> is pre-order: parent, then children. It runs every time the node enters the tree. The node is inside the tree, but siblings and later children may not have entered yet.</li>
+    <li><code>_ready</code> is post-order: children, then parent, so a parent can use its children. It runs <strong>once</strong>. Re-adding a node does not call <code>_ready</code> again unless you called <code>request_ready()</code> before the re-add. The <code>ready</code> signal is emitted after <code>_ready</code>.</li>
+    <li><code>_exit_tree</code> is the reverse of enter order (children after the parent has started exiting, bottom to top as the docs describe the exit notification).</li>
+    <li><code>_process</code> and <code>_physics_process</code> follow tree order. A lower <code>process_priority</code> runs first. Physics code belongs in <code>_physics_process</code>; the tick is fixed (default 60 Hz) and <code>delta</code> is seconds. Visuals and UI belong in <code>_process</code>.</li>
+  </ul>
+  <p><code>Node.NOTIFICATION_ENTER_TREE</code> and <code>NOTIFICATION_READY</code> are the same moments, delivered to <code>_notification</code>. Prefer the named virtual methods unless you are handling several notifications in one place.</p>
+
+  <h2 id="node-paths">15. <code>$</code> and <code>%</code></h2>
+  <p><code>$UI/Score</code> is <code>get_node("UI/Score")</code>, resolved from this node. <code>$"Name With Spaces"</code> quotes unusual names. <code>^"UI/Score"</code> is a <code>NodePath</code> literal, not a lookup. <code>%</code> is the unique-name shorthand: <code>%ScoreLabel</code> is <code>get_node("%ScoreLabel")</code> and searches the unique names of this scene. In the Scene dock, right-click the node and choose <kbd class="ui">Access as Unique Name</kbd>. The node shows a <code>%</code> prefix. Prefer <code>%</code> for UI that moves during layout work; a renamed or reparented unique node does not break the script. Prefer <code>@onready var score: Label = %ScoreLabel</code> over calling <code>get_node</code> inside <code>_process</code>.</p>
+  <p><code>get_node</code> fails if the path is wrong or the node is not ready. <code>get_node_or_null</code> returns <code>null</code> instead. <code>has_node</code> tests. Unique names and <code>$</code> both require the node to be inside the tree, which is why they belong in <code>@onready</code> or <code>_ready</code>, not <code>_init</code>.</p>
+
+  <h2 id="style">16. Style</h2>
+  <p>The official GDScript style guide follows PEP 8 and tells you to indent with <strong>tabs</strong>, which is also the editor default. This course sets <kbd class="menu">Editor &gt; Editor Settings &gt; Text Editor &gt; Behavior &gt; Indent &gt; Type</kbd> to Spaces, size 4, and every listing uses four spaces. Pick one and do not mix them in a file. The parser will reject a mixed file.</p>
+  <table>
+    <tr><th>Thing</th><th>Case</th><th>Example</th></tr>
+    <tr><td>Files, functions, variables, signals</td><td>snake_case</td><td><code>health_pack.gd</code>, <code>take_damage</code>, <code>hit_landed</code></td></tr>
+    <tr><td>Classes, node names, inner classes</td><td>PascalCase</td><td><code>class_name HealthPack</code>, node <code>ScoreLabel</code></td></tr>
+    <tr><td>Constants, enum members</td><td>CONSTANT_CASE</td><td><code>const MAX_HP := 100</code>, <code>Size.SMALL</code></td></tr>
+    <tr><td>Enums</td><td>PascalCase, singular</td><td><code>enum Size</code></td></tr>
+    <tr><td>"Private"</td><td>leading <code>_</code></td><td><code>_used</code>, <code>_on_body_entered</code>. Convention only.</td></tr>
+  </table>
+  <p>Order in the file is the list in section 2. Blank lines: two between top-level functions, one between logical chunks inside a function. <code>##</code> above a class, signal, or <code>@export</code> becomes the documentation tooltip. <code>#region Name</code> and <code>#endregion</code> fold in the script editor. Type public APIs. Use <code>:=</code> when the right-hand side already shows the type (<code>var body := CharacterBody2D.new()</code>), and an explicit <code>: T</code> when it does not (<code>var hp: int = 0</code>).</p>
+
+  <h2 id="typing">17. Typing and performance</h2>
+  <p>GDScript is gradually typed. A declaration without a type is a <code>Variant</code>. Writing <code>: Variant</code> is the same thing and cannot be inferred with <code>:=</code>. Typed code uses faster opcodes when the compiler knows both operands, and it makes the completion list show the members of the real class instead of every method on <code>Variant</code>.</p>
+  <p>Safe lines (the ones the analyzer can prove) are the ones that get those opcodes. An untyped call, an untyped operator, or a bare <code>$Node</code> is an unsafe line: <code>$Node</code> is typed as <code>Node</code>, so write <code>@onready var sprite: Sprite2D = $Sprite</code> or <code>$Sprite as Sprite2D</code>. Enable <code>UNTYPED_DECLARATION</code>, <code>INFERRED_DECLARATION</code>, and the <code>UNSAFE_*</code> warnings under <kbd class="menu">Project &gt; Project Settings &gt; Debug &gt; GDScript</kbd> (turn on Advanced Settings) when you want the editor to nag. The course keeps the default warnings and writes types anyway.</p>
+  <p>Casting with <code>as</code> to a wrong object type yields <code>null</code>, which is a useful guard: <code>var player := body as Player</code> then <code>if player == null: return</code>. A failed cast of a built-in is an error, not null.</p>
+  <p>What actually matters for frame time, in order: algorithm, number of nodes, physics shape count, and draw calls. Typing will not rescue a thousand <code>_process</code> scripts doing <code>get_node</code>. It does remove a class of bugs and speeds up tight GDScript loops. Further JIT/AOT work is described in the static typing page as planned, not as something you enable.</p>
+  <div class="callout docs"><span class="callout-title">Read these next</span>
+    <ul class="docs-links">
+      <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_basics.html" target="_blank" rel="noopener">GDScript reference</a></li>
+      <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_advanced.html" target="_blank" rel="noopener">GDScript advanced</a></li>
+      <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/static_typing.html" target="_blank" rel="noopener">Static typing</a></li>
+      <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_exports.html" target="_blank" rel="noopener">Exports</a></li>
+      <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_format_string.html" target="_blank" rel="noopener">Format strings</a></li>
+      <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_styleguide.html" target="_blank" rel="noopener">Style guide</a></li>
+      <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/warning_system.html" target="_blank" rel="noopener">Warning system</a></li>
+      <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/scene_tree.html" target="_blank" rel="noopener">SceneTree and lifecycle</a></li>
+      <li><a href="https://docs.godotengine.org/en/stable/classes/class_@gdscript.html" target="_blank" rel="noopener"><code>@GDScript</code> annotations and helpers</a></li>
+      <li><a href="https://docs.godotengine.org/en/stable/classes/class_@globalscope.html" target="_blank" rel="noopener"><code>@GlobalScope</code> functions and constants</a></li>
+    </ul>
+  </div>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

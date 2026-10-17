@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 19 - Bullet Heaven I: player, enemies, pooling | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day19" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 19 · Game 7: Bullet Heaven</div>
+    <h1>Bullet Heaven I: player, enemies, pooling</h1>
+    <p class="lead">You copy the Ship Kit into a landscape survivor game, drive a top-down player with a smoothing camera, and fight a reused swarm. Hits go through a spatial hash, not through a physics signal per enemy, and one auto-firing weapon is enough to prove the loop. Node count stays flat while you play.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Block 1: Concepts.</strong> Why bullet heavens die from node count, what a pool is, what a spatial hash is.</td></tr>
+    <tr><td>0:20 – 1:10</td><td><strong>Block 2: Project and player.</strong> Copy Ship Kit, set 1280×720, layers, input, player, camera.</td></tr>
+    <tr><td>1:10 – 2:00</td><td><strong>Block 3: Swarm.</strong> Enemy scene, object pool, spatial hash, spawn ring.</td></tr>
+    <tr><td>2:00 – 2:15</td><td><strong>Break.</strong> Stand up. Do not leave the game running.</td></tr>
+    <tr><td>2:15 – 3:25</td><td><strong>Block 4: Weapon and loop.</strong> Projectile pool, nearest-target needle, contact damage, HUD, game over.</td></tr>
+    <tr><td>3:25 – 4:00</td><td><strong>Block 5: Challenge, quiz, wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>4 h 0 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Run a copied Ship Kit project at 1280×720, stretch mode <code>canvas_items</code>, aspect <code>expand</code>, Mobile renderer, with the standard 2D physics layer names.</li>
+    <li>Move a <code>CharacterBody2D</code> in floating mode from <code>Input.get_vector</code> and follow it with a smoothing <code>Camera2D</code>.</li>
+    <li>Keep enemy and projectile node counts fixed by recycling pooled scenes instead of calling <code>queue_free</code>.</li>
+    <li>Resolve hits with a spatial hash: insert positions, query nearby cells, then test real distance.</li>
+    <li>Finish a runnable run: auto-fired Needle, contact damage, timer, kills, retry and menu, pause menu still working.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Days 15 and 16 are done. The folder <code>C:\GodotProjects\ship-kit</code> exists and its main menu, pause menu, settings, save, and autoloads run.</li>
+    <li>If that folder is missing, stop and finish the Ship Kit. Do not rebuild <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, or <code>SceneRouter</code> inside this game.</li>
+    <li>You can attach a script, replace the whole file, and use the Input Map. Editor indent is still Spaces, size 4.</li>
+    <li>Design numbers and the store checklist live on the <a href="../games/g07-bullet-heaven.html">Bullet Heaven game page</a>. Today implements the minute-0 slice of those numbers.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>The loop you are building</h3>
+  <p>A bullet heaven is a top-down survival minute. You move. Weapons fire on their own. Enemies walk straight at you. You pick nothing up yet; that is tomorrow. Today the win condition is "I lasted two minutes and the node count did not climb."</p>
+  <h3>Pools</h3>
+  <p>A pool is a fixed array of nodes created once in <code>_ready</code>. A dead enemy is hidden, moved off-screen, and returned to the free list. <code>instantiate</code> during play is a spike; <code>queue_free</code> during play is another. Forty enemies on screen still means forty-eight enemy nodes the whole run.</p>
+  <div class="callout tip"><span class="callout-title">Coming from Unity or Unreal?</span>
+    <p>This is the same idea as an object pool of prefabs or actors. Godot's extra cost is the node and the canvas item behind it, which is why Day 21 stops using a node per enemy. Today the cap is small on purpose so the gameplay code stays easy to read.</p></div>
+  <h3>Cell hash</h3>
+  <p>A physics area signal per enemy does not scale, and it is the wrong tool when you only need "who is within N pixels." Divide the plane into 64×64 cells. Each frame, clear the buckets and drop each living enemy's id into the cell that contains its position. A query looks at the cells touched by a circle, then you still test real distance. The hash never replaces the distance test; it only cuts the candidate list.</p>
+  <h3>Numbers for today (minute 0)</h3>
+  <p>These match the minute-0 row of the shipping formulas. Day 20 moves them into <code>Resource</code> files. Do not tune them while you type.</p>
+  <table>
+    <thead><tr><th>Thing</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Player speed</td><td>210 px/s</td></tr>
+      <tr><td>Player HP</td><td>100</td></tr>
+      <tr><td>Bat HP / speed / contact</td><td>14 HP, 78 px/s, 8 HP/s while overlapping</td></tr>
+      <tr><td>Contact radius</td><td>26 px (center to center)</td></tr>
+      <tr><td>Needle</td><td>10 damage, 0.48 s cooldown, 680 px/s, 0.65 s life, 12 px hit radius, range about 440 px</td></tr>
+      <tr><td>Pools</td><td>48 enemies, 36 alive cap, 40 projectiles</td></tr>
+      <tr><td>Spawn</td><td>ring 640–820 px from the player; interval <code>max(0.20, 0.55 × 0.92^(t/30))</code> seconds</td></tr>
+      <tr><td>Hash cell</td><td>64 px</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="build-1">Block 2: Copy the project and add the player</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped. Replace each new script completely: <kbd>Ctrl</kbd>+<kbd>A</kbd>, then paste.</p>
+  <ol class="steps">
+    <li><strong>Leave the Ship Kit project.</strong> If Godot has <code>ship-kit</code> open, use the menu bar: <kbd class="menu">Project &gt; Quit to Project List</kbd>. Copying a folder while the editor has it open can lock files.</li>
+    <li><strong>Copy the folder.</strong> Open PowerShell and run:
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+Copy-Item -Recurse -Path C:\GodotProjects\ship-kit -Destination C:\GodotProjects\bullet-heaven
+      </script>
+      If PowerShell says the destination already exists, rename or delete that leftover folder in File Explorer first, then run the command again. You want <code>C:\GodotProjects\bullet-heaven\project.godot</code>.</li>
+    <li><strong>Import it.</strong> In the Godot Project Manager, click <kbd class="ui">Import</kbd>, browse to <code>C:\GodotProjects\bullet-heaven\project.godot</code>, click <kbd class="ui">Import &amp; Edit</kbd>.</li>
+    <li><strong>Name and viewport.</strong> Menu bar: <kbd class="menu">Project &gt; Project Settings</kbd>. Select <kbd class="ui">Application &gt; Config</kbd>. Set <kbd class="ui">Name</kbd> to <code>Bullet Heaven</code> and <kbd class="ui">Version</kbd> to <code>0.1.0</code>. Select <kbd class="ui">Display &gt; Window &gt; Size</kbd>. Set <kbd class="ui">Viewport Width</kbd> to <code>1280</code>, <kbd class="ui">Viewport Height</kbd> to <code>720</code>, <kbd class="ui">Window Width Override</kbd> to <code>1280</code>, <kbd class="ui">Window Height Override</kbd> to <code>720</code>. Set <kbd class="ui">Mode</kbd> (under Stretch) to <code>canvas_items</code> and <kbd class="ui">Aspect</kbd> to <code>expand</code>. If Stretch is missing, turn on <kbd class="ui">Advanced Settings</kbd> at the top-right of this window and look again. Click <kbd class="ui">Close</kbd>.</li>
+    <li><strong>Renderer.</strong> Open Project Settings again. Select <kbd class="ui">Rendering &gt; Renderer</kbd>. Set <kbd class="ui">Rendering Method</kbd> to <code>mobile</code>. Close the window. Mobile is the right default for a phone-first 2D game. Day 21's canvas-item swarm uses the normal 2D canvas, so it also works on Forward+ and Compatibility; you do not switch renderer to "unlock" it.</li>
+    <li><strong>Layer names.</strong> Project Settings, <kbd class="ui">Layer Names &gt; 2D Physics</kbd>. Set layer 1 to <code>world</code>, 2 <code>player</code>, 3 <code>enemies</code>, 4 <code>player_attacks</code>, 5 <code>enemy_attacks</code>, 6 <code>pickups</code>, 7 <code>triggers</code>. Close.</li>
+    <li><strong>Input Map.</strong> Project Settings, tab <kbd class="ui">Input Map</kbd> along the top. If <code>move_left</code>, <code>move_right</code>, <code>move_up</code>, and <code>move_down</code> already exist from the Ship Kit, leave them. If one is missing: type the name in the <kbd class="ui">Add New Action</kbd> field, click <kbd class="ui">Add</kbd>, then click the <kbd class="ui">+</kbd> on that row, choose <kbd class="ui">Key</kbd>, press the key, and confirm. Bind A and Left to <code>move_left</code>, D and Right to <code>move_right</code>, W and Up to <code>move_up</code>, S and Down to <code>move_down</code>. Confirm <code>pause</code> already exists. Close.</li>
+    <li><strong>Folders.</strong> In the <kbd class="ui">FileSystem</kbd> dock (bottom-left), right-click <code>res://</code> and click <kbd class="ui">New Folder</kbd>. Create <code>game</code> if it is not there. Inside <code>game</code> create <code>player</code>, <code>enemies</code>, and <code>combat</code>. The Ship Kit folders <code>autoload</code>, <code>ui</code>, <code>i18n</code>, and <code>data</code> stay as they are.</li>
+    <li><strong>Player root.</strong> Menu bar <kbd class="menu">Scene &gt; New Scene</kbd>. In the <kbd class="ui">Scene</kbd> dock (top-left), click <kbd class="ui">Other Node</kbd>, search <code>CharacterBody2D</code>, select it, click <kbd class="ui">Create</kbd>. Press <kbd>F2</kbd> and rename it <code>Player</code>.</li>
+    <li><strong>Motion mode.</strong> With <code>Player</code> selected, in the <kbd class="ui">Inspector</kbd> (right), set <kbd class="ui">Motion Mode</kbd> to <code>Floating</code>. A top-down body must not treat the ground as a floor. Under <kbd class="ui">Collision</kbd>, set <kbd class="ui">Layer</kbd> so only <code>player</code> is checked, and set <kbd class="ui">Mask</kbd> so nothing is checked. Enemies overlap you; they do not push you.</li>
+    <li><strong>Sprite and shape.</strong> Select <code>Player</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>Sprite2D</code>, leave the name <code>Sprite2D</code>. In the Inspector, drag <code>icon.svg</code> from the FileSystem onto <kbd class="ui">Texture</kbd>. Set <kbd class="ui">Scale</kbd> to <code>0.18</code> on X and <code>0.18</code> on Y. Press <kbd>Ctrl</kbd>+<kbd>A</kbd> again, add <code>CollisionShape2D</code>. In the Inspector, click <kbd class="ui">Shape</kbd>, choose <kbd class="ui">New CircleShape2D</kbd>. Click the new shape to open it and set <kbd class="ui">Radius</kbd> to <code>12</code>.</li>
+    <li><strong>Camera.</strong> Select <code>Player</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add <code>Camera2D</code>, leave the name <code>Camera2D</code>. In the Inspector leave <kbd class="ui">Enabled</kbd> on (an enabled camera becomes the active camera when it enters the tree and no other camera is active). Turn on <kbd class="ui">Position Smoothing Enabled</kbd>. Set <kbd class="ui">Position Smoothing Speed</kbd> to <code>6</code>. Leave limits off so the map is infinite.</li>
+    <li><strong>Group.</strong> Select <code>Player</code>. Open the <kbd class="ui">Node</kbd> tab (next to Inspector) and the <kbd class="ui">Groups</kbd> sub-tab. Type <code>player</code>, click <kbd class="ui">Add</kbd>.</li>
+    <li><strong>Save and script.</strong> Press <kbd>Ctrl</kbd>+<kbd>S</kbd>. Save as <code>res://game/player/player.tscn</code>. Right-click <code>Player</code> in the Scene dock, click <kbd class="ui">Attach Script</kbd>, set Path to <code>res://game/player/player.gd</code>, click <kbd class="ui">Create</kbd>. Replace the whole file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/player/player.gd">
+class_name Player
+extends CharacterBody2D
+
+signal died
+signal hp_changed(current: float, maximum: float)
+
+const SPEED: float = 210.0
+
+var max_hp: float = 100.0
+var hp: float = 100.0
+var speed_mult: float = 1.0
+var magnet_radius: float = 72.0
+var armor: float = 0.0
+var regen: float = 0.0
+var alive: bool = true
+
+func _ready() -> void:
+    add_to_group(&"player")
+    motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
+    hp = max_hp
+
+func _physics_process(delta: float) -> void:
+    if not alive:
+        return
+    var dir: Vector2 = Input.get_vector(&"move_left", &"move_right", &"move_up", &"move_down")
+    velocity = dir * SPEED * speed_mult
+    move_and_slide()
+    if regen > 0.0 and hp < max_hp:
+        heal(regen * delta)
+
+func apply_contact(dps: float, delta: float) -> void:
+    if not alive:
+        return
+    var reduced: float = maxf(0.0, dps - armor)
+    if reduced <= 0.0:
+        return
+    hp -= reduced * delta
+    hp_changed.emit(hp, max_hp)
+    if hp <= 0.0:
+        hp = 0.0
+        alive = false
+        set_physics_process(false)
+        died.emit()
+
+func heal(amount: float) -> void:
+    if not alive:
+        return
+    hp = minf(max_hp, hp + amount)
+    hp_changed.emit(hp, max_hp)
+      </script>
+      <code>speed_mult</code>, <code>magnet_radius</code>, <code>armor</code>, and <code>regen</code> stay at their defaults today. Day 20 writes them from passives. Do not delete them.</li>
+  </ol>
+  <pre class="scene-tree">Player (CharacterBody2D)          [player.gd]
+├── Sprite2D                      icon.svg, scale 0.18
+├── CollisionShape2D              CircleShape2D radius 12
+└── Camera2D                      smoothing on, speed 6</pre>
+  <div class="checkpoint">
+    <p>Press <kbd>F6</kbd> (Run Current Scene). The window is a wide landscape view. The Godot icon sits in the middle and moves with WASD and the arrow keys. The camera lags slightly behind. The <kbd class="ui">Output</kbd> panel shows no errors. Press <kbd>F8</kbd> to stop.</p>
+    <p>If the icon never moves, the action names do not match the strings in <code>get_vector</code>. If the view is portrait, viewport height is still 1280: recheck Display &gt; Window &gt; Size.</p>
+  </div>
+
+  <h2 id="build-2">Block 3: Enemy pool and spatial hash</h2>
+  <ol class="steps">
+    <li><strong>Hash script.</strong> In the FileSystem dock, right-click <code>game</code>, click <kbd class="ui">Create New &gt; Script</kbd>. Path <code>res://game/spatial_hash.gd</code>, template <kbd class="ui">Empty</kbd>, click <kbd class="ui">Create</kbd>. Replace the file. Buckets are reused so Day 21 can insert a thousand ids a frame without allocating a new array per cell.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/spatial_hash.gd">
+class_name SpatialHash
+extends RefCounted
+
+var cell_size: float = 64.0
+var _cells: Dictionary = {}
+var _used: Array[Vector2i] = []
+
+func clear() -> void:
+    for key: Vector2i in _used:
+        var bucket: Array = _cells[key]
+        bucket.clear()
+    _used.clear()
+
+func insert(id: int, pos: Vector2) -> void:
+    var key: Vector2i = Vector2i(floori(pos.x / cell_size), floori(pos.y / cell_size))
+    var bucket: Variant = _cells.get(key)
+    if bucket == null:
+        var fresh: Array = []
+        _cells[key] = fresh
+        bucket = fresh
+    var arr: Array = bucket
+    if arr.is_empty():
+        _used.append(key)
+    arr.append(id)
+
+func query_into(origin: Vector2, radius: float, out: Array[int]) -> void:
+    out.clear()
+    var reach: int = int(ceil(radius / cell_size))
+    var cx: int = floori(origin.x / cell_size)
+    var cy: int = floori(origin.y / cell_size)
+    for y: int in range(cy - reach, cy + reach + 1):
+        for x: int in range(cx - reach, cx + reach + 1):
+            var bucket: Variant = _cells.get(Vector2i(x, y))
+            if bucket == null:
+                continue
+            var arr: Array = bucket
+            for id: Variant in arr:
+                out.append(int(id))
+      </script>
+    </li>
+    <li><strong>Enemy scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>. Root node type <code>Area2D</code>, rename it <code>Enemy</code>. Inspector: <kbd class="ui">Monitoring</kbd> off, <kbd class="ui">Monitorable</kbd> off. <kbd class="ui">Collision &gt; Layer</kbd> only <code>enemies</code>. <kbd class="ui">Collision &gt; Mask</kbd> empty. Hits are distance tests, so this body must not pay for area signals.</li>
+    <li><strong>Enemy visual.</strong> Add a child <code>Sprite2D</code>. Texture <code>icon.svg</code>. <kbd class="ui">Scale</kbd> <code>0.14</code>, <code>0.14</code>. <kbd class="ui">Modulate</kbd> to a red (about <code>0.9, 0.25, 0.3</code>). Add a child <code>CollisionShape2D</code>, shape <kbd class="ui">New CircleShape2D</kbd>, <kbd class="ui">Radius</kbd> <code>14</code>. The shape is only a debug outline; the hash uses the <code>radius</code> variable in script.</li>
+    <li><strong>Enemy script.</strong> Save the scene as <code>res://game/enemies/enemy.tscn</code>. Attach <code>res://game/enemies/enemy.gd</code> to <code>Enemy</code>. Replace it:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/enemies/enemy.gd">
+class_name Enemy
+extends Area2D
+
+var entity_id: int = -1
+var hp: float = 14.0
+var max_hp: float = 14.0
+var move_speed: float = 78.0
+var contact_dps: float = 8.0
+var radius: float = 14.0
+var active: bool = false
+
+var _player: Player
+
+func _ready() -> void:
+    monitoring = false
+    monitorable = false
+    deactivate()
+
+func activate(at: Vector2) -> void:
+    if _player == null:
+        _player = get_tree().get_first_node_in_group(&"player") as Player
+    global_position = at
+    hp = max_hp
+    active = true
+    visible = true
+    set_physics_process(true)
+    $CollisionShape2D.set_deferred("disabled", false)
+
+func deactivate() -> void:
+    active = false
+    visible = false
+    set_physics_process(false)
+    global_position = Vector2(-8000, -8000)
+    $CollisionShape2D.set_deferred("disabled", true)
+
+func hurt(amount: float) -> bool:
+    if not active:
+        return false
+    hp -= amount
+    if hp > 0.0:
+        return false
+    deactivate()
+    return true
+
+func _physics_process(delta: float) -> void:
+    if _player == null or not active:
+        return
+    var to_player: Vector2 = _player.global_position - global_position
+    var dist: float = to_player.length()
+    if dist > 0.001:
+        global_position += (to_player / dist) * move_speed * delta
+      </script>
+    </li>
+    <li><strong>Projectile scene.</strong> New scene, root <code>Node2D</code> named <code>Projectile</code>. Add a child <code>Sprite2D</code>, texture <code>icon.svg</code>, scale <code>0.06</code>, modulate a yellow (about <code>0.95, 0.85, 0.2</code>). No collision shape. Save as <code>res://game/combat/projectile.tscn</code>. Attach <code>res://game/combat/projectile.gd</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/combat/projectile.gd">
+class_name Projectile
+extends Node2D
+
+var velocity: Vector2 = Vector2.ZERO
+var damage: float = 10.0
+var life: float = 0.65
+var radius: float = 12.0
+var pierce_left: int = 0
+var active: bool = false
+var _hit_ids: Array[int] = []
+
+func _ready() -> void:
+    deactivate()
+
+func launch(at: Vector2, dir: Vector2, dmg: float, spd: float, pierce: int, live: float) -> void:
+    global_position = at
+    var aim: Vector2 = dir
+    if aim.length_squared() < 0.0001:
+        aim = Vector2.RIGHT
+    velocity = aim.normalized() * spd
+    damage = dmg
+    life = live
+    pierce_left = pierce
+    _hit_ids.clear()
+    active = true
+    visible = true
+    set_physics_process(true)
+
+func deactivate() -> void:
+    active = false
+    visible = false
+    set_physics_process(false)
+    global_position = Vector2(-8000, -8000)
+
+func already_hit(id: int) -> bool:
+    return _hit_ids.has(id)
+
+func remember_hit(id: int) -> void:
+    _hit_ids.append(id)
+
+func _physics_process(delta: float) -> void:
+    if not active:
+        return
+    global_position += velocity * delta
+    life -= delta
+    if life <= 0.0:
+        deactivate()
+      </script>
+    </li>
+    <li><strong>Game scene.</strong> New scene, root type <code>Node</code>, rename it <code>Game</code>. Add a child <code>Node2D</code> named <code>World</code>. Select <code>World</code>, click the chain-link icon at the top of the Scene dock (Instantiate Child Scene), pick <code>player.tscn</code>. The instance should be named <code>Player</code>. Add two more children of <code>World</code>: <code>Node2D</code> named <code>Enemies</code>, and <code>Node2D</code> named <code>Projectiles</code>. Save as <code>res://game/game.tscn</code>.</li>
+    <li><strong>Run director.</strong> Attach <code>res://game/game.gd</code> to <code>Game</code>. This file owns pools, spawning, the hash, the Needle, and contact damage. <code>physics_process_priority</code> is <code>20</code> so enemies and shots (priority 0) move first; a lower number runs first.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/game.gd">
+class_name RunDirector
+extends Node
+
+const ENEMY_SCENE: PackedScene = preload("res://game/enemies/enemy.tscn")
+const SHOT_SCENE: PackedScene = preload("res://game/combat/projectile.tscn")
+const ENEMY_POOL: int = 48
+const ALIVE_CAP: int = 36
+const SHOT_POOL: int = 40
+const CONTACT_RADIUS: float = 26.0
+const NEEDLE_RANGE: float = 460.0
+
+var _hash: SpatialHash = SpatialHash.new()
+var _query: Array[int] = []
+var _enemies: Array[Enemy] = []
+var _enemy_free: Array[int] = []
+var _shots: Array[Projectile] = []
+var _shot_free: Array[int] = []
+
+var _player: Player
+var _elapsed: float = 0.0
+var _spawn_wait: float = 0.4
+var _needle_wait: float = 0.2
+var _kills: int = 0
+var _running: bool = true
+
+func _ready() -> void:
+    physics_process_priority = 20
+    _player = $World/Player as Player
+    _player.died.connect(_on_player_died)
+    _build_pools()
+    if not Performance.has_custom_monitor(&"BH/Alive"):
+        Performance.add_custom_monitor(&"BH/Alive", _monitor_alive)
+    Events.game_started.emit()
+    print("BH nodes ", int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))
+
+func _exit_tree() -> void:
+    if Performance.has_custom_monitor(&"BH/Alive"):
+        Performance.remove_custom_monitor(&"BH/Alive")
+
+func _monitor_alive() -> float:
+    return float(ENEMY_POOL - _enemy_free.size())
+
+func _physics_process(delta: float) -> void:
+    if not _running:
+        return
+    _elapsed += delta
+    _spawn_wait -= delta
+    _needle_wait -= delta
+    if _spawn_wait <= 0.0:
+        _spawn_wait = _spawn_interval()
+        _spawn_enemy()
+    if _needle_wait <= 0.0:
+        _needle_wait = 0.48
+        _fire_needle()
+    _rebuild_hash()
+    _resolve_shots()
+    _resolve_contact(delta)
+
+func _spawn_interval() -> float:
+    return maxf(0.20, 0.55 * pow(0.92, _elapsed / 30.0))
+
+func _build_pools() -> void:
+    for i: int in ENEMY_POOL:
+        var enemy: Enemy = ENEMY_SCENE.instantiate() as Enemy
+        enemy.entity_id = i
+        $World/Enemies.add_child(enemy)
+        _enemies.append(enemy)
+        _enemy_free.append(i)
+    for i: int in SHOT_POOL:
+        var shot: Projectile = SHOT_SCENE.instantiate() as Projectile
+        $World/Projectiles.add_child(shot)
+        _shots.append(shot)
+        _shot_free.append(i)
+
+func _spawn_enemy() -> void:
+    if _enemy_free.is_empty():
+        return
+    if ENEMY_POOL - _enemy_free.size() >= ALIVE_CAP:
+        return
+    var id: int = _enemy_free.pop_back()
+    var ang: float = randf() * TAU
+    var dist: float = randf_range(640.0, 820.0)
+    var at: Vector2 = _player.global_position + Vector2.from_angle(ang) * dist
+    _enemies[id].activate(at)
+
+func _fire_needle() -> void:
+    var id: int = _nearest(_player.global_position, NEEDLE_RANGE)
+    if id < 0:
+        return
+    if _shot_free.is_empty():
+        return
+    var shot_i: int = _shot_free.pop_back()
+    var dir: Vector2 = _enemies[id].global_position - _player.global_position
+    _shots[shot_i].launch(_player.global_position, dir, 10.0, 680.0, 0, 0.65)
+
+func _nearest(origin: Vector2, radius: float) -> int:
+    _hash.query_into(origin, radius, _query)
+    var best: int = -1
+    var best_d: float = radius * radius
+    for id: int in _query:
+        var enemy: Enemy = _enemies[id]
+        if not enemy.active:
+            continue
+        var d: float = origin.distance_squared_to(enemy.global_position)
+        if d < best_d:
+            best_d = d
+            best = id
+    return best
+
+func _rebuild_hash() -> void:
+    _hash.clear()
+    for enemy: Enemy in _enemies:
+        if enemy.active:
+            _hash.insert(enemy.entity_id, enemy.global_position)
+
+func _resolve_shots() -> void:
+    for shot: Projectile in _shots:
+        if not shot.active:
+            continue
+        var reach: float = shot.radius + 14.0
+        _hash.query_into(shot.global_position, reach, _query)
+        var reach2: float = reach * reach
+        for id: int in _query:
+            if not shot.active:
+                break
+            var enemy: Enemy = _enemies[id]
+            if not enemy.active or shot.already_hit(id):
+                continue
+            if shot.global_position.distance_squared_to(enemy.global_position) > reach2:
+                continue
+            shot.remember_hit(id)
+            var killed: bool = enemy.hurt(shot.damage)
+            if killed:
+                _kills += 1
+                _enemy_free.append(id)
+                Events.score_changed.emit(_kills)
+            if shot.pierce_left <= 0:
+                shot.deactivate()
+                break
+            shot.pierce_left -= 1
+    _reclaim_shots()
+
+func _reclaim_shots() -> void:
+    for i: int in _shots.size():
+        if not _shots[i].active and not _shot_free.has(i):
+            _shot_free.append(i)
+
+func _resolve_contact(delta: float) -> void:
+    _hash.query_into(_player.global_position, CONTACT_RADIUS, _query)
+    var total: float = 0.0
+    var reach2: float = CONTACT_RADIUS * CONTACT_RADIUS
+    for id: int in _query:
+        var enemy: Enemy = _enemies[id]
+        if not enemy.active:
+            continue
+        if _player.global_position.distance_squared_to(enemy.global_position) <= reach2:
+            total += enemy.contact_dps
+    if total > 0.0:
+        _player.apply_contact(total, delta)
+
+func _on_player_died() -> void:
+    _running = false
+    for enemy: Enemy in _enemies:
+        enemy.deactivate()
+    for shot: Projectile in _shots:
+        shot.deactivate()
+    Events.game_over.emit(_kills)
+    print("BH game over kills ", _kills)
+
+func kills() -> int:
+    return _kills
+
+func elapsed() -> float:
+    return _elapsed
+      </script>
+    </li>
+  </ol>
+  <pre class="scene-tree">Game (Node)                       [game.gd]
+└── World (Node2D)
+    ├── Player (instance)
+    ├── Enemies (Node2D)          48 pooled Enemy nodes, created in code
+    └── Projectiles (Node2D)      40 pooled Projectile nodes, created in code</pre>
+  <div class="checkpoint">
+    <p>Open <code>game.tscn</code> and press <kbd>F6</kbd>. Red icons walk in from off-screen and chase you. Yellow shots fly at the nearest red icon about twice a second. Standing still on a bat drains you; after a few seconds the Output panel prints <code>BH game over kills</code> and a number. The first line <code>BH nodes</code> is some count under 400. Play another thirty seconds on a fresh run: that count must not climb. In the bottom panel, open <kbd class="ui">Debugger</kbd>, then <kbd class="ui">Monitors</kbd>, and find <code>BH/Alive</code>. It stays at or under 36.</p>
+    <p>If the parser says it could not find type <code>Enemy</code> or <code>SpatialHash</code>, that script has an error: open it and read the first red line in Output. If shots never appear, you are out of range (walk toward a bat) or <code>Projectiles</code> is not a child of <code>World</code>.</p>
+  </div>
+
+  <h2 id="build-3">Block 4: HUD, game over, pause</h2>
+  <ol class="steps">
+    <li><strong>HUD layer.</strong> Open <code>game.tscn</code>. Select <code>Game</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add <code>CanvasLayer</code>, rename it <code>HUD</code>. In the Inspector set <kbd class="ui">Layer</kbd> to <code>10</code>. Add a child <code>MarginContainer</code> named <code>TopBar</code>. With <code>TopBar</code> selected, look at the toolbar directly above the 2D viewport, open the dropdown whose tooltip is <kbd class="ui">Anchor Presets</kbd>, and choose <kbd class="ui">Top Wide</kbd>. In the Inspector set offsets so the bar sits in the top 72 pixels: <kbd class="ui">Offset Bottom</kbd> about <code>72</code> if Top Wide left it full-height, and set the four theme overrides you need by adding a child instead of fighting anchors: add a <code>HBoxContainer</code> named <code>Row</code> under <code>TopBar</code>.</li>
+    <li><strong>Labels and bar.</strong> Under <code>Row</code> add a <code>Label</code> named <code>TimeLabel</code>, a <code>ProgressBar</code> named <code>HpBar</code>, and a <code>Label</code> named <code>KillsLabel</code>. Select <code>HpBar</code>. Set <kbd class="ui">Custom Minimum Size</kbd> to <code>280</code> by <code>24</code> (Layout section). Turn off <kbd class="ui">Show Percentage</kbd>. Set <kbd class="ui">Max Value</kbd> to <code>100</code> and <kbd class="ui">Value</kbd> to <code>100</code>. Set <code>TimeLabel</code> text to <code>00:00</code> and <code>KillsLabel</code> text to <code>0</code> so the empty scene is readable.</li>
+    <li><strong>Unique names.</strong> Right-click <code>TimeLabel</code> in the Scene dock and click <kbd class="ui">Access as Unique Name</kbd>. Do the same for <code>HpBar</code> and <code>KillsLabel</code>. The menu item shows a check. Scripts then use <code>%TimeLabel</code>.</li>
+    <li><strong>Game over panel.</strong> Select <code>HUD</code>, add a <code>PanelContainer</code> named <code>GameOver</code>. Anchor preset <kbd class="ui">Full Rect</kbd> (same viewport toolbar dropdown). Add a child <code>VBoxContainer</code> named <code>GameOverBox</code>. Under it add a <code>Label</code> named <code>GameOverTitle</code> with text <code>Run over</code>, a <code>Button</code> named <code>RetryButton</code> with text <code>Retry</code>, and a <code>Button</code> named <code>MenuButton</code> with text <code>Menu</code>. Select <code>GameOver</code> and turn off the eye icon next to its name in the Scene dock (or uncheck <kbd class="ui">Visible</kbd>) so it starts hidden. Right-click each of <code>GameOver</code>, <code>GameOverTitle</code>, <code>RetryButton</code>, and <code>MenuButton</code> and choose <kbd class="ui">Access as Unique Name</kbd>. The HUD script uses <code>%GameOver</code>, <code>%GameOverTitle</code>, <code>%RetryButton</code>, and <code>%MenuButton</code>.</li>
+    <li><strong>Pause menu.</strong> Select <code>Game</code>. Click the chain icon in the Scene dock and instance <code>res://ui/pause_menu.tscn</code>. Leave the instance name <code>PauseMenu</code>. That scene already uses <code>process_mode = Always</code>, listens for the <code>pause</code> action, toggles <code>get_tree().paused</code>, and emits <code>Events.game_paused</code>. Do not rewrite it.</li>
+    <li><strong>HUD script.</strong> Attach <code>res://game/hud.gd</code> to <code>HUD</code>. Buttons are wired in code. That is the connection style for the rest of this game.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/hud.gd">
+class_name Hud
+extends CanvasLayer
+
+@onready var _time: Label = %TimeLabel
+@onready var _hp: ProgressBar = %HpBar
+@onready var _kills: Label = %KillsLabel
+@onready var _over: PanelContainer = %GameOver
+@onready var _title: Label = %GameOverTitle
+
+func _ready() -> void:
+    %RetryButton.pressed.connect(_on_retry_pressed)
+    %MenuButton.pressed.connect(_on_menu_pressed)
+
+func _process(_delta: float) -> void:
+    var director: RunDirector = get_parent() as RunDirector
+    if director == null:
+        return
+    var secs: int = int(director.elapsed())
+    _time.text = "%02d:%02d" % [int(secs / 60), secs % 60]
+    _kills.text = str(director.kills())
+    var player: Player = director.get_node("World/Player") as Player
+    _hp.max_value = player.max_hp
+    _hp.value = player.hp
+
+func show_game_over(kills: int) -> void:
+    _title.text = "Run over  ·  %d" % kills
+    _over.visible = true
+
+func _on_retry_pressed() -> void:
+    if get_tree().paused:
+        get_tree().paused = false
+    SceneRouter.reload_current()
+
+func _on_menu_pressed() -> void:
+    if get_tree().paused:
+        get_tree().paused = false
+    SceneRouter.go_to(SceneRouter.MAIN_MENU_SCENE)
+      </script>
+    </li>
+    <li><strong>Show the panel on death.</strong> Open <code>game.gd</code>. Inside <code>_on_player_died</code>, under the <code>Events.game_over.emit</code> line, add:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/game.gd (add inside _on_player_died)">
+    ($HUD as Hud).show_game_over(_kills)
+      </script>
+      The function must still set <code>_running = false</code> and emit <code>game_over</code> before that line. Save every scene (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>).</li>
+    <li><strong>Main scene stays the menu.</strong> Project Settings, <kbd class="ui">Application &gt; Run</kbd>. <kbd class="ui">Main Scene</kbd> must stay <code>res://ui/main_menu.tscn</code>. Do not point it at <code>game.tscn</code>. <kbd>F6</kbd> runs the open scene; <kbd>F5</kbd> runs the menu.</li>
+  </ol>
+  <pre class="scene-tree">Game (Node)                       [game.gd]
+├── World (Node2D)
+│   ├── Player
+│   ├── Enemies
+│   └── Projectiles
+├── HUD (CanvasLayer, layer 10)   [hud.gd]
+│   ├── TopBar (MarginContainer)
+│   │   └── Row (HBoxContainer)
+│   │       ├── TimeLabel         %
+│   │       ├── HpBar             %
+│   │       └── KillsLabel        %
+│   └── GameOver (PanelContainer) %  hidden until death
+│       └── GameOverBox (VBoxContainer)
+│           ├── GameOverTitle     %
+│           ├── RetryButton
+│           └── MenuButton
+└── PauseMenu (instance of ui/pause_menu.tscn)</pre>
+  <div class="checkpoint">
+    <p>Press <kbd>F6</kbd> on <code>game.tscn</code>. The timer counts up. The bar shrinks when bats touch you. Kills increase when shots land. When you die, a panel offers Retry and Menu. Retry reloads the run. Menu fades to the Ship Kit main menu (that fade is <code>SceneRouter</code>). Press <kbd>Esc</kbd> or whichever key <code>pause</code> uses during a live run: the pause menu appears and the bats freeze. Resume, and they move again.</p>
+    <p>Then press <kbd>F5</kbd>. Use the main menu start button. You should land in this same run. If that button does nothing, open the main menu script from Day 16 and make the existing start control call <code>SceneRouter.go_to(SceneRouter.GAME_SCENE)</code>. Do not rename Ship Kit nodes. The constant is already <code>res://game/game.tscn</code>.</p>
+  </div>
+  <div class="callout warn"><span class="callout-title">If Retry seems to do nothing</span>
+    <p>The tree was left paused by the pause menu. <code>hud.gd</code> clears <code>get_tree().paused</code> before <code>reload_current</code>. If you removed that line, reload runs while paused and looks frozen.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Node count climbs.</strong> Something calls <code>instantiate</code> outside <code>_build_pools</code>. Search the scripts. Spawns must <code>pop_back</code> an id from a free list.</li>
+    <li><strong>Shots pass through bats.</strong> <code>Game</code> physics priority must be higher than the enemies' so the hash is rebuilt after they move. Priority 20 on <code>Game</code> is later than the default 0. Also confirm you test distance after the hash query. A cell query alone is a square, not a circle.</li>
+    <li><strong>Disabling a shape inside a physics callback.</strong> <code>set_deferred</code> is required. Setting <code>disabled</code> directly from <code>_physics_process</code> can error or apply a frame late in a worse way.</li>
+    <li><strong><code>move_and_slide()</code> with an argument.</strong> Godot 4 reads the <code>velocity</code> property. An argument is a Godot 3 call and will not parse.</li>
+    <li><strong>Camera not following.</strong> <code>Camera2D</code> must be a child of <code>Player</code>, <kbd class="ui">Enabled</kbd> on. A second enabled camera elsewhere in the Ship Kit menus is not in this scene, so <kbd>F6</kbd> is clean. If <kbd>F5</kbd> looks wrong only after the fade, you instanced the player under the menu by mistake.</li>
+    <li><strong>Copied project still named Ship Kit.</strong> You edited the original folder. The path in the window title bar of File Explorer must be <code>C:\GodotProjects\bullet-heaven</code>.</li>
+    <li><strong>Mask left on the player.</strong> If the player mask includes <code>enemies</code>, bodies can block movement even with monitoring off, once you add real physics bodies later. Mask stays empty this game.</li>
+    <li><strong>Parser says a class name is a cycle or is not found.</strong> <code>Hud</code> and <code>RunDirector</code> name each other. Save both scripts. If the error stays, in <code>hud.gd</code> type the parent as <code>Node</code> and read values with <code>call</code>: <code>int(get_parent().call("kills"))</code>. Do not <code>preload</code> one script from the other.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, about 25 min)</h2>
+  <div class="challenge">
+    <h3>A side shot</h3>
+    <p>When the Needle fires, also launch a second projectile 90 degrees off the aim direction, at half damage (5). Reuse the same pool. If the free list has only one shot, fire the main one and skip the side one.</p>
+    <p>Hint: <code>Vector2</code> has <code>orthogonal()</code>. Call <code>launch</code> twice inside <code>_fire_needle</code> only when <code>_shot_free.size() &gt;= 2</code>. Do not create a new scene.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>Why does the swarm come from a pool instead of <code>instantiate</code> plus <code>queue_free</code> each kill?</p>
+      <ul>
+        <li>Godot forbids freeing nodes during <code>_physics_process</code>.</li>
+        <li>The node count stays flat and you avoid an allocate-and-free spike every kill.</li>
+        <li>Pooled nodes do not need a position.</li>
+        <li>Only pooled nodes can be added to a group.</li>
+      </ul>
+      <p class="explain"><code>queue_free</code> is legal. The point of the pool is the flat cost. Day 21 goes further and removes the enemy node entirely.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>A spatial-hash query returns an enemy whose center is 70 px away. Your hit radius is 26 px. What should the code do?</p>
+      <ul>
+        <li>Reject it. The hash only lists ids in nearby cells; the circle test is still required.</li>
+        <li>Count it as a hit. The hash is exact.</li>
+        <li>Rebuild the physics space with <code>move_and_slide()</code>.</li>
+        <li>Double the cell size until the query is empty.</li>
+      </ul>
+      <p class="explain">Cells are squares. Any enemy in a touched cell is a candidate, including ones outside the circle.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>Which <code>Camera2D</code> statement matches Godot 4?</p>
+      <ul>
+        <li>You must call <code>make_current()</code> or the camera never activates.</li>
+        <li>The property to tick in the Inspector is named Current, as in Godot 3.</li>
+        <li>An enabled camera becomes active when it enters the tree if no camera is active yet.</li>
+        <li>Position smoothing runs only while the game is paused.</li>
+      </ul>
+      <p class="explain"><code>enabled</code> defaults to true and claims the viewport when it enters. <code>make_current()</code> exists if you need to switch later. Smoothing is for normal movement.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Why is <code>Game</code>'s physics process priority 20 while enemies stay at 0?</p>
+      <ul>
+        <li>Higher numbers run first, so the hash is built before enemies move.</li>
+        <li>Lower numbers run first, so enemies move, then the director rebuilds the hash and resolves hits.</li>
+        <li>Priority 20 disables physics on children.</li>
+        <li>It makes <code>move_and_slide()</code> accept a velocity argument.</li>
+      </ul>
+      <p class="explain"><code>Node.process_priority</code> (and the physics twin) calls lower values first, ignoring tree order. The director must see this frame's positions.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/physics/using_character_body_2d.html" target="_blank" rel="noopener">Using CharacterBody2D</a>: <code>velocity</code> and <code>move_and_slide()</code> with no arguments.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_characterbody2d.html" target="_blank" rel="noopener">CharacterBody2D</a>: <code>MOTION_MODE_FLOATING</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_camera2d.html" target="_blank" rel="noopener">Camera2D</a>: <code>enabled</code>, position smoothing.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_node.html" target="_blank" rel="noopener">Node</a>: process priority (lower runs first) and process mode.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_input.html" target="_blank" rel="noopener">Input.get_vector</a>: four actions, length capped at 1.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_performance.html" target="_blank" rel="noopener">Performance</a>: <code>get_monitor</code> and custom monitors.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li><code>C:\GodotProjects\bullet-heaven</code> is a copy, and the original <code>ship-kit</code> folder was not edited.</li>
+    <li>Viewport is 1280×720, stretch <code>canvas_items</code>, aspect <code>expand</code>, renderer Mobile.</li>
+    <li>F6: you move, bats chase, Needle fires, HP falls on contact, game over can retry or return to the menu.</li>
+    <li>Output node count stays flat for a full minute, and <code>BH/Alive</code> never passes 36.</li>
+    <li>Esc pauses via the Ship Kit pause menu. F5 still boots the main menu, and Start reaches this run.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> XP gems, a paused level-up choice, weapon and passive Resources, evolutions, and a virtual joystick. The pools and the hash stay.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

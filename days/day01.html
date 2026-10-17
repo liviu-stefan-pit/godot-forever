@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 1 - Install Godot and tour the editor | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day01" data-root="../">
+<main>
+
+  <!-- 1. HEADER -->
+  <header class="lesson-head">
+    <div class="eyebrow">Part 1 · Day 1</div>
+    <h1>Install Godot and tour the editor</h1>
+    <p class="lead">Today you download Godot, create your sandbox project, and learn where everything in the editor lives by actually clicking on it: the docks, the 2D and 3D workspaces, the script editor, the Game window, Project Settings and the built-in documentation. You also set up the editor so every code listing in this course pastes in cleanly.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <!-- 2. TIME BOX -->
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:25</td><td><strong>Block 1: Install Godot.</strong> Download, extract, shortcut, first launch (<a href="#build-1">section 1</a>).</td></tr>
+    <tr><td>0:25 – 0:40</td><td><strong>Block 2: Concepts.</strong> The Godot mental model, no editor needed (<a href="#concepts">concepts</a>).</td></tr>
+    <tr><td>0:40 – 1:00</td><td><strong>Block 3: Project Manager.</strong> Renderers, the Create dialog, your sandbox project (<a href="#build-2">section 2</a>).</td></tr>
+    <tr><td>1:00 – 1:35</td><td><strong>Block 4: Editor tour.</strong> The scavenger hunt through every dock and panel (<a href="#build-3">section 3</a>).</td></tr>
+    <tr><td>1:35 – 1:50</td><td><strong>Break.</strong> Stand up, drink water, look at something far away.</td></tr>
+    <tr><td>1:50 – 2:25</td><td><strong>Block 5: Editor Settings and your first scene.</strong> Spaces vs tabs, Label scene, F5 vs F6, file types, <code>res://</code> vs <code>user://</code> (<a href="#build-4">sections 4</a> and <a href="#build-5">5</a>).</td></tr>
+    <tr><td>2:25 – 2:50</td><td><strong>Block 6: 2D workspace.</strong> Sprite2D, tools, snapping, Camera2D (<a href="#build-6">section 6</a>).</td></tr>
+    <tr><td>2:50 – 3:05</td><td><strong>Block 7: 3D workspace.</strong> A cube, navigation, gizmos (<a href="#build-7">section 7</a>).</td></tr>
+    <tr><td>3:05 – 3:35</td><td><strong>Block 8: Script, Game and Project Settings.</strong> Output, debugger, class reference, embedded game, settings tour (<a href="#build-8">sections 8</a>, <a href="#build-9">9</a> and <a href="#build-10">10</a>).</td></tr>
+    <tr><td>3:35 – 4:00</td><td><strong>Block 9: Backups, challenge, quiz, wrap-up</strong> (<a href="#build-11">section 11</a> onwards).</td></tr>
+    <tr class="total"><td>Total</td><td>4 h 0 min</td></tr>
+  </table>
+
+  <!-- 3. OBJECTIVES -->
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Have the standard (non-.NET) Godot 4 editor installed in <code>C:\Godot\</code> with a shortcut, and the sandbox project <code>C:\GodotProjects\g00-sandbox</code> created and open.</li>
+    <li>Point at and name every part of the editor (menu bar, workspace buttons, play buttons, Scene dock, FileSystem dock, Viewport, Inspector, Node tab, bottom panel) without looking, and reset or save a dock layout.</li>
+    <li>Have set the Editor Settings the whole course relies on: indentation Spaces / 4, type hints on, and a font size and theme you can read comfortably.</li>
+    <li>Create, save and run a scene with <kbd>F6</kbd> and with <kbd>F5</kbd>, explain the difference, and say where <code>res://</code> and <code>user://</code> live on your disk.</li>
+    <li>Move and orbit around in both the 2D and 3D viewports, and open the built-in class reference for any class (try <code>Node2D</code>) in under five seconds.</li>
+    <li>Back up a project (Git or zip) and know which folder is safe to delete (<code>.godot/</code>).</li>
+  </ul>
+
+  <!-- 4. BEFORE YOU START -->
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>A Windows 10 or 11 64-bit PC with a mouse that has a <strong>middle button</strong> (the wheel click) and about 1 GB of free disk space. A laptop trackpad works too, with one setting change we cover in <a href="#build-4">section 4</a>.</li>
+    <li>An internet connection for the download (about 100 MB in total). After that, the whole course works offline except the optional Asset Library and the starter downloads we point out.</li>
+    <li>A GPU that supports Vulkan 1.2 is recommended for the Forward+ renderer (anything from the last ~8 years). If the editor refuses to start a Forward+ project later, create projects with <strong>Compatibility</strong> instead (we explain renderers in <a href="#build-2">section 2</a>).</li>
+    <li>File Explorer open, and PowerShell available (Start menu, type <code>PowerShell</code>). We only use PowerShell for two optional commands today.</li>
+    <li>Two folders will be created today: <code>C:\Godot\</code> (the editor program) and <code>C:\GodotProjects\</code> (all your projects, one folder per project). Keep projects <em>out</em> of OneDrive/Dropbox-synced folders: sync clients fight with Godot's cache folder.</li>
+  </ul>
+
+  <div class="callout version"><span class="callout-title">Which Godot version?</span>
+    <p>The course targets the latest <strong>4.x stable</strong>. The documentation this course is checked against describes Godot <strong>4.7</strong> (June 2026) as the newest stable release and 4.8 as in development. Everything we use works from 4.4 onward; where a button or menu was renamed between versions we say so in a callout like this one. <strong>Pick one version today and keep it until Day 30</strong>: projects are upgraded one-way and a mid-course upgrade is a distraction.</p></div>
+
+  <!-- 5. CONCEPTS -->
+  <h2 id="concepts">Concepts you need first</h2>
+  <p>You code well; what you lack is Godot's vocabulary. Read this once now (15 minutes including the two docs pages); Day 2 deepens each row of the table with code.</p>
+
+  <h3>Godot's mental model in one table</h3>
+  <table>
+    <tr><th>Godot term</th><th>What it is</th><th>Closest thing you know</th></tr>
+    <tr><td><strong>Node</strong></td><td>The smallest building block. Every node has a name, properties, and per-frame callbacks, and can have child nodes. A <code>Sprite2D</code> draws a texture, a <code>Timer</code> counts time, a <code>Camera2D</code> frames the view.</td><td>Unity: GameObject + one built-in component. Unreal: a component. Web: a DOM element.</td></tr>
+    <tr><td><strong>Scene</strong></td><td>A saved tree of nodes (a <code>.tscn</code> file). Once saved, it behaves like a new node type you can instance anywhere. A scene can be a player, a bullet, a menu, or a whole level.</td><td>Unity: Prefab <em>and</em> Scene. Unreal: Blueprint class <em>and</em> Level. Web: a component.</td></tr>
+    <tr><td><strong>Scene tree</strong></td><td>The live tree of every node in the running game. Your main scene is its trunk; instanced scenes are branches.</td><td>The DOM / the hierarchy panel at runtime.</td></tr>
+    <tr><td><strong>Script</strong></td><td>A GDScript file attached to a node that <em>extends</em> that node's class. It is not a separate component: the node <em>is</em> the class.</td><td>Unity: MonoBehaviour (but inheritance instead of GetComponent). Unreal: a Blueprint's event graph.</td></tr>
+    <tr><td><strong>Signal</strong></td><td>A named event a node emits ("button pressed", "timer finished", "body entered"). Other nodes connect functions to it. This is how nodes talk without hard references.</td><td>C# events / delegates, UnityEvent, Unreal dynamic delegates, DOM events.</td></tr>
+    <tr><td><strong>Resource</strong></td><td>A data container saved to disk (<code>.tres</code>) or in a scene: textures, materials, shapes, your own data classes. Loaded once and shared.</td><td>ScriptableObject, Data Asset, a typed JSON file.</td></tr>
+    <tr><td><strong>Autoload</strong></td><td>A script or scene that Godot adds to the scene tree before everything else and keeps alive across scene changes.</td><td>A singleton / game instance / subsystem.</td></tr>
+  </table>
+
+  <div class="callout tip"><span class="callout-title">The one idea to carry into every day</span>
+    <p>Instead of designing class hierarchies up front, <strong>design scenes</strong>: one scene per thing the player sees (player, enemy, bullet, HUD, level), then instance them into each other. Godot was built around this. Read the short official pages <a href="https://docs.godotengine.org/en/stable/getting_started/introduction/key_concepts_overview.html" target="_blank" rel="noopener">Overview of Godot's key concepts</a> and <a href="https://docs.godotengine.org/en/stable/getting_started/introduction/godot_design_philosophy.html" target="_blank" rel="noopener">Design framework</a> now; they take about ten minutes.</p></div>
+
+  <h3>Practical facts about the engine</h3>
+  <ul>
+    <li><strong>The editor is a Godot game.</strong> Its docks and buttons are built from Godot's own UI nodes. That is why Godot is a single small executable.</li>
+    <li><strong>A project is just a folder</strong> containing a text file named <code>project.godot</code>. Scenes, scripts and resources are text files too (friendly to Git). Binary caches live in a hidden folder that Godot regenerates.</li>
+    <li><strong>No installer, no launcher account, no license key.</strong> You unzip one <code>.exe</code> and run it. Godot is MIT licensed; you will ship its license text with your games in Part 2.</li>
+    <li><strong>Export templates</strong> (the prebuilt runtimes used to package your game for Windows, Android, ...) are a separate download. You get them on <strong>Day 4</strong>, when you export your first game. You do <em>not</em> need them to run a game from the editor.</li>
+    <li><strong>GDScript only.</strong> You will be using the standard build, not the .NET build, and no C# anywhere in this course.</li>
+  </ul>
+
+  <!-- 6. BUILD 1: INSTALL -->
+  <h2 id="build-1">1. Install Godot (about 25 minutes)</h2>
+
+  <div class="callout external"><span class="callout-title">External resource (not in the Godot docs)</span>
+    <p>Downloading is done on the official site, <a href="https://godotengine.org" target="_blank" rel="noopener">godotengine.org</a>. The site layout and file names change over time. If a button below is named differently, look for the equivalent: <strong>Download &gt; Windows &gt; the standard (non-.NET) stable build</strong>. Verify on the official page; steps change.</p></div>
+
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Open the download page.</strong> In your browser go to <a href="https://godotengine.org" target="_blank" rel="noopener">godotengine.org</a> and click <kbd class="ui">Download</kbd> in the top menu. Choose <kbd class="ui">Windows</kbd> if the page does not already detect it.</li>
+    <li><strong>Pick the right build.</strong> The page offers two big buttons: the standard <strong>Godot Engine</strong> build and a <strong>.NET</strong> build (for C#). Click the <strong>standard</strong> one, the one that does <em>not</em> say .NET. You get a file named like <code>Godot_v4.x-stable_win64.exe.zip</code> (with your version in place of <code>4.x</code>). Make sure the word <code>stable</code> is in the name, not <code>beta</code>, <code>rc</code> or <code>dev</code>. If you accidentally download a <code>mono</code> or <code>dotnet</code> file, delete it and download again.</li>
+    <li><strong>Unblock the zip (optional but saves trouble).</strong> In File Explorer open <code>Downloads</code>, right-click the zip, choose <kbd class="ui">Properties</kbd>. At the bottom of the <kbd class="ui">General</kbd> tab, if you see a <kbd class="ui">Unblock</kbd> check box, tick it and click <kbd class="ui">OK</kbd>. (This tells Windows you trust the file and reduces the warnings in step 6.)</li>
+    <li><strong>Create the permanent folder.</strong> In File Explorer open <code>This PC &gt; Local Disk (C:)</code>. Right-click an empty area, choose <kbd class="ui">New &gt; Folder</kbd>, type <code>Godot</code> and press <kbd>Enter</kbd>. The folder is now <code>C:\Godot\</code>. Choose a folder you will never move or delete: your shortcuts and taskbar pin point into it.</li>
+    <li><strong>Extract the zip.</strong> Right-click the downloaded zip, choose <kbd class="ui">Extract All…</kbd>, click <kbd class="ui">Browse…</kbd>, select <code>C:\Godot</code>, click <kbd class="ui">Select Folder</kbd>, then <kbd class="ui">Extract</kbd>. (On Windows 11 the item may be under <kbd class="ui">Show more options</kbd>. If the zip contains a sub-folder, open it and move the files up so the <code>.exe</code> files sit directly in <code>C:\Godot\</code>.) Do <strong>not</strong> run Godot from inside the zip or from <code>Downloads</code>.
+      <p>You now have two programs:</p>
+      <pre class="plain">C:\Godot\Godot_v4.x-stable_win64.exe           the editor (double-click this one)
+C:\Godot\Godot_v4.x-stable_win64_console.exe   same editor, plus a black console window that shows logs</pre>
+      <p>Use the first one every day. The <code>_console</code> variant is for the rare day the editor will not start: the console window prints the reason.</p></li>
+    <li><strong>First launch and SmartScreen.</strong> Double-click <code>Godot_v4.x-stable_win64.exe</code>. Windows may show a blue <em>"Windows protected your PC"</em> box. Click <kbd class="ui">More info</kbd>, then <kbd class="ui">Run anyway</kbd>. Windows shows this for programs it has not seen many times; you only see it on the first launch of each new version. If you get a Windows Defender <em>Firewall</em> prompt, you can click <kbd class="ui">Cancel</kbd>: the editor does not need incoming connections for anything in this course. If your antivirus quarantines the file, restore it and add <code>C:\Godot</code> to the exclusions (downloads from godotengine.org are safe).</li>
+    <li><strong>Look at what opened.</strong> A window titled <strong>Godot Engine - Project Manager</strong> appears with an empty project list. A dialog with some welcome text may pop up on the very first launch; read it, then close it. Do not create anything yet.</li>
+    <li><strong>Pin it.</strong> The Godot icon is now on your taskbar. Right-click it and choose <kbd class="ui">Pin to taskbar</kbd>. Optionally also create a desktop shortcut: right-click the <code>.exe</code> in File Explorer, <kbd class="ui">Show more options &gt; Send to &gt; Desktop (create shortcut)</kbd>.</li>
+    <li><strong>Optional: the interface language.</strong> In the Project Manager click <kbd class="ui">Settings</kbd> (top-right corner). If your language is not English, set the language to <kbd class="ui">English</kbd>: every menu and button name in this course is the English one. While you are here, notice the entries for <em>theme</em>, <em>display scale</em>, <em>network mode</em> and <em>directory naming convention</em>; the official page <a href="https://docs.godotengine.org/en/stable/tutorials/editor/project_manager.html" target="_blank" rel="noopener">Using the Project Manager</a> describes them. Close the Settings window.</li>
+  </ol>
+
+  <div class="checkpoint"><p>The Project Manager window is open, the Godot icon is pinned to your taskbar, and <code>C:\Godot\</code> contains the two <code>.exe</code> files. If a window says "No suitable GPU" or the program closes immediately, start the <code>_console.exe</code> version and read the last lines it prints; the usual fix is to create projects with the <strong>Compatibility</strong> renderer (section 2) and update your graphics driver.</p></div>
+
+  <div class="callout note"><span class="callout-title">What "no installer" means in practice</span>
+    <ul>
+      <li><strong>Portable editor.</strong> Godot writes its settings under <code>%APPDATA%\Godot\</code> (paste that into the File Explorer address bar to look). If you create an empty file named <code>_sc_</code> next to the <code>.exe</code>, Godot switches to <em>self-contained mode</em> and keeps everything in an <code>editor_data</code> folder beside the program instead. Details: <a href="https://docs.godotengine.org/en/stable/tutorials/io/data_paths.html" target="_blank" rel="noopener">File paths in Godot projects</a>. You do not need this for the course.</li>
+      <li><strong>Updating</strong> means downloading a new zip. Put it into its own folder (for example <code>C:\Godot\4.8\</code>) so the old version keeps working for old projects.</li>
+      <li><strong>Export templates</strong> arrive on Day 4 through <kbd class="menu">Editor &gt; Manage Export Templates…</kbd>. Nothing to do today.</li>
+    </ul></div>
+
+  <div class="callout external"><span class="callout-title">External resource: the Steam version (alternative)</span>
+    <p>Godot is also published on Steam (search "Godot Engine" in the Steam store; the official docs link app 404790). It auto-updates through Steam and uses self-contained mode by default, so its settings are kept next to the program instead of in <code>%APPDATA%</code>. Everything in this course works the same, but the Steam copy may be one version behind the website download, and you must not let it auto-update mid-course. We recommend the plain zip for this course because you control the version. Verify on the official page; steps change.</p></div>
+
+  <!-- 6. BUILD 2: PROJECT MANAGER -->
+  <h2 id="build-2">2. The Project Manager and your sandbox project (about 20 minutes)</h2>
+  <p>The Project Manager is the window you saw in step 7. It lists your projects, and creates or imports them. Each project is a separate folder with its own settings. From Day 3 you will create one project per game; today you create <code>g00-sandbox</code>, a throwaway project where you practice and where Day 2's exercises also live.</p>
+
+  <h3>The renderer choice, explained</h3>
+  <p>When you create a project you must choose how Godot draws. You can change it later (click the renderer name at the top-right of the editor), but 3D scenes may need lighting tweaks after a switch, so it is worth choosing deliberately. Source: <a href="https://docs.godotengine.org/en/stable/tutorials/rendering/renderers.html" target="_blank" rel="noopener">Overview of renderers</a>.</p>
+  <table>
+    <tr><th>Renderer</th><th>Choose it when</th><th>Trade-off</th><th>In this course</th></tr>
+    <tr><td><strong>Forward+</strong></td><td>Desktop games, especially 3D; you want every rendering feature (volumetric fog, SDFGI, SSR...).</td><td>Needs a Vulkan / Direct3D 12 / Metal capable GPU. Highest base cost. Poorly optimised for phones.</td><td>Sandbox and Part 1 games (Days 3-13). Default choice.</td></tr>
+    <tr><td><strong>Mobile</strong></td><td>Newer phones and tablets, or desktop where you still want modern features at lower cost.</td><td>Fewer features than Forward+ (no volumetric fog, SSR, SDFGI...). Same GPU requirements.</td><td>Part 2 (Android-targeted 2D games). Explained again on Day 15.</td></tr>
+    <tr><td><strong>Compatibility</strong></td><td>Old or low-end hardware, web exports, or when Vulkan fails to start. Good enough for most 2D games.</td><td>Uses OpenGL; fewest features; new features arrive last.</td><td>Your fallback if Forward+ does not run on your PC.</td></tr>
+  </table>
+  <div class="callout note"><span class="callout-title">Why does a 2D game even care?</span>
+    <p>2D and 3D both go through the chosen renderer. Forward+ draws 2D perfectly well, but the official docs point out that Compatibility is usually enough for 2D and runs on more devices. Part 1 stays on Forward+ so that a single project can mix 2D and 3D without surprises.</p></div>
+
+  <h3>Create the sandbox</h3>
+  <ol class="steps">
+    <li><strong>Tour the Project Manager first.</strong> Look at the window: the two tabs at the top are <kbd class="ui">Projects</kbd> (your projects; the name may read <em>Local Projects</em> in some versions) and <kbd class="ui">Asset Library</kbd> (community demos and templates). The buttons are on the top-left and right of the project list: <kbd class="ui">Create</kbd>, <kbd class="ui">Import</kbd> and others such as <kbd class="ui">Scan</kbd>, <kbd class="ui">Remove</kbd> and <kbd class="ui">Manage Tags</kbd>. There is also a search/filter box, and the <kbd class="ui">Settings</kbd> button at the top-right.</li>
+    <li><strong>Peek at the Asset Library tab.</strong> Click <kbd class="ui">Asset Library</kbd>. It says it needs to go online and shows a <kbd class="ui">Go Online</kbd> button. For privacy reasons Godot makes no network connection until you click it. You do not need it today; if you click it, Godot will also notify you about new Godot versions. You can switch back to <em>Offline</em> in <kbd class="ui">Settings &gt; Network Mode</kbd>. Click back to the <kbd class="ui">Projects</kbd> tab.</li>
+    <li><strong>Open the Create dialog.</strong> Click <kbd class="ui">Create</kbd> (top-left). A <em>Create New Project</em> window opens.</li>
+    <li><strong>Name the project.</strong> In <kbd class="ui">Project Name</kbd> type <code>g00-sandbox</code>.</li>
+    <li><strong>Make the folder yourself.</strong> Next to <kbd class="ui">Project Path</kbd> click <kbd class="ui">Browse</kbd>. A Godot file browser opens (not the Windows one). In the path field at the top, pick drive <code>C:</code> from the drive drop-down (if there is one) and click on <code>C:\</code>. Click the <strong>new folder</strong> button (the last icon at the right end of the top row), type <code>GodotProjects</code>, press <kbd>Enter</kbd>, and open that folder by double-clicking it. Click the new-folder button again, type <code>g00-sandbox</code>, press <kbd>Enter</kbd>, and double-click to enter it. Click <kbd class="ui">Select Current Folder</kbd>. The path field now shows <code>C:\GodotProjects\g00-sandbox</code> and, because the folder is empty, a <strong>green check mark</strong> appears at its right end. (There is also a <kbd class="ui">Create Folder</kbd> option that makes a sub-folder named after the project automatically. We avoid it here so the folder name is exactly what the course uses everywhere.)</li>
+    <li><strong>Choose the renderer.</strong> Under <kbd class="ui">Renderer</kbd> select <kbd class="ui">Forward+</kbd>. The description beside it summarises what it does. (If your GPU is old, select <kbd class="ui">Compatibility</kbd> instead; everything in Days 1-2 works with either.)</li>
+    <li><strong>Choose Version Control Metadata.</strong> In <kbd class="ui">Version Control Metadata</kbd> choose <kbd class="ui">Git</kbd>. This does <em>not</em> run Git or require it: it only writes two small text files, <code>.gitignore</code> and <code>.gitattributes</code>, into the project, so a future <code>git init</code> does the right thing (details in section 11).</li>
+    <li><strong>Create.</strong> Click <kbd class="ui">Create</kbd> at the bottom of the dialog. The window closes and the <strong>editor</strong> opens after a few seconds. The first time a project opens, a progress bar says it is importing <code>icon.svg</code>.</li>
+    <li><strong>Return to the Project Manager once, on purpose.</strong> In the editor's menu bar choose <kbd class="menu">Project &gt; Quit to Project List</kbd> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd>). Back in the Project Manager your project appears in the list with its icon, path and Godot version. Double-click it to open it again. This is how you will start every working session.</li>
+  </ol>
+
+  <div class="checkpoint"><p>The editor is open with the title <em>g00-sandbox</em> and an empty viewport. In File Explorer, <code>C:\GodotProjects\g00-sandbox</code> contains at least <code>project.godot</code>, <code>icon.svg</code>, <code>.gitignore</code>, <code>.gitattributes</code> and a <code>.godot</code> folder (it can be hidden; enable <em>View &gt; Show &gt; Hidden items</em> to see it). If the folder name differs (for example <code>g00_sandbox</code>), you used the <em>Create Folder</em> option together with a naming convention: remove that project from the list and repeat steps 3-9.</p></div>
+
+  <div class="callout tip"><span class="callout-title">Importing a project later</span>
+    <p>To open someone else's project (or a downloaded starter zip), click <kbd class="ui">Import</kbd>, select the <code>project.godot</code> file or the folder (you may also pick a zip, which Godot extracts for you) and click <kbd class="ui">Import</kbd>. A message that the project was last opened in an older Godot version is normal; click <kbd class="ui">OK</kbd>. If the editor ever crashes repeatedly on a project, the project's drop-down next to <kbd class="ui">Edit</kbd> offers <em>Edit in recovery mode</em>, which disables tool scripts and plugins.</p></div>
+
+  <!-- 7. BUILD 3: EDITOR TOUR -->
+  <h2 id="build-3">3. The editor tour: a scavenger hunt (about 35 minutes)</h2>
+  <p>Reading a description of a UI never sticks; hunting for each part does. The diagram below is the <strong>default layout</strong> as the official docs describe it. Study it for one minute, then do the hunt. Your layout can differ slightly: Godot 4.x lets you move docks and the newest versions offer more dock options, so if something is not exactly where the text says, check <kbd class="menu">Editor &gt; Editor Layouts &gt; Default</kbd> (step 13).</p>
+
+  <svg viewBox="0 0 780 460" role="img" aria-label="Diagram of the default Godot editor layout: menu bar top-left, workspace buttons top center, play buttons top right, scene tabs below, Scene dock and FileSystem dock on the left, viewport in the center, Inspector and Node tab on the right, bottom panel along the bottom." style="max-width:100%;height:auto;font-family:system-ui,Segoe UI,sans-serif;font-size:13px;color:inherit">
+    <rect x="1" y="1" width="778" height="458" rx="6" fill="currentColor" fill-opacity="0.04" stroke="currentColor" stroke-opacity="0.5"/>
+    <rect x="8" y="8" width="170" height="28" rx="4" fill="#4c8bf5" fill-opacity="0.25" stroke="#4c8bf5"/>
+    <text x="93" y="27" text-anchor="middle" fill="currentColor">Menu bar</text>
+    <rect x="260" y="8" width="260" height="28" rx="4" fill="#2fb36d" fill-opacity="0.25" stroke="#2fb36d"/>
+    <text x="390" y="27" text-anchor="middle" fill="currentColor">Workspace: 2D 3D Script Game AssetLib</text>
+    <rect x="560" y="8" width="212" height="28" rx="4" fill="#e8a317" fill-opacity="0.25" stroke="#e8a317"/>
+    <text x="666" y="27" text-anchor="middle" fill="currentColor">Play buttons (F5 F8 F6 ...)</text>
+    <rect x="186" y="42" width="474" height="22" rx="4" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.4"/>
+    <text x="423" y="58" text-anchor="middle" fill="currentColor">Scene tabs  [ + ]                       Distraction-free toggle at far right</text>
+    <rect x="8" y="42" width="170" height="190" rx="4" fill="#9b59d0" fill-opacity="0.2" stroke="#9b59d0"/>
+    <text x="93" y="62" text-anchor="middle" fill="currentColor" font-weight="bold">Scene dock</text>
+    <text x="93" y="84" text-anchor="middle" fill="currentColor">node tree of the open scene</text>
+    <text x="93" y="104" text-anchor="middle" fill="currentColor">[+] add node (Ctrl+A)</text>
+    <text x="93" y="124" text-anchor="middle" fill="currentColor">[chain] instance a scene</text>
+    <rect x="8" y="240" width="170" height="165" rx="4" fill="#d0583b" fill-opacity="0.2" stroke="#d0583b"/>
+    <text x="93" y="262" text-anchor="middle" fill="currentColor" font-weight="bold">FileSystem dock</text>
+    <text x="93" y="284" text-anchor="middle" fill="currentColor">files of res://</text>
+    <text x="93" y="304" text-anchor="middle" fill="currentColor">icon.svg, scenes, scripts</text>
+    <rect x="186" y="70" width="474" height="335" rx="4" fill="currentColor" fill-opacity="0.07" stroke="currentColor" stroke-opacity="0.5"/>
+    <rect x="190" y="74" width="466" height="22" rx="3" fill="currentColor" fill-opacity="0.1"/>
+    <text x="423" y="90" text-anchor="middle" fill="currentColor">Viewport toolbar: Select Move Rotate Scale Snap View ...</text>
+    <text x="423" y="250" text-anchor="middle" fill="currentColor" font-weight="bold" font-size="16">Viewport</text>
+    <text x="423" y="272" text-anchor="middle" fill="currentColor">2D or 3D canvas where you build the scene</text>
+    <rect x="668" y="42" width="104" height="363" rx="4" fill="#2aa7c9" fill-opacity="0.2" stroke="#2aa7c9"/>
+    <text x="720" y="62" text-anchor="middle" fill="currentColor" font-weight="bold">Inspector</text>
+    <text x="720" y="82" text-anchor="middle" fill="currentColor">properties of</text>
+    <text x="720" y="98" text-anchor="middle" fill="currentColor">selected node</text>
+    <text x="720" y="140" text-anchor="middle" fill="currentColor" font-weight="bold">Node tab</text>
+    <text x="720" y="158" text-anchor="middle" fill="currentColor">Signals / Groups</text>
+    <text x="720" y="174" text-anchor="middle" fill="currentColor">(next to Inspector)</text>
+    <rect x="8" y="413" width="764" height="38" rx="4" fill="#7a8b99" fill-opacity="0.25" stroke="#7a8b99"/>
+    <text x="390" y="436" text-anchor="middle" fill="currentColor"><tspan font-weight="bold">Bottom panel:</tspan> Output  Debugger  Audio  Animation  Shader Editor ...</text>
+  </svg>
+
+  <p>Now the hunt. Do the steps in order; each one ends with a small proof so you know you really found the thing. Keep the sandbox project open with the empty viewport.</p>
+
+  <ol class="steps">
+    <li><strong>Menu bar.</strong> Top-left of the window. Click <kbd class="ui">Scene</kbd> and read the entries (New Scene, Open Scene, Save Scene...); hover without clicking and notice the shortcuts at the right of each entry. Press <kbd>Esc</kbd>. Open <kbd class="ui">Project</kbd>, <kbd class="ui">Debug</kbd>, <kbd class="ui">Editor</kbd> and <kbd class="ui">Help</kbd> the same way. <strong>Proof:</strong> write down which menu contains <em>Project Settings…</em> and which contains <em>Editor Settings…</em> (Project and Editor, respectively).</li>
+    <li><strong>Workspace buttons.</strong> Top center. Click <kbd class="ui">2D</kbd>, <kbd class="ui">3D</kbd>, <kbd class="ui">Script</kbd>, <kbd class="ui">Game</kbd>, <kbd class="ui">AssetLib</kbd> in turn. The big middle area changes; the docks stay. The editor also switches workspace by itself when you select a node (a <code>Node2D</code> opens 2D, a <code>Node3D</code> opens 3D). The keyboard shortcuts for the first ones are <kbd>Ctrl</kbd>+<kbd>F1</kbd> (2D), <kbd>Ctrl</kbd>+<kbd>F2</kbd> (3D), <kbd>Ctrl</kbd>+<kbd>F3</kbd> (Script) and so on; check <kbd class="menu">Editor &gt; Editor Settings &gt; Shortcuts</kbd> if yours differ. <strong>Proof:</strong> end on the <kbd class="ui">2D</kbd> workspace.</li>
+    <li><strong>Play buttons.</strong> Top-right. Hover each icon for one second to read its tooltip and shortcut: <kbd class="ui">Run Project</kbd> (<kbd>F5</kbd>), <kbd class="ui">Pause</kbd>, <kbd class="ui">Stop</kbd> (<kbd>F8</kbd>), <kbd class="ui">Run Current Scene</kbd> (<kbd>F6</kbd>), <kbd class="ui">Run Specific Scene</kbd>. The <em>Movie Maker Mode</em> toggle is next to them (you will not use it in this course). At the far right is a drop-down with the renderer name (<em>Forward+</em>): that is the switch mentioned in section 2. <strong>Proof:</strong> the tooltip of <em>Run Current Scene</em> names the shortcut <kbd>F6</kbd>, and the tooltip of <em>Run Project</em> names <kbd>F5</kbd>.</li>
+    <li><strong>Scene tabs.</strong> Directly under the workspace buttons. Right now the tab bar may be empty. The <kbd class="ui">+</kbd> at its end creates a new empty scene. At the far right end of the tab bar is the <strong>distraction-free mode</strong> toggle (hover to read its name). Do not click it yet.</li>
+    <li><strong>Scene dock.</strong> Top-left. With no scene open it offers quick root-node choices: <kbd class="ui">2D Scene</kbd> (a <code>Node2D</code> root), <kbd class="ui">3D Scene</kbd> (a <code>Node3D</code> root), <kbd class="ui">User Interface</kbd> (a <code>Control</code> root) and <kbd class="ui">Other Node</kbd> (pick any node type). Once a scene has a root, the buttons at the top of the dock are <kbd class="ui">Add Child Node</kbd> (a <kbd class="ui">+</kbd>, shortcut <kbd>Ctrl</kbd>+<kbd>A</kbd>) and the <strong>chain-link</strong> button <kbd class="ui">Instantiate Child Scene</kbd>, plus a filter box. <strong>Proof:</strong> click <kbd class="ui">2D Scene</kbd>. A node called <code>Node2D</code> appears in the dock and the viewport switches to 2D. Leave it for the next steps (you can undo later with <kbd>Ctrl</kbd>+<kbd>Z</kbd> or close the tab).</li>
+    <li><strong>FileSystem dock.</strong> Bottom-left. It shows <code>res://</code>, the root of your project, containing <code>icon.svg</code>. Double-click a folder to open it; right-click a file to see the context menu; use the filter box at the top to find files by name. (We use it to make folders, scenes and scripts all day.) <strong>Proof:</strong> click <code>icon.svg</code>; the Inspector area to the right changes to show the <em>Import</em> tab for the file.</li>
+    <li><strong>Viewport and its toolbar.</strong> Center. Click <code>Node2D</code> in the Scene dock. Above the canvas is the <em>toolbar</em>: select, move, rotate, scale, snapping and a <kbd class="ui">View</kbd> menu. The toolbar changes with context: in 2D it differs from 3D, and extra buttons appear for some selected nodes. <strong>Proof:</strong> hover the first four tools; their tooltips show <kbd>Q</kbd>, <kbd>W</kbd>, <kbd>E</kbd>, <kbd>S</kbd> in 2D.</li>
+    <li><strong>Inspector.</strong> Right side. With <code>Node2D</code> selected it lists the node's properties grouped in foldable sections (<em>Transform</em>, <em>CanvasItem</em> ...). Hover the <kbd class="ui">Position</kbd> property for a second: a tooltip shows what it does <em>and</em> its name in code (<code>position</code>). That Title Case ↔ snake_case relationship holds for every property. At the top of the Inspector there are history arrows (<kbd class="ui">&lt;</kbd> <kbd class="ui">&gt;</kbd>), a filter box and a tool menu. <strong>Proof:</strong> type <code>rot</code> into the filter box; only <em>Rotation</em> related properties remain. Clear the box.</li>
+    <li><strong>Node tab (Signals and Groups).</strong> Next to the Inspector's tab, find the tab named <kbd class="ui">Node</kbd>. Inside it are two sub-tabs, <kbd class="ui">Signals</kbd> and <kbd class="ui">Groups</kbd>. Signals lists what the selected node can emit, Groups lets you tag nodes. We use both on Day 2. <strong>Proof:</strong> with <code>Node2D</code> selected, open <kbd class="ui">Signals</kbd>: the list has entries such as <code>visibility_changed</code> and <code>ready</code>. Switch back to <kbd class="ui">Inspector</kbd>.
+      <div class="callout version"><span class="callout-title">Version note: Node tab vs Signals/Groups docks</span>
+        <p>In Godot 4.0-4.x the <em>Node</em> tab sits next to the Inspector and holds Signals and Groups. The official docs for the newest versions call them the <strong>Signals dock</strong> and the <strong>Groups dock</strong> (the old combined <em>Node</em> dock is deprecated in the editor feature profiles), so on your version they may be two separate tabs beside the Inspector with those exact names. Same function, same steps: wherever this course says "Node tab &gt; Signals", open the <em>Signals</em> tab.</p></div></li>
+    <li><strong>Bottom panel.</strong> The strip at the very bottom. Click <kbd class="ui">Output</kbd>: a panel slides up (this is where <code>print()</code> text and errors appear). Click <kbd class="ui">Debugger</kbd>, then <kbd class="ui">Audio</kbd> (the audio bus mixer), then <kbd class="ui">Animation</kbd> or <kbd class="ui">Shader Editor</kbd> if they are listed. Other tabs (SpriteFrames, TileSet, ...) appear only when you select a node that needs them. Click the active tab again to fold the panel. Drag the panel's top edge to change its height. Panels are folded by default because they take a lot of space. <strong>Proof:</strong> the panel is folded again with nothing selected.</li>
+    <li><strong>Resize and move a dock.</strong> Drag the vertical border between the Viewport and the Inspector to the left: the Inspector gets wider. Drag the horizontal border between Scene and FileSystem dock: heights change. To <em>move</em> a dock, click the <strong>three vertical dots</strong> icon at the top of a dock (for the FileSystem dock, next to its title), and pick a new location from the menu that appears (for example the right side). The same menu has <strong>Make Floating</strong>, which turns the dock into its own window; to put it back, close that window with its × (or press <kbd>Alt</kbd>+<kbd>F4</kbd> while it is focused). If you cannot find a dock that disappeared, <kbd class="menu">Editor &gt; Editor Docks</kbd> lists docks (for example <em>Inspector</em>) that can be shown again. <strong>Proof:</strong> move the FileSystem dock to the right side, then continue.</li>
+    <li><strong>Distraction-free mode.</strong> Click the distraction-free toggle at the far right of the scene tabs bar. All docks and the bottom panel vanish and the viewport fills the window. Click it again to bring everything back. (You will use this when you want maximum room for a big level or a long script.)</li>
+    <li><strong>Reset the layout.</strong> Open <kbd class="menu">Editor &gt; Editor Layouts</kbd>. The list contains <strong>Default</strong> (a hardcoded layout that matches a fresh install and cannot be removed), plus <em>Save</em> (store your current arrangement under a name) and <em>Delete</em>. Click <kbd class="ui">Default</kbd>. The FileSystem dock jumps back to the bottom-left. <strong>Proof:</strong> your layout matches the diagram again. Layouts are stored in a file named <code>editor_layouts.cfg</code> in the editor settings folder.</li>
+    <li><strong>Close the empty scene.</strong> Our <code>Node2D</code> scene was only practice. Click the small × on its tab. If Godot asks whether to save, click <kbd class="ui">Discard</kbd> (or the equivalent). Under <kbd class="menu">Editor &gt; Editor Layouts</kbd> nothing else needs changing.</li>
+  </ol>
+
+  <div class="checkpoint"><p>Without scrolling up, you can name from memory: where <em>Run Current Scene</em> is, which dock lists <code>res://</code>, which dock lists nodes, which panel shows <code>print()</code> output, and how to reset the layout. Quick self-test: close your eyes, picture the screen, say the nine areas out loud (menu bar, workspace buttons, play buttons, Scene dock, FileSystem dock, Viewport, Inspector, Node tab, bottom panel). If one is fuzzy, repeat that step. You have a layout quiz at the end of the day.</p></div>
+
+  <div class="callout docs"><span class="callout-title">Docs</span>
+    <p>The official walkthrough of the same areas is <a href="https://docs.godotengine.org/en/stable/getting_started/introduction/first_look_at_the_editor.html" target="_blank" rel="noopener">First look at Godot's interface</a>; moving, floating and saving docks is in <a href="https://docs.godotengine.org/en/stable/tutorials/editor/customizing_editor.html" target="_blank" rel="noopener">Customizing the interface</a>.</p></div>
+
+  <!-- 8. BUILD 4: EDITOR SETTINGS -->
+  <h2 id="build-4">4. Editor Settings you must set today (about 10 minutes)</h2>
+  <p>There are two different settings windows in Godot and mixing them up is the most common beginner confusion:</p>
+  <table>
+    <tr><th>Window</th><th>Menu path</th><th>Applies to</th><th>Stored in</th></tr>
+    <tr><td><strong>Editor Settings</strong></td><td><kbd class="menu">Editor &gt; Editor Settings…</kbd></td><td>Godot itself: fonts, theme, code editor behaviour, shortcuts. Shared by <em>all</em> projects.</td><td>Your user profile (<code>%APPDATA%\Godot\</code>), not in the project.</td></tr>
+    <tr><td><strong>Project Settings</strong></td><td><kbd class="menu">Project &gt; Project Settings…</kbd></td><td>This game: window size, input actions, autoloads, physics layers, main scene.</td><td><code>project.godot</code> inside the project folder.</td></tr>
+  </table>
+
+  <ol class="steps">
+    <li><strong>Open Editor Settings.</strong> In the menu bar click <kbd class="menu">Editor &gt; Editor Settings…</kbd>. A window opens with a category tree on the left, settings on the right, a search box at the top, and tabs such as <kbd class="ui">General</kbd> and <kbd class="ui">Shortcuts</kbd>. Hovering any setting's name shows its description.</li>
+    <li><strong>Find the indentation setting.</strong> In the search box type <code>indent</code>. The tree filters to <kbd class="menu">Text Editor &gt; Behavior &gt; Indent</kbd> (the full path from the class reference is <code>text_editor/behavior/indent/type</code>). If you prefer browsing, click <kbd class="ui">Text Editor</kbd> in the tree, then <kbd class="ui">Behavior</kbd>, then expand <kbd class="ui">Indent</kbd>.</li>
+    <li><strong>Set <kbd class="ui">Type</kbd> to <kbd class="ui">Spaces</kbd>.</strong> Click the <kbd class="ui">Type</kbd> drop-down (currently <em>Tabs</em>) and choose <kbd class="ui">Spaces</kbd>.</li>
+    <li><strong>Set <kbd class="ui">Size</kbd> to <code>4</code>.</strong> Click the number field next to <kbd class="ui">Size</kbd>, type <code>4</code>, press <kbd>Enter</kbd>. With spaces selected, this is how many spaces one press of <kbd>Tab</kbd> (or one automatic indent) inserts.</li>
+    <li><strong>Optional safety net.</strong> Search for <code>convert indent</code>. Tick <kbd class="ui">Convert Indent on Save</kbd> (<code>text_editor/behavior/files/convert_indent_on_save</code>): when you save a script, Godot converts its indentation to match the setting above. Also tick <kbd class="ui">Trim Trailing Whitespace on Save</kbd> if you see it (search <code>trailing</code>); it keeps Git diffs clean.</li>
+    <li><strong>Turn on type hints in code completion.</strong> Search <code>type hints</code>. Make sure <kbd class="ui">Add Type Hints</kbd> (<kbd class="menu">Text Editor &gt; Completion &gt; Add Type Hints</kbd>) is checked. With it on, Godot adds things like <code>-&gt; void</code> and <code>: int</code> when you accept an autocomplete suggestion, create a script from a template, or connect a signal from the editor. This course writes statically typed GDScript, so you want those hints generated for you.</li>
+    <li><strong>Make everything readable.</strong> Search <code>font size</code>. <kbd class="ui">Main Font Size</kbd> controls menus and docks, <kbd class="ui">Code Font Size</kbd> controls the script editor (both under <kbd class="menu">Interface &gt; Editor &gt; Fonts</kbd>). Try <code>16</code> for both on a full-HD monitor; larger if you squint. If the whole interface is too small on a 4K screen, search <code>display scale</code> and set <kbd class="ui">Display Scale</kbd> (under <kbd class="menu">Interface &gt; Editor &gt; Appearance</kbd>, named <em>Display Scale</em> in all versions; on older versions it sits directly under <em>Interface &gt; Editor</em>). A restart prompt may appear for the scale; click <kbd class="ui">Save &amp; Restart</kbd> and reopen the project from the Project Manager.</li>
+    <li><strong>Pick a theme.</strong> Search <code>theme</code> and look at the <kbd class="menu">Interface &gt; Theme</kbd> entries: a color preset (the setting is named <em>Color Preset</em> in the newest class reference and <em>Preset</em> in older documentation) with choices such as Default, Light and Black (OLED), plus an accent color and contrast. Light is easier outdoors, dark is easier on the eyes at night. Choose whatever you like; screenshots do not exist in this course, so nothing depends on it.</li>
+    <li><strong>Make the editor speak English.</strong> Search <code>editor language</code> and set <kbd class="ui">Editor Language</kbd> to <kbd class="ui">English</kbd> if it is not. Every menu name in the course is the English one.</li>
+    <li><strong>Laptop or trackpad users only.</strong> Search <code>emulate</code>. Tick <kbd class="ui">Emulate 3 Button Mouse</kbd> (lets you pan, zoom and orbit the 3D view without a middle mouse button) and, if your keyboard has no number pad, <kbd class="ui">Emulate Numpad</kbd> (<kbd class="menu">Editors &gt; 3D</kbd>). Both are described on the <em>Customizing the interface</em> docs page.</li>
+    <li><strong>Close the window.</strong> Settings are saved immediately when you change them; click <kbd class="ui">Close</kbd>.</li>
+  </ol>
+
+  <div class="callout note"><span class="callout-title">Why spaces and not tabs?</span>
+    <p>GDScript is indentation-sensitive, and it is an <em>error</em> to mix tabs and spaces in one file ("Mixed use of tabs and spaces for indentation"). The official GDScript style guide actually recommends <strong>tabs</strong>, and the editor setting's own description says so. This course nevertheless uses <strong>4 spaces</strong> in every code listing, because spaces survive copy-paste from a web page and from chat exactly as written. If you leave the editor on Tabs, then pasted code (spaces) plus your own Tab key presses (tabs) will produce that mixed-indentation error again and again. Either use spaces everywhere (the course way) or consistently tabs in your <em>own</em> projects after the course; never both in one file.</p></div>
+
+  <div class="checkpoint"><p>Indentation Type is <kbd class="ui">Spaces</kbd> and Size is <code>4</code>; <kbd class="ui">Add Type Hints</kbd> is ticked. You will verify the first one for real in section 8: the script editor's status bar (bottom of the code area) shows whether it is using tabs or spaces.</p></div>
+
+  <div class="callout docs"><span class="callout-title">Docs</span>
+    <p>All editor settings are documented in the <a href="https://docs.godotengine.org/en/stable/classes/class_editorsettings.html" target="_blank" rel="noopener">EditorSettings class reference</a>. The script editor itself is covered in <a href="https://docs.godotengine.org/en/stable/tutorials/editor/script_editor.html" target="_blank" rel="noopener">Script Editor</a>.</p></div>
+
+  <!-- 9. BUILD 5: FIRST SCENE -->
+  <h2 id="build-5">5. Your first scene, F5 vs F6, and what is on disk (about 25 minutes)</h2>
+  <p>You will build the smallest possible scene (one <code>Label</code>), save it, run it two ways, and then look at what Godot wrote to disk.</p>
+
+  <ol class="steps">
+    <li><strong>Make a folder for today's files.</strong> In the <strong>FileSystem</strong> dock (bottom-left), right-click an empty area (or <code>res://</code>) and choose <kbd class="ui">New &gt; Folder…</kbd>. Type <code>day01</code> and click <kbd class="ui">OK</kbd>. The folder appears under <code>res://</code>. (Godot style: folders and files in <code>snake_case</code>, lowercase. Always create and rename files inside the FileSystem dock, not in File Explorer, so Godot can fix references.)
+      <div class="callout version"><span class="callout-title">Verify: context menu wording</span>
+        <p>The FileSystem right-click menu is not spelled out in the official docs. In Godot 4 it has a <em>New</em> sub-menu with <em>Folder…</em>, <em>Scene…</em>, <em>Script…</em>, <em>Resource…</em> and <em>TextFile…</em>; on some versions the sub-menu may be titled <em>Create New</em>. Same items either way.</p></div></li>
+    <li><strong>Create the root node.</strong> In the <strong>Scene</strong> dock (top-left; the editor should have an empty scene after you closed the practice tab; if not, click <kbd class="menu">Scene &gt; New Scene</kbd>), click <kbd class="ui">Other Node</kbd>. The <em>Create New Node</em> dialog opens with a long tree of node types and a search box at the top.</li>
+    <li><strong>Pick Label.</strong> Type <code>Label</code> in the search box, click <kbd class="ui">Label</kbd> in the list (not <em>LinkButton</em> or others), then click <kbd class="ui">Create</kbd> at the bottom. Three things happen at once: the workspace switches to <kbd class="ui">2D</kbd> (a Label is a 2D-space UI node), the node appears in the Scene dock, and its properties appear in the Inspector.</li>
+    <li><strong>Edit a property.</strong> In the <strong>Inspector</strong> (right), click in the box under <kbd class="ui">Text</kbd> and type <code>Hello Godot</code>. The text appears in the viewport as you type, near the top-left corner (the node's origin).</li>
+    <li><strong>Rename the node.</strong> Click the node in the Scene dock and press <kbd>F2</kbd>. Type <code>Hello</code> and press <kbd>Enter</kbd>. (Node names are PascalCase. Names matter: code addresses nodes by name.)</li>
+    <li><strong>Move it with the move tool.</strong> In the viewport toolbar click the <kbd class="ui">Move Mode</kbd> tool (or press <kbd>W</kbd>). Click and drag the label towards the middle of the <strong>indigo/purple rectangle</strong> in the viewport: that rectangle is the game's window. Press <kbd>Q</kbd> to go back to the select tool. Notice <kbd class="ui">Position</kbd> in the Inspector's <em>Transform</em> section changed.</li>
+    <li><strong>Run the current scene.</strong> Press <kbd>F6</kbd> (<kbd class="ui">Run Current Scene</kbd>, top-right). Godot refuses to run an unsaved scene and opens a <em>Save Scene As</em> dialog. The dialog only lets you save <em>inside the project</em>; the path at the top reads <code>res://</code>. Double-click the <code>day01</code> folder, set the file name to <code>hello.tscn</code>, click <kbd class="ui">Save</kbd>. A new window opens showing your text. Close it with its × button (or press <kbd>F8</kbd>, <kbd class="ui">Stop</kbd>, in the editor).</li>
+    <li><strong>Run the project.</strong> Press <kbd>F5</kbd> (<kbd class="ui">Run Project</kbd>). Because the project has no <em>main scene</em> yet, Godot asks whether to select one now. Click <kbd class="ui">Select</kbd> (the wording can be <em>Select Current</em> on some versions, which would pick <code>hello.tscn</code> directly), then double-click <code>hello.tscn</code> in the file dialog. The game runs again. Stop it (<kbd>F8</kbd>).</li>
+    <li><strong>Prove F5 and F6 are different.</strong> Create a second scene: <kbd class="menu">Scene &gt; New Scene</kbd>, click <kbd class="ui">2D Scene</kbd>, then with the root <code>Node2D</code> selected press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>Label</code>, <kbd class="ui">Create</kbd>, and type <code>I am the OTHER scene</code> into its <kbd class="ui">Text</kbd>. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>, save as <code>res://day01/other.tscn</code>. Now press <kbd>F6</kbd>: you see <em>the other scene</em>. Stop. Press <kbd>F5</kbd>: you see <em>Hello Godot</em>, because <code>hello.tscn</code> is the main scene.</li>
+    <li><strong>Check where the main scene is stored.</strong> Click <kbd class="menu">Project &gt; Project Settings…</kbd>. On the <kbd class="ui">General</kbd> tab, type <code>main scene</code> in the <kbd class="ui">Filter Settings</kbd> box at the top. You will see <kbd class="menu">Application &gt; Run &gt; Main Scene</kbd> set to your <code>hello.tscn</code> (newer versions may display it as a <code>uid://...</code> reference with the file name in the tooltip). Clicking the folder icon here and choosing another scene is the standard way to change it. Close the window.
+      <div class="callout version"><span class="callout-title">Verify: Set as Main Scene shortcut</span>
+        <p>Right-clicking a <code>.tscn</code> file in the FileSystem dock normally offers <em>Set as Main Scene</em> as a shortcut for the same setting. That menu entry is not described in the official docs, so if you do not see it, use the Project Settings route above, which is documented.</p></div></li>
+  </ol>
+
+  <div class="checkpoint"><p>F5 shows <em>Hello Godot</em>; F6 with the <code>other.tscn</code> tab active shows the other text; F6 with <code>hello.tscn</code> active shows <em>Hello Godot</em>. The FileSystem dock shows <code>day01/hello.tscn</code> and <code>day01/other.tscn</code>. If F5 shows the wrong text or an empty window, the main scene is not what you think; recheck step 10. If F6 does nothing, the focus may be in the wrong place: click the viewport once and try again.</p></div>
+
+  <table>
+    <tr><th></th><th><kbd>F5</kbd> Run Project</th><th><kbd>F6</kbd> Run Current Scene</th></tr>
+    <tr><td><strong>Starts</strong></td><td>The project's <em>main scene</em> (<code>application/run/main_scene</code>), plus all autoloads.</td><td>Whichever scene tab is active, plus all autoloads.</td></tr>
+    <tr><td><strong>Use it for</strong></td><td>Testing the real game flow from the start.</td><td>Testing one scene in isolation (a player, an enemy, a menu) while you build it.</td></tr>
+    <tr><td><strong>Common mistake</strong></td><td>Wrong or missing main scene.</td><td>Forgetting which tab is active. "Why is my game not changing?" is almost always "I ran the other scene".</td></tr>
+  </table>
+
+  <h3>What Godot wrote to disk</h3>
+  <ol class="steps">
+    <li><strong>Open the project folder from the editor.</strong> In the FileSystem dock, right-click <code>res://</code> (or any file) and choose <kbd class="ui">Open in File Manager</kbd> (some versions call it <em>Show in File Manager</em>). File Explorer opens on <code>C:\GodotProjects\g00-sandbox</code>. If you do not find the entry, open that path yourself.</li>
+    <li><strong>Read the scene file as text.</strong> Run this in PowerShell (it only prints; it changes nothing):
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+Get-Content C:\GodotProjects\g00-sandbox\day01\hello.tscn
+      </script>
+      <p>You will see a short text file, roughly like this (your <code>uid</code> and numbers differ):</p>
+      <pre class="plain">[gd_scene format=3 uid="uid://..."]
+
+[node name="Hello" type="Label"]
+offset_right = 40.0
+offset_bottom = 23.0
+text = "Hello Godot"</pre>
+      <p>The scene is nothing but the node's name, type and the properties you changed from the defaults. That is why scenes diff and merge well in Git.</p></li>
+    <li><strong>Read <code>project.godot</code>.</strong> <code>Get-Content C:\GodotProjects\g00-sandbox\project.godot</code> prints an INI-style file with sections such as <code>[application]</code> (name, <code>run/main_scene</code>, icon). Every change in Project Settings is written here. Do not hand-edit it today.</li>
+  </ol>
+
+  <h3>File types you will meet</h3>
+  <table>
+    <tr><th>File / folder</th><th>What it is</th><th>Commit to Git?</th></tr>
+    <tr><td><code>project.godot</code></td><td>The project's settings (INI text). Its presence is what makes a folder a Godot project.</td><td>Yes</td></tr>
+    <tr><td><code>*.tscn</code></td><td><strong>T</strong>ext <strong>sc</strong>e<strong>n</strong>e: nodes, their properties, connections, references to scripts and instanced scenes. Also called a PackedScene when loaded.</td><td>Yes</td></tr>
+    <tr><td><code>*.tres</code></td><td><strong>T</strong>ext <strong>res</strong>ource: a saved Resource (materials, shapes, your data classes). Exported games convert it to a binary <code>.res</code>; <code>.scn</code> is the binary scene equivalent.</td><td>Yes</td></tr>
+    <tr><td><code>*.gd</code></td><td>A GDScript file. Newer versions (4.4+) also create a small <code>*.gd.uid</code> file next to each script.</td><td>Yes, both</td></tr>
+    <tr><td><code>*.import</code></td><td>Import settings Godot creates next to an asset (for example <code>icon.svg.import</code>) saying how to convert it.</td><td>Yes (they contain real settings)</td></tr>
+    <tr><td><code>.godot/</code></td><td>Hidden cache: converted assets, script class cache, editor state for this project. Fully regenerated if deleted.</td><td><strong>No</strong></td></tr>
+    <tr><td><code>icon.svg</code></td><td>The default project icon (also a handy test texture; we use it constantly).</td><td>Yes</td></tr>
+    <tr><td><code>.gitignore</code>, <code>.gitattributes</code></td><td>Written because you chose <em>Version Control Metadata: Git</em>.</td><td>Yes</td></tr>
+    <tr><td><code>export_presets.cfg</code></td><td>Appears on Day 4 when you configure an export.</td><td>Yes (in 4.1+ it holds no credentials; see section 11)</td></tr>
+  </table>
+
+  <div class="callout version"><span class="callout-title">Version note: .uid files and uid:// paths</span>
+    <p>From Godot 4.4, scripts and many resources have a stable unique ID stored in a sibling <code>.uid</code> file, and the editor may show references as <code>uid://...</code> in places where older versions only showed <code>res://</code> paths. Both forms work. Rule: when you move or rename files, do it in the FileSystem dock so IDs and references stay consistent, and commit the <code>.uid</code> files.</p></div>
+
+  <h3><code>res://</code> versus <code>user://</code></h3>
+  <table>
+    <tr><th></th><th><code>res://</code></th><th><code>user://</code></th></tr>
+    <tr><td><strong>Means</strong></td><td>"Resources": the project's root folder (the folder holding <code>project.godot</code>).</td><td>A per-user, per-game folder created for you, <em>guaranteed writable</em>.</td></tr>
+    <tr><td><strong>Use for</strong></td><td>Everything you ship: scenes, scripts, art, audio.</td><td>Save games, settings, logs, anything the game writes while running.</td></tr>
+    <tr><td><strong>After export</strong></td><td>Read-only (packed inside the game's <code>.pck</code>).</td><td>Still writable; that is the whole point.</td></tr>
+    <tr><td><strong>On Windows</strong></td><td><code>C:\GodotProjects\g00-sandbox\</code> while developing.</td><td>By default <code>%APPDATA%\Godot\app_userdata\g00-sandbox</code> (the project name is the last part).</td></tr>
+  </table>
+  <p>Always write paths with <strong>forward slashes</strong> (<code>res://day01/hello.tscn</code>, <code>C:/Projects/Game</code>): Godot uses UNIX-style separators on every platform, and a backslash in a GDScript string is an escape character. You will prove where <code>user://</code> lives in section 8 by having a script write a file there. Reference: <a href="https://docs.godotengine.org/en/stable/tutorials/io/data_paths.html" target="_blank" rel="noopener">File paths in Godot projects</a>.</p>
+
+  <div class="callout note"><span class="callout-title">Optional: a project-specific user folder</span>
+    <p>By default <code>user://</code> lives inside Godot's own data folder under <code>app_userdata</code>, so test projects stay tidy. When you ship a game you can switch to a normal per-game location with the project settings <code>application/config/use_custom_user_dir</code> and <code>application/config/custom_user_dir_name</code>. We do this in Part 2.</p></div>
+
+  <!-- 10. BUILD 6: 2D WORKSPACE -->
+  <h2 id="build-6">6. The 2D workspace, hands-on (about 25 minutes)</h2>
+  <p>Almost every game in Part 1 and all of Part 2 live in the 2D workspace, so we practice its tools on the one texture every project has: <code>icon.svg</code> (a 128 × 128 Godot logo).</p>
+
+  <ol class="steps">
+    <li><strong>New 2D scene.</strong> Click <kbd class="menu">Scene &gt; New Scene</kbd>, then in the Scene dock click <kbd class="ui">2D Scene</kbd>. A root <code>Node2D</code> appears. Press <kbd>F2</kbd>, type <code>Playground2D</code>, press <kbd>Enter</kbd>. Press <kbd>Ctrl</kbd>+<kbd>S</kbd> and save as <code>res://day01/playground_2d.tscn</code>.</li>
+    <li><strong>Add a sprite by dragging.</strong> In the FileSystem dock, drag <code>icon.svg</code> into the viewport, roughly into the middle of the indigo rectangle, and drop it. A <code>Sprite2D</code> node named <code>icon</code> appears as a child of the root (a dropped file becomes a child when the root is selected). Rename it <code>Icon</code> with <kbd>F2</kbd>. Look in the Inspector at its <kbd class="ui">Texture</kbd> property: it now holds <code>icon.svg</code>. <em>This is exactly what the drag did for you; you can also drag the file into that slot.</em></li>
+    <li><strong>Put it in the exact center of the window.</strong> With <code>Icon</code> selected, open the Inspector's <kbd class="ui">Transform</kbd> section (click its title to unfold it). Set <kbd class="ui">Position</kbd> to <code>x = 576</code>, <code>y = 324</code>. (Click a number and type, press <kbd>Tab</kbd> or <kbd>Enter</kbd> to confirm. You can also drag a number sideways to scrub it.) That is half of the default 1152 × 648 game window.</li>
+    <li><strong>Use the four tools.</strong> In the toolbar (or with the keys) try each on the icon: <kbd class="ui">Select Mode</kbd> (<kbd>Q</kbd>: drag to move, hold <kbd>Ctrl</kbd> to rotate, drag the red circles to scale), <kbd class="ui">Move Mode</kbd> (<kbd>W</kbd>: drag the green or red arrow to move along one axis only), <kbd class="ui">Rotate Mode</kbd> (<kbd>E</kbd>) and <kbd class="ui">Scale Mode</kbd> (<kbd>S</kbd>). After each, look at the Inspector's <kbd class="ui">Position</kbd>, <kbd class="ui">Rotation</kbd> and <kbd class="ui">Scale</kbd>. Press <kbd>Ctrl</kbd>+<kbd>Z</kbd> repeatedly to undo, or click the circular <strong>revert arrow</strong> beside any changed property to restore it to its default.</li>
+    <li><strong>Learn the 2D coordinate system.</strong> Two long lines cross the viewport: red is the X axis, green is the Y axis; where they cross is the origin <code>(0, 0)</code>, the top-left corner of the indigo rectangle. Set <kbd class="ui">Position</kbd> <code>y</code> to <code>0</code>, then <code>100</code>, then <code>-100</code>. <strong>Positive X is to the right and positive Y points DOWN.</strong> (This is the opposite of school graph paper and the number-one source of "my character jumps the wrong way" bugs. "Up" is <code>Vector2.UP</code>, which is <code>(0, -1)</code>.) Set Position back to <code>(576, 324)</code>.</li>
+    <li><strong>Rotation: editor degrees, code radians.</strong> Type <code>45</code> into <kbd class="ui">Rotation</kbd>. The Inspector works in degrees. In code, the property <code>rotation</code> is in <strong>radians</strong> (<code>PI</code> is a half turn); there is also <code>rotation_degrees</code>. Click the revert arrow to return to <code>0</code>.</li>
+    <li><strong>Try snapping.</strong> In the toolbar find <kbd class="ui">Use Grid Snap</kbd> (a grid icon) and the three-dots menu next to the snap buttons. Click the three dots, choose <kbd class="ui">Configure Snap…</kbd>, set <kbd class="ui">Grid Step</kbd> to <code>32</code> by <code>32</code>, and close. Turn on <kbd class="ui">Use Grid Snap</kbd>, switch to Move mode and drag the icon: it jumps in 32-pixel steps and the viewport rulers' numbers adapt. Hold <kbd>Shift</kbd> while dragging to lock to one axis. In the same dots menu you can enable <kbd class="ui">Use Rotation Snap</kbd> (step in degrees) and <kbd class="ui">Use Scale Snap</kbd>. Afterwards turn <kbd class="ui">Use Grid Snap</kbd> off and re-enter <code>(576, 324)</code>. (<kbd class="ui">Use Smart Snap</kbd>, next to it, snaps to the edges and centers of other nodes; try it later.)</li>
+    <li><strong>Pivots.</strong> Rotation happens around a node's <em>origin</em>. Select <code>Icon</code>, in the Inspector find <kbd class="ui">Offset</kbd> (a section of <code>Sprite2D</code>) and untick <kbd class="ui">Centered</kbd>. The picture jumps: its top-left corner is now at the node's position, because "centered" had been placing the origin at the picture's middle. Press <kbd>E</kbd> and rotate: it now swings around its corner. Tick <kbd class="ui">Centered</kbd> again. For quick one-off experiments there is also the <kbd class="ui">Rotation Pivot</kbd> tool in the toolbar (click it, click a point, then rotate with <kbd>E</kbd>); that pivot is only an editor helper and is not saved.</li>
+    <li><strong>Zoom and pan the view.</strong> Scroll the mouse wheel over the viewport to zoom (the zoom box at the top-left of the viewport shows the percentage; clicking the number resets to 100%). Hold the <strong>middle mouse button</strong> and drag to pan (alternatively hold <kbd>Space</kbd> and drag with the left button, or press <kbd>G</kbd> for the Pan tool). Click <kbd class="ui">Center View</kbd> (top-left of the viewport), or press <kbd>F</kbd>, to center the selected node, and <kbd>Shift</kbd>+<kbd>F</kbd> to also zoom to fit it. The black bars along the left and top edges are <strong>rulers</strong>; drag from one into the viewport to create a purple guide line.</li>
+    <li><strong>Viewport versus window.</strong> The indigo rectangle is the <em>game viewport</em>: the size, in pixels, the game thinks its screen has. It is set in <kbd class="menu">Project &gt; Project Settings &gt; Display &gt; Window &gt; Size</kbd> (<kbd class="ui">Viewport Width</kbd> and <kbd class="ui">Viewport Height</kbd>; default 1152 × 648). The <em>window</em> the player sees may be larger or smaller, and what happens then is controlled by the stretch settings (section 10). The editor's own big canvas area, which you zoom and pan, is a different thing again: it is infinite, and only the part inside the indigo rectangle appears in the game. You can hide the rectangle with the viewport's <kbd class="ui">View</kbd> menu.</li>
+    <li><strong>Add a Camera2D.</strong> Click the root <code>Playground2D</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, type <code>Camera2D</code>, select it and click <kbd class="ui">Create</kbd>. A camera frame (a rectangle with the size of the game window) appears around the origin. Press <kbd>F6</kbd>: the icon is now at the <strong>bottom-right corner</strong> of the window, half cut off. Reason: with a camera, the window shows the world <em>centered on the camera</em>, and your camera is at <code>(0, 0)</code>. Stop (<kbd>F8</kbd>).</li>
+    <li><strong>Move the camera onto the icon.</strong> Select <code>Camera2D</code>, set its <kbd class="ui">Position</kbd> to <code>(576, 324)</code>, press <kbd>F6</kbd>: the icon is centered again. Now set <kbd class="ui">Zoom</kbd> (Inspector) to <code>2, 2</code> and run again: everything looks twice as large (zoom above 1 magnifies). Set Zoom back to <code>1, 1</code>. You will use Camera2D constantly from Day 5 on; for now know that <em>no camera = world (0,0) is the top-left of the window; with a camera = the camera's position is the center</em>.</li>
+    <li><strong>See transforms inherit through the tree.</strong> Right-click <code>Icon</code> in the Scene dock and choose <kbd class="ui">Add Child Node</kbd>, search <code>Sprite2D</code>, <kbd class="ui">Create</kbd>, and rename it <code>Satellite</code>. Drag <code>icon.svg</code> from the FileSystem dock onto its <kbd class="ui">Texture</kbd> slot. Set <code>Satellite</code>'s <kbd class="ui">Position</kbd> to <code>(200, 0)</code> and <kbd class="ui">Scale</kbd> to <code>0.4, 0.4</code>. Now select <code>Icon</code> and set its <kbd class="ui">Rotation</kbd> to <code>45</code>: the satellite orbits with it. A child's transform is <em>relative to its parent</em> (position <code>(200, 0)</code> means 200 pixels to the right of the parent, in the parent's rotated space). This is why moving a character moves its weapon, shadow and camera. In code, <code>position</code> is local and <code>global_position</code> is in world space.</li>
+    <li><strong>Save.</strong> Press <kbd>Ctrl</kbd>+<kbd>S</kbd>. The scene tab title loses its asterisk (an <code>(*)</code> after a name means unsaved changes).</li>
+  </ol>
+
+  <pre class="scene-tree">Playground2D (Node2D)
+├── Icon (Sprite2D)        texture: icon.svg, position (576, 324)
+│   └── Satellite (Sprite2D)   position (200, 0), scale (0.4, 0.4)
+└── Camera2D               position (576, 324)</pre>
+
+  <div class="checkpoint"><p>Pressing <kbd>F6</kbd> on <code>playground_2d.tscn</code> shows a large icon in the center of the window and a small one beside it, rotated 45 degrees around the big one. If the icon sits in a corner, the Camera2D position is wrong (step 12). If you see only a grey window, the sprites' <kbd class="ui">Texture</kbd> slots are empty.</p></div>
+
+  <div class="callout docs"><span class="callout-title">Docs</span>
+    <p>Every button of the 2D toolbar, snapping and the rulers are described in <a href="https://docs.godotengine.org/en/stable/tutorials/2d/introduction_to_2d.html" target="_blank" rel="noopener">Introduction to 2D</a>. Transforms are explored in <a href="https://docs.godotengine.org/en/stable/tutorials/2d/2d_transforms.html" target="_blank" rel="noopener">Viewport and canvas transforms</a> when you need them (not today).</p></div>
+
+  <!-- 11. BUILD 7: 3D WORKSPACE -->
+  <h2 id="build-7">7. The 3D workspace, briefly (about 15 minutes)</h2>
+  <p>Part 1 has two 3D games (Days 10-13), and Day 10 teaches 3D properly. Today you only need to be able to look around and not be scared of the 3D viewport.</p>
+
+  <ol class="steps">
+    <li><strong>New 3D scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>, click <kbd class="ui">3D Scene</kbd> (root <code>Node3D</code>). The editor switches to the <kbd class="ui">3D</kbd> workspace automatically. Rename the root <code>Playground3D</code> and save it as <code>res://day01/playground_3d.tscn</code>. The viewport shows a grid and three colored axis lines.</li>
+    <li><strong>Add a box.</strong> Select the root, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>MeshInstance3D</code>, <kbd class="ui">Create</kbd>. In the Inspector, the <kbd class="ui">Mesh</kbd> property says <code>&lt;empty&gt;</code>: a MeshInstance3D only draws a mesh resource you give it. Click the property and choose <kbd class="ui">New BoxMesh</kbd>. A 1 × 1 × 1 metre cube appears at the origin.</li>
+    <li><strong>Learn the 3D toolbar.</strong> Hover the first five tools. In 3D they are <kbd class="ui">Transform Mode</kbd> (<kbd>Q</kbd>, move + rotate combined), <kbd class="ui">Move Mode</kbd> (<kbd>W</kbd>), <kbd class="ui">Rotate Mode</kbd> (<kbd>E</kbd>), <kbd class="ui">Scale Mode</kbd> (<kbd>R</kbd>) and <kbd class="ui">Select Mode</kbd> (<kbd>V</kbd>). Note that 2D uses <kbd>Q</kbd> for select and <kbd>S</kbd> for scale; 3D differs.</li>
+    <li><strong>Orbit, pan, zoom.</strong> With the mouse over the 3D viewport: hold the <strong>middle mouse button</strong> and drag to orbit around what is on screen; hold <kbd>Shift</kbd> + middle mouse and drag to pan; scroll the wheel to zoom. Press <kbd>F</kbd> with the cube selected to focus on it. (Trackpad: you ticked <kbd class="ui">Emulate 3 Button Mouse</kbd> earlier; the docs list the modifier keys it uses under the editor settings tooltip.)</li>
+    <li><strong>Fly mode.</strong> Hold the <strong>right mouse button</strong> and move the mouse to look around, and while holding it press <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> to fly, <kbd>E</kbd> to go up and <kbd>Q</kbd> to go down. Hold <kbd>Shift</kbd> to fly faster, <kbd>Alt</kbd> to go slower; the mouse wheel while flying changes the base speed. Release the button to leave fly mode. This is the view's free-look mode, available when the viewport is in <em>Perspective</em> view.</li>
+    <li><strong>Use the view gizmo.</strong> Top-right of the viewport is a small coloured axis gizmo. Click one of the coloured circles to snap to a straight-on view (front, top, side: the viewport switches to <em>Orthogonal</em>); click-and-drag the gizmo to orbit. The three dots at the top-left of the viewport open its view menu, which shows the current view type (Perspective or Orthogonal). Press <kbd>F</kbd> again to refocus. Switch back to <em>Perspective</em> from that menu.</li>
+    <li><strong>Axes and orientation.</strong> The colors are RGB = XYZ: <strong>red X</strong>, <strong>green Y</strong>, <strong>blue Z</strong>. In Godot 3D, <strong>Y is up</strong>, X is sideways, Z is front/back, and the coordinate system is right-handed. By convention Godot's "forward" is <strong>-Z</strong> (the class reference defines <code>Vector3.FORWARD</code> as <code>(0, 0, -1)</code>), so a camera looks toward negative Z. Units are metres.</li>
+    <li><strong>Move the cube with gizmos.</strong> Select the <code>MeshInstance3D</code> node and press <kbd>W</kbd>: three arrows (red, green, blue) appear on the cube. Drag one to move along that axis; drag a small coloured square to move within that plane. Press <kbd>E</kbd>: coloured arcs rotate around each axis. Press <kbd>R</kbd>: cubes scale. Hold <kbd>Ctrl</kbd> while dragging to snap to steps. <kbd>T</kbd> toggles <em>Use Local Space</em> (gizmo follows the node's own rotation). Press <kbd>Ctrl</kbd>+<kbd>Z</kbd> until the cube is back at <code>(0, 0, 0)</code>, or type zeros into <kbd class="ui">Transform &gt; Position</kbd>.</li>
+    <li><strong>The preview sun and environment.</strong> In the 3D toolbar, find the two toggle buttons <kbd class="ui">Toggle preview sunlight</kbd> and <kbd class="ui">Toggle preview environment</kbd> and the three-dots button beside them. The cube looks lit and the background shows a sky only because of these <em>editor-only</em> previews, used when the scene has no real light or <code>WorldEnvironment</code>. Click the sun toggle off: the cube turns dark. Click it on again. Neither preview exists in the running game.</li>
+    <li><strong>Add a Camera3D.</strong> Select the root, <kbd>Ctrl</kbd>+<kbd>A</kbd>, <code>Camera3D</code>, <kbd class="ui">Create</kbd>. Set its <kbd class="ui">Transform &gt; Position</kbd> to <code>x 0, y 0.5, z 3</code>. With the camera selected a <kbd class="ui">Preview</kbd> check box appears at the top of the viewport: tick it to see through the camera (you look along -Z toward the cube), untick it to return to the editor view. A game without a current Camera3D renders nothing.</li>
+    <li><strong>Run it and see why lights matter.</strong> Press <kbd>F6</kbd>. The cube looks dull and flat compared to the editor view, because the previews do not exist at runtime. Stop (<kbd>F8</kbd>). Select the root, <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>DirectionalLight3D</code>, and in its <kbd class="ui">Transform &gt; Rotation</kbd> set <code>x = -50</code>, <code>y = 30</code>, <code>z = 0</code>. Run again: the cube now has a bright face and dark faces. When a real <code>DirectionalLight3D</code> exists, the preview sun is no longer used.</li>
+    <li><strong>Know that WorldEnvironment exists.</strong> A <code>WorldEnvironment</code> node (given an <code>Environment</code> resource) is how a 3D scene gets its sky, ambient light, fog, glow and tone mapping at runtime. Do not add it today; Day 10 does. Save the scene with <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+  </ol>
+
+  <pre class="scene-tree">Playground3D (Node3D)
+├── MeshInstance3D          mesh: BoxMesh
+├── Camera3D                position (0, 0.5, 3)
+└── DirectionalLight3D      rotation (-50, 30, 0)</pre>
+
+  <div class="checkpoint"><p>You can orbit, pan, zoom and fly in the 3D viewport; <kbd>F6</kbd> shows a box with a lit side and shadowed sides from the camera's point of view. If you see only a grey screen, tick the camera's <kbd class="ui">Preview</kbd> box to check it faces the cube (it must be at positive Z looking toward -Z), and check that the <code>MeshInstance3D</code>'s <kbd class="ui">Mesh</kbd> is set.</p></div>
+
+  <div class="callout docs"><span class="callout-title">Docs</span>
+    <p>All 3D toolbar buttons, the coordinate system and navigation modes are explained in <a href="https://docs.godotengine.org/en/stable/tutorials/3d/introduction_to_3d.html" target="_blank" rel="noopener">Introduction to 3D</a>.</p></div>
+
+  <!-- 12. BUILD 8: SCRIPT WORKSPACE -->
+  <h2 id="build-8">8. The Script workspace, Output, debugger and the built-in docs (about 15 minutes)</h2>
+  <p>Day 2 teaches GDScript properly; today you attach one tiny script so you can tour the code editor and prove where <code>user://</code> is. You do not need to understand the code yet.</p>
+
+  <ol class="steps">
+    <li><strong>Open the scene to script.</strong> Click the <code>hello.tscn</code> tab above the viewport (open it from the FileSystem dock by double-clicking if it is closed). Click the <kbd class="ui">2D</kbd> workspace if needed.</li>
+    <li><strong>Attach a script.</strong> In the <strong>Scene</strong> dock, right-click the <code>Hello</code> node and choose <kbd class="ui">Attach Script</kbd>. (There is also a script-scroll icon at the top of the Scene dock, which does the same for the selected node.) The <em>Attach Node Script</em> dialog opens with these fields: <kbd class="ui">Language</kbd> (leave <em>GDScript</em>), <kbd class="ui">Inherits</kbd> (already <code>Label</code>, the node's own class), <kbd class="ui">Template</kbd> (leave the default), a <kbd class="ui">Built-in Script</kbd> switch (leave off: we want a real <code>.gd</code> file, not code stored inside the scene) and <kbd class="ui">Path</kbd>. Change the path to <code>res://day01/hello.gd</code> and click <kbd class="ui">Create</kbd>. The editor jumps to the <kbd class="ui">Script</kbd> workspace with the new file open.</li>
+    <li><strong>Tour the Script workspace.</strong> On the left is the <strong>script panel</strong>: a filter box and the list of open files (an asterisk after a name means unsaved changes), and below it an <strong>outline</strong> of the functions in the current file. In the center is the <strong>coding area</strong> with line numbers, fold arrows, and a clickable <em>minimap</em> on the right. Above it: the menus <kbd class="ui">File</kbd>, <kbd class="ui">Edit</kbd>, <kbd class="ui">Search</kbd>, <kbd class="ui">Go To</kbd>, <kbd class="ui">Debug</kbd>, then buttons for online docs and <kbd class="ui">Search Help</kbd>, back/forward arrows, and a float button that detaches the editor into its own window (handy on two monitors). The <strong>status bar</strong> under the code shows the error and warning counts (click them for a list), the zoom percentage, the caret's line and column, and whether the file uses <strong>tabs or spaces</strong>.</li>
+    <li><strong>Replace the template with today's script.</strong> Click inside the code, press <kbd>Ctrl</kbd>+<kbd>A</kbd> (select all), then paste or type the listing below, replacing everything. Check the status bar: the indentation indicator should read <em>Spaces</em>, which proves the setting from section 4 works.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://day01/hello.gd">
+extends Label
+
+func _ready() -> void:
+    print("Hello from hello.gd")
+    print("Godot version: ", Engine.get_version_info()["string"])
+    print("res:// is at ", ProjectSettings.globalize_path("res://"))
+    print("user:// is at ", OS.get_user_data_dir())
+    var file: FileAccess = FileAccess.open("user://hello.txt", FileAccess.WRITE)
+    file.store_string("Written by hello.gd\n")
+    file.close()
+    print("Wrote user://hello.txt")
+      </script>
+      <p>Press <kbd>Ctrl</kbd>+<kbd>S</kbd> to save the script.</p></li>
+    <li><strong>Run it and read the Output panel.</strong> Press <kbd>F6</kbd> (it runs the scene tab you were last editing: <code>hello.tscn</code>). The window shows <em>Hello Godot</em> and the <strong>Output</strong> panel at the bottom opens with lines like:
+      <pre class="plain">Hello from hello.gd
+Godot version: 4.x.stable.official.xxxxxxxxx
+res:// is at C:/GodotProjects/g00-sandbox/
+user:// is at C:/Users/YourName/AppData/Roaming/Godot/app_userdata/g00-sandbox
+Wrote user://hello.txt</pre>
+      <p>Everything <code>print()</code> writes lands here, normal messages in white, warnings in yellow, errors in red. The Output panel has buttons to clear it, copy its text and filter it. Note the <strong>forward slashes</strong> in Windows paths. Stop the game (<kbd>F8</kbd>).</p></li>
+    <li><strong>Find the file in <code>user://</code>.</strong> Paste the <code>user://</code> path from your Output (or <code>%APPDATA%\Godot\app_userdata\g00-sandbox</code>) into File Explorer's address bar and press <kbd>Enter</kbd>. <code>hello.txt</code> is there. (The editor's <kbd class="menu">Project &gt; Open User Data Folder</kbd> menu entry opens the same place on versions that have it; it is not described in the docs, so treat it as a bonus.) Note that this folder is <em>outside</em> your project and is not in Git: save games live here.</li>
+    <li><strong>Set a breakpoint.</strong> Back in the editor, hover the narrow empty gutter to the left of the line numbers in <code>hello.gd</code>: a faded red dot appears. Click it next to the line <code>print("Wrote user://hello.txt")</code>; the dot turns solid red. Press <kbd>F6</kbd>. The game freezes before that line, the editor comes to the front, a green arrow in the gutter marks the current line, and the bottom <strong>Debugger</strong> panel opens on its <strong>Stack Trace</strong> tab. Use the buttons at its top-right: <kbd class="ui">Step Over</kbd> moves to the next line, <kbd class="ui">Step Into</kbd> enters a function call, <kbd class="ui">Break</kbd> pauses a running game, <kbd class="ui">Continue</kbd> resumes. Click <kbd class="ui">Continue</kbd> and the game finishes its function. Click the red dot again to remove the breakpoint. (Writing the keyword <code>breakpoint</code> on a line in a script does the same and travels with the file in Git.)</li>
+    <li><strong>Tour the debugger tabs.</strong> Click <kbd class="ui">Debugger</kbd> in the bottom panel and look through its tabs:
+      <table>
+        <tr><th>Tab</th><th>What it is for</th></tr>
+        <tr><td><strong>Stack Trace</strong></td><td>Opens at a breakpoint or error; the call stack, the variables in scope, and the stepping buttons.</td></tr>
+        <tr><td><strong>Errors</strong></td><td>All errors and warnings printed while the game runs, with the script and line.</td></tr>
+        <tr><td><strong>Evaluator</strong></td><td>Type an expression while stopped at a breakpoint and see its value (a mini console).</td></tr>
+        <tr><td><strong>Profiler</strong>, <strong>Visual Profiler</strong></td><td>Which functions take time; GPU/CPU frame timings. Used on Day 14 and in Part 2.</td></tr>
+        <tr><td><strong>Network Profiler</strong>, <strong>Video RAM</strong>, <strong>Misc</strong></td><td>Multiplayer traffic per node; video memory used by each resource; and, in Misc, which UI (Control) node you clicked in the running game and its type.</td></tr>
+        <tr><td><strong>Monitors</strong></td><td>Live graphs: FPS, memory, node count, physics objects. Great for finding leaks.</td></tr>
+      </table>
+      Fold the panel again. The reference is <a href="https://docs.godotengine.org/en/stable/tutorials/scripting/debug/debugger_panel.html" target="_blank" rel="noopener">Debugger panel</a>; Day 2 has a "debugging basics" section and Day 14 returns to profiling.</li>
+    <li><strong>Open the class reference with F1.</strong> Press <kbd>F1</kbd> anywhere in the editor (<kbd>Fn</kbd>+<kbd>F1</kbd> on laptops where F-keys need Fn; or click <kbd class="ui">Search Help</kbd> in the Script workspace's top bar; or <kbd class="menu">Help &gt; Search Help…</kbd>). A search window appears: type <code>Node2D</code> and double-click the first result. The class page opens as a tab in the Script workspace, next to your scripts. The docs are <strong>built in and work offline</strong>; they are the same pages as the website for the version you installed.</li>
+    <li><strong>Learn to read a class reference page (Node2D).</strong> Scroll through the page: at the top <strong>Inherits</strong> shows the chain <code>CanvasItem &lt; Node &lt; Object</code> (everything Node2D can do, those classes can do, too), and <strong>Inherited By</strong> lists every 2D node built on it. Then come a <strong>Description</strong>, links to <strong>Tutorials</strong>, tables of <strong>Properties</strong> (type, name, default value), <strong>Methods</strong> (return type, name and parameters), and signals, constants and enums where the class has them; below those are the long <strong>Property Descriptions</strong> and <strong>Method Descriptions</strong> with the exact semantics. Click any type name (for example <code>Vector2</code>) to jump to its page; the left-hand outline lists the page's sections. Now answer from the page, without a search engine:
+      <ul>
+        <li>What is the type and default value of <code>position</code>? (<code>Vector2</code>, <code>Vector2(0, 0)</code>)</li>
+        <li>Which property is in radians, and which in degrees? (<code>rotation</code> radians; <code>rotation_degrees</code> degrees)</li>
+        <li>Which method turns the node to face a point? (<code>look_at</code>)</li>
+        <li>Which class defines <code>visible</code> and <code>modulate</code>? (not Node2D itself; its parent <code>CanvasItem</code>)</li>
+      </ul></li>
+    <li><strong>Jump from code to docs.</strong> Back in <code>hello.gd</code>, hold <kbd>Ctrl</kbd> and click on the word <code>FileAccess</code>: its class page opens. Ctrl+click on <code>store_string</code>, <code>Engine</code> and <code>_ready</code> too (the last one has a small override marker in the gutter: clicking it opens the documentation of the function you are overriding). You can also right-click a node in the Scene dock and choose <kbd class="ui">Open Documentation</kbd>, and in a script, right-click a word and choose <kbd class="ui">Lookup Symbol</kbd>. Hovering a property's name in the Inspector shows its description and its name in code. <em>Make this a reflex: unsure what a node can do? F1 first, search engine second.</em></li>
+  </ol>
+
+  <div class="checkpoint"><p>The Output shows five lines from <code>hello.gd</code>, <code>hello.txt</code> exists in your <code>user://</code> folder, the breakpoint paused the game and <kbd class="ui">Continue</kbd> resumed it, and you found <code>look_at</code> in the Node2D page. If nothing prints, check that the script is saved and attached (a script-scroll icon appears next to <code>Hello</code> in the Scene dock) and that you ran <code>hello.tscn</code>, not <code>other.tscn</code>. If you see a red error mentioning a <em>parse</em> error, compare your file with the listing; mixed tabs and spaces cause "Mixed use of tabs and spaces for indentation".</p></div>
+
+  <div class="callout docs"><span class="callout-title">Docs</span>
+    <p>Every menu of the code editor, bookmarks, find and replace in files, and multi-caret editing are in <a href="https://docs.godotengine.org/en/stable/tutorials/editor/script_editor.html" target="_blank" rel="noopener">Script Editor</a>. Useful now: <kbd>Ctrl</kbd>+<kbd>K</kbd> toggles comments on selected lines, <kbd>Ctrl</kbd>+<kbd>D</kbd> selects the next occurrence of the selected word (rename several at once), <kbd>Alt</kbd>+click adds a second caret. Check <kbd class="menu">Editor &gt; Editor Settings &gt; Shortcuts</kbd> for the exact bindings on your version.</p></div>
+
+  <!-- 13. BUILD 9: GAME WORKSPACE -->
+  <h2 id="build-9">9. The Game workspace and the embedded game window (about 10 minutes)</h2>
+  <p>The <kbd class="ui">Game</kbd> workspace is where a running game shows up in the editor. You can pause it, step it one frame at a time, slow it down and click nodes inside it to inspect them. To have something that <em>moves</em> to practice on, you attach a three-line script to the icon in the 2D playground (full explanation tomorrow).</p>
+
+  <ol class="steps">
+    <li><strong>Make the icon spin.</strong> Open the <code>playground_2d.tscn</code> tab. In the Scene dock, right-click <code>Icon</code> (the first <code>Sprite2D</code>) &gt; <kbd class="ui">Attach Script</kbd>, set <kbd class="ui">Path</kbd> to <code>res://day01/spin.gd</code>, click <kbd class="ui">Create</kbd>, select all, and replace the contents with the listing. Save with <kbd>Ctrl</kbd>+<kbd>S</kbd>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://day01/spin.gd">
+extends Sprite2D
+
+func _process(delta: float) -> void:
+    rotation += delta
+      </script></li>
+    <li><strong>Open the Game workspace.</strong> Click <kbd class="ui">Game</kbd> (top center). Without a running game it shows a hint to run the project. In the top-right corner of its bar there is a drop-down menu; open it. You see the <strong>embedding mode</strong> options: <kbd class="ui">Embed Game on Next Play</kbd> and <kbd class="ui">Make Window Floating on Next Play</kbd>, and below them the <strong>window size</strong> choices <kbd class="ui">Fixed Size</kbd>, <kbd class="ui">Keep Aspect Ratio</kbd> and <kbd class="ui">Stretch to Fit</kbd>. The documented default is: game in a <em>floating window</em> with a Game bar on top. Leave the defaults.</li>
+    <li><strong>Run the playground.</strong> Press <kbd>F6</kbd>. The big icon spins and the small one orbits. Notice the <strong>Game bar</strong> in the game window.</li>
+    <li><strong>Pause and step.</strong> On the Game bar click <kbd class="ui">Pause</kbd> (<kbd>F9</kbd>): the animation freezes (physics and processing stop; rendering and input continue). Click <kbd class="ui">Frame advance</kbd> (<kbd>F10</kbd>, enabled only while paused) several times: the icon moves one frame at a time. This is how you study a one-frame glitch. Click pause again to resume.</li>
+    <li><strong>Change the game speed.</strong> Open the <kbd class="ui">Game speed</kbd> menu on the Game bar and choose a slower value such as <code>0.25×</code>: the spin slows down. Use the reset button next to it to return to <code>1.0×</code>. (Physics runs at the scaled speed as well, which is perfect for watching collisions.)</li>
+    <li><strong>Inspect a running node.</strong> Pause the game again. Switch the <em>interaction mode</em> on the Game bar from <kbd class="ui">Input</kbd> to <kbd class="ui">2D</kbd>, then click the spinning icon. An orange rectangle selects it, and the editor's <strong>Inspector</strong> shows that node's <em>live</em> properties. You can even edit them; look at <kbd class="ui">Rotation</kbd> change. Also look at the Scene dock: while a game runs it offers a <strong>Remote</strong> view of the live scene tree next to the normal <strong>Local</strong> one.
+      <div class="callout warn"><span class="callout-title">Changes in the running game are not saved</span>
+        <p>Anything you change through the Game window or the Remote tree is lost when the game stops. To tweak and keep a value while the game runs, edit the node in the <em>Local</em> tree instead (with <kbd class="menu">Debug &gt; Synchronize Scene Changes</kbd> enabled so the running game sees your edit).</p></div></li>
+    <li><strong>Try embedded mode.</strong> Stop the game (<kbd>F8</kbd>). Open the Game workspace drop-down again and <em>untick</em> <kbd class="ui">Make Window Floating on Next Play</kbd> (keep <kbd class="ui">Embed Game on Next Play</kbd> ticked). Press <kbd>F6</kbd>: the game now runs <em>inside</em> the editor's Game workspace. Pick whichever mode you like. Floating suits a second monitor; embedded is convenient on one screen. The game always runs in a separate process, so a crashing game never crashes the editor. Embedding has limits (for example, window-mode changes such as fullscreen do not work embedded); if a project later behaves oddly, choose <kbd class="ui">Make Window Floating on Next Play</kbd> or disable embedding to see the game exactly as an exported one.</li>
+    <li><strong>Stop the game.</strong> Press <kbd>F8</kbd>.</li>
+  </ol>
+
+  <div class="checkpoint"><p>You paused the spinning icon with <kbd>F9</kbd>, advanced it a frame with <kbd>F10</kbd>, slowed the game down, and inspected the running icon's properties. If <kbd>F9</kbd>/<kbd>F10</kbd> do nothing, click inside the game window first so it has keyboard focus; if the Game bar is missing, embedding is disabled (it is configured from the same drop-down).</p></div>
+
+  <div class="callout docs"><span class="callout-title">Docs</span>
+    <p>Every Game bar button and the camera-override feature: <a href="https://docs.godotengine.org/en/stable/tutorials/editor/game_embedding.html" target="_blank" rel="noopener">Game embedding</a>.</p></div>
+
+  <!-- 14. BUILD 10: PROJECT SETTINGS -->
+  <h2 id="build-10">10. Project Settings tour (about 10 minutes)</h2>
+  <p>Project Settings is the second settings window, and it belongs to <em>this project</em>. Everything you change is written to <code>project.godot</code>.</p>
+
+  <ol class="steps">
+    <li><strong>Open it.</strong> Click <kbd class="menu">Project &gt; Project Settings…</kbd>. At the top are tabs: <kbd class="ui">General</kbd> (the big list of settings), <kbd class="ui">Input Map</kbd> (named actions bound to keys and pads: Day 2), <kbd class="ui">Localization</kbd> (translations: Day 16), <kbd class="ui">Globals</kbd> (autoloads, shader globals, groups: Day 2 for autoloads), <kbd class="ui">Plugins</kbd> and <kbd class="ui">Import Defaults</kbd>. Click each once and come back to <kbd class="ui">General</kbd>.</li>
+    <li><strong>Find a setting three ways.</strong> The <kbd class="ui">General</kbd> tab works like the Inspector: categories on the left (<em>Application</em>, <em>Display</em>, <em>Audio</em>, <em>Input Devices</em>, <em>Debug</em>, <em>Physics</em>, <em>Rendering</em>, <em>Layer Names</em> ...) and settings on the right. (1) Browse: click <kbd class="ui">Application</kbd> &gt; <kbd class="ui">Config</kbd> and read <kbd class="ui">Name</kbd> (your project's name, also the name of the <code>user://</code> folder) and <kbd class="ui">Icon</kbd>. (2) Search: type <code>viewport</code> in the <kbd class="ui">Filter Settings</kbd> box at the top; the matching settings from all categories appear with their category path. Clear the box. (3) Hover any setting for its description, and click the circular <strong>reset</strong> arrow beside a changed one to restore its default.</li>
+    <li><strong>The Advanced Settings toggle.</strong> At the top-right of the window is a switch labelled <kbd class="ui">Advanced Settings</kbd>. By default Godot hides rarely-used settings. Turn it on. Many more categories and entries appear (for example the project's <em>Window Width Override</em>, <em>Debug &gt; GDScript</em> warnings, and so on). Leave it on for the rest of the course so that names in the text match what you see.</li>
+    <li><strong>Application &gt; Run &gt; Main Scene.</strong> Search <code>main scene</code>. This is the setting F5 reads. It should point to <code>day01/hello.tscn</code>. (We change it tomorrow.)</li>
+    <li><strong>Display &gt; Window &gt; Size.</strong> Search <code>viewport width</code>. <kbd class="ui">Viewport Width</kbd> and <kbd class="ui">Viewport Height</kbd> are the base size of your game: <code>1152</code> and <code>648</code> by default. Neighbouring settings include <kbd class="ui">Mode</kbd> (windowed, fullscreen ...) and <kbd class="ui">Resizable</kbd>. All Part 1 2D games use <code>1152 × 648</code> except Dodger (<code>480 × 720</code>); the portrait Part 2 games use <code>720 × 1280</code>.</li>
+    <li><strong>Display &gt; Window &gt; Stretch.</strong> Search <code>stretch</code>. <kbd class="ui">Mode</kbd> decides how your 1152 × 648 base size is fitted to a window of a different size: <code>disabled</code> (no scaling; one unit is one pixel), <code>canvas_items</code> (2D is drawn at the window's real resolution, scaled up: good for most games) and <code>viewport</code> (render small, scale the image: pixel art). <kbd class="ui">Aspect</kbd> says what to do when the window shape differs from the base shape: <code>keep</code> (add black bars), <code>expand</code> (show more of the world) and others. Engine defaults are <code>disabled</code> and <code>keep</code>; projects created from Godot 4.7 start with <code>canvas_items</code> and <code>expand</code>. Set <kbd class="ui">Mode</kbd> to <kbd class="ui">Canvas Items</kbd> and <kbd class="ui">Aspect</kbd> to <kbd class="ui">Keep</kbd> (the course default for the Part 1 2D games). Close the window, press <kbd>F5</kbd> and <strong>drag the game window's corner</strong> to resize it: the content scales and black bars appear. Switch <kbd class="ui">Aspect</kbd> to <kbd class="ui">Expand</kbd> and repeat to see the difference. Set it back to <kbd class="ui">Keep</kbd>.</li>
+    <li><strong>Layer Names.</strong> In the left tree click <kbd class="ui">Layer Names</kbd> &gt; <kbd class="ui">2D Physics</kbd>. It lists <kbd class="ui">Layer 1</kbd> to <kbd class="ui">Layer 32</kbd> with empty name fields. Physics bodies live on layers and only see layers in their <em>mask</em>; naming them turns checkbox grids into readable lists. Type these seven names (the ones every game in this course uses), clicking each field in turn: <code>world</code>, <code>player</code>, <code>enemies</code>, <code>player_attacks</code>, <code>enemy_attacks</code>, <code>pickups</code>, <code>triggers</code>. (Names are per project, and you repeat them in each game project. Nothing here changes behaviour yet.)</li>
+    <li><strong>See what it wrote.</strong> Close the window and run in PowerShell:
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+Get-Content C:\GodotProjects\g00-sandbox\project.godot
+      </script>
+      <p>Find the lines you caused: <code>run/main_scene=...</code> under <code>[application]</code>, the <code>[display]</code> section with the stretch settings, and a <code>[layer_names]</code> section with <code>2d_physics/layer_1="world"</code> and so on. The file only stores values you changed from the defaults.</p></li>
+    <li><strong>Peek at Input Map and Autoload (tomorrow's tools).</strong> Open <kbd class="menu">Project &gt; Project Settings</kbd> again. On <kbd class="ui">Input Map</kbd>, tick <kbd class="ui">Show Built-in Actions</kbd>: the <code>ui_*</code> actions (<code>ui_accept</code>, <code>ui_left</code>, ...) already exist for menus and UI. Untick it. On <kbd class="ui">Globals</kbd> look at the <kbd class="ui">Autoload</kbd> list (empty). Close the window.</li>
+  </ol>
+
+  <div class="checkpoint"><p>With <kbd>F5</kbd>, the <em>Hello Godot</em> window opens, can be resized, and keeps its proportions with black bars; <code>project.godot</code> contains your layer names. If the F5 window does not show Hello Godot, recheck <kbd class="menu">Application &gt; Run &gt; Main Scene</kbd>.</p></div>
+
+  <div class="callout docs"><span class="callout-title">Docs</span>
+    <p>The window and its tabs: <a href="https://docs.godotengine.org/en/stable/tutorials/editor/project_settings.html" target="_blank" rel="noopener">Project Settings</a>; every setting key is in the <a href="https://docs.godotengine.org/en/stable/classes/class_projectsettings.html" target="_blank" rel="noopener">ProjectSettings class reference</a> (the path <code>display/window/stretch/mode</code> there is <em>Display &gt; Window &gt; Stretch &gt; Mode</em> in the editor).</p></div>
+
+  <!-- 15. BUILD 11: BACKUPS AND VERSION CONTROL -->
+  <h2 id="build-11">11. Backups and version control (about 10 minutes)</h2>
+  <p>You will build 15 projects in this course. Losing one to a disk error or a bad edit is avoidable with a two-minute habit. Godot's text-based files make Git work well, but the zip fallback below is perfectly fine if you do not use Git.</p>
+
+  <ol class="steps">
+    <li><strong>Look at the files Godot generated for Git.</strong> In PowerShell run the two commands below. They only print.
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+Get-Content C:\GodotProjects\g00-sandbox\.gitignore
+Get-Content C:\GodotProjects\g00-sandbox\.gitattributes
+      </script>
+      <p>The <code>.gitignore</code> says, in essence, <code>.godot/</code> (plus a folder for Android build files). The <code>.gitattributes</code> normalises line endings (<code>* text=auto eol=lf</code>) so that Windows checkouts do not turn every file into a spurious change. The wording varies slightly by version.</p></li>
+    <li><strong>Know what to commit.</strong> Commit <em>everything except</em> <code>.godot/</code> (and <code>*.translation</code> files, which are generated from CSV): scenes, scripts and their <code>.uid</code> files, <code>.tres</code> resources, assets <em>and their <code>.import</code> files</em>, <code>project.godot</code>, and later <code>export_presets.cfg</code> (in Godot 4.1+ it holds no secrets; keystore passwords are never stored in it). The same ignore files can be generated for an existing project from <kbd class="menu">Project &gt; Version Control &gt; Generate Version Control Metadata</kbd>.</li>
+    <li><strong>Optional: put the sandbox under Git.</strong> If Git is installed (check with <code>git --version</code>), run:
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+cd C:\GodotProjects\g00-sandbox
+git init
+git config user.name "Your Name"
+git config user.email "you@example.com"
+git add .
+git status
+git commit -m "Day 1: sandbox with first scenes"
+      </script>
+      <p>In the <code>git status</code> output (before the commit) you should <strong>not</strong> see <code>.godot/</code>. From today on, commit at the end of every working day with a message such as <code>Day 2: toy finished</code>. (If you use a Git client that sets <code>core.autocrlf=true</code>, the generated <code>.gitattributes</code> already protects you; otherwise <code>git config --global core.autocrlf input</code> is the recommended setting from the Godot docs.)</p>
+      <div class="callout external"><span class="callout-title">External resource (not in the Godot docs)</span>
+        <p>Git itself is not part of Godot. Download it from <a href="https://git-scm.com" target="_blank" rel="noopener">git-scm.com</a> if you want it. Hosting (GitHub, GitLab, ...) is optional and not covered here. Verify on the official page; steps change.</p></div></li>
+    <li><strong>Zip fallback (no Git needed).</strong> Run this at the end of a session; it creates a time-stamped zip of the project in <code>C:\GodotBackups\</code>:
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+New-Item -ItemType Directory -Force C:\GodotBackups | Out-Null
+$stamp = Get-Date -Format "yyyy-MM-dd_HHmm"
+Compress-Archive -Path C:\GodotProjects\g00-sandbox\* -DestinationPath "C:\GodotBackups\g00-sandbox_$stamp.zip"
+      </script>
+      <p>Copy that folder to a USB drive or cloud storage now and then. A zip made this way may or may not contain the hidden <code>.godot/</code> folder; both are fine, because it is regenerated.</p></li>
+    <li><strong>Prove that <code>.godot/</code> is disposable.</strong> In the editor choose <kbd class="menu">Project &gt; Quit to Project List</kbd>. In PowerShell run <code>Remove-Item -Recurse -Force C:\GodotProjects\g00-sandbox\.godot</code>. In the Project Manager double-click <code>g00-sandbox</code>. The editor opens, shows an import progress bar for a moment (it re-converts <code>icon.svg</code> and rebuilds its caches), and everything works as before. You may have to reopen your scene tabs. This is the fix for many odd "ghost" problems in later days: close Godot, delete <code>.godot/</code>, reopen.</li>
+  </ol>
+
+  <div class="checkpoint"><p>You have at least one backup: a Git commit or a zip in <code>C:\GodotBackups\</code>. After deleting <code>.godot/</code> the project reopened normally and <kbd>F5</kbd> still shows <em>Hello Godot</em>.</p></div>
+
+  <div class="callout docs"><span class="callout-title">Docs</span>
+    <p>Which files to ignore (the list differs between Godot 3.x/4.0 and 4.1+), Git LFS for big assets and the official Git plugin are covered in <a href="https://docs.godotengine.org/en/stable/tutorials/best_practices/version_control_systems.html" target="_blank" rel="noopener">Version control systems</a>.</p></div>
+
+  <!-- 7. PITFALLS -->
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Downloaded the .NET build (or a beta).</strong> The .NET build is bigger and expects C#. Run only the standard <code>stable</code> build. If you already created projects with the wrong build, they still open in the standard editor.</li>
+    <li><strong>Ran Godot from <code>Downloads</code> or inside the zip.</strong> Shortcuts break when you clean up, and Windows may refuse to write settings. Always run from <code>C:\Godot\</code>.</li>
+    <li><strong>Pressed F6 and F5 interchangeably.</strong> F6 runs the <em>scene tab you are looking at</em>; F5 runs the <em>main scene</em>. "My change does not show" is most often "I ran the other one".</li>
+    <li><strong>Forgot to save the scene.</strong> An asterisk next to the tab name means unsaved changes. Running with F5/F6 normally saves first, but a crash or force-closing the editor will not.</li>
+    <li><strong>Mixed tabs and spaces.</strong> Typing with a different indentation style than the pasted code gives "Mixed use of tabs and spaces". Fix: set the Editor Setting to Spaces / 4 (section 4); then select the file's contents and use <kbd class="menu">Edit &gt; Indentation &gt; Convert Indent to Spaces</kbd> in the script editor.</li>
+    <li><strong>Wrong workspace.</strong> "I cannot see my 2D scene": you are on the 3D or Script workspace. Click <kbd class="ui">2D</kbd>. A new scene with a <code>Node3D</code> root opens 3D; a <code>Node2D</code> or <code>Control</code> root opens 2D.</li>
+    <li><strong>Renaming or moving files in Explorer.</strong> Godot then cannot update references inside scenes. Rename and move in the FileSystem dock (drag and drop, or right-click &gt; Rename).</li>
+    <li><strong>Backslashes in paths in code.</strong> Use <code>res://folder/file.tscn</code> and forward slashes, even on Windows.</li>
+    <li><strong>Put the project in a synced folder.</strong> OneDrive/Dropbox locking files in <code>.godot/</code> causes random import errors. Keep projects in <code>C:\GodotProjects\</code>.</li>
+    <li><strong>A dock disappeared or the layout is a mess.</strong> <kbd class="menu">Editor &gt; Editor Layouts &gt; Default</kbd> resets everything. It does not touch your project.</li>
+    <li><strong>Forward+ project will not start on an old GPU.</strong> Change the renderer from the drop-down at the top-right of the editor to Compatibility, or create the project with Compatibility.</li>
+  </ul>
+
+  <!-- 8. CHALLENGE -->
+  <h2 id="challenge">Challenge (optional, 20-30 min)</h2>
+  <div class="challenge">
+    <h3>Muscle-memory layout drill</h3>
+    <p>Do this <strong>without</strong> reading the sections above; use only the hints below if you get stuck.</p>
+    <ol>
+      <li>Close the editor window completely, start Godot from your taskbar pin, and open <code>g00-sandbox</code> from the Project Manager.</li>
+      <li>Open <code>playground_2d.tscn</code>. In under five minutes, create a layout for <em>coding</em>: move the <strong>FileSystem</strong> dock under the <strong>Inspector</strong> on the right, make the <strong>bottom panel</strong> taller, and save it under the name <code>coding</code> with <kbd class="menu">Editor &gt; Editor Layouts &gt; Save</kbd>.</li>
+      <li>Switch to the <strong>Default</strong> layout, then back to <code>coding</code>, then delete <code>coding</code> again (or keep it; your choice).</li>
+      <li>Run the playground so the game appears in the <strong>Game</strong> workspace <em>embedded</em> in the editor, and toggle <strong>distraction-free mode</strong> while it runs. Pause the game with <kbd>F9</kbd>, step three frames, resume, and stop.</li>
+      <li>On a sheet of paper, draw the default editor layout with all nine areas from memory, then compare with the diagram in section 3.</li>
+      <li>Bonus: in <code>playground_2d.tscn</code>, use grid snap with a 64 × 64 grid to place three icons exactly 64 pixels apart in a row.</li>
+    </ol>
+    <details><summary>Hints</summary>
+      <ul>
+        <li>Dock menu: the three vertical dots at the top of a dock. Layouts: the <strong>Editor</strong> menu. Distraction-free: the far right of the scene tab bar.</li>
+        <li>Embedded game: the drop-down at the top-right of the Game workspace; untick the floating-window option before pressing <kbd>F6</kbd>.</li>
+        <li>Grid snap: the three-dots menu next to the snap buttons in the 2D toolbar &gt; <em>Configure Snap…</em> &gt; <em>Grid Step</em>, then switch on <em>Use Grid Snap</em>.</li>
+        <li>For the bonus, three icons can be created with <kbd>Ctrl</kbd>+<kbd>D</kbd> (duplicate) on the selected sprite.</li>
+      </ul>
+    </details>
+  </div>
+
+  <!-- 9. QUIZ -->
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="2">
+      <p>The project's main scene is <code>hello.tscn</code>, but the active scene tab is <code>other.tscn</code>. What do <kbd>F5</kbd> and <kbd>F6</kbd> run?</p>
+      <ul><li>Both run <code>other.tscn</code>, the one you are editing</li><li><kbd>F5</kbd> runs <code>other.tscn</code>, <kbd>F6</kbd> runs <code>hello.tscn</code></li><li><kbd>F5</kbd> runs <code>hello.tscn</code> (the main scene), <kbd>F6</kbd> runs <code>other.tscn</code> (the current scene)</li></ul>
+      <p class="explain">F5 = Run Project = the main scene from Project Settings (<code>application/run/main_scene</code>). F6 = Run Current Scene = whatever scene tab is active. Mixing them up is the classic "why does my change not appear?" bug.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Which description of the default editor layout is correct?</p>
+      <ul><li>The Scene dock lists the files of <code>res://</code>; the FileSystem dock lists the nodes of the open scene</li><li>The Scene dock lists the nodes of the open scene; the FileSystem dock lists the files of <code>res://</code>; the Inspector shows the properties of the selected node</li><li>The Inspector lists the project's files; signals are in the bottom panel's Output tab</li></ul>
+      <p class="explain">Scene dock (top-left) = node tree; FileSystem dock (bottom-left) = project files; Inspector (right) = properties of the selected node, next to it the Node tab (Signals and Groups). The bottom panel hosts Output, Debugger, Audio, Animation and so on.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>Your game must write a save file while running, even after being exported. Where should it write, and where is that on Windows by default?</p>
+      <ul><li><code>user://</code>, which is <code>%APPDATA%\Godot\app_userdata\&lt;project name&gt;</code> by default</li><li><code>res://</code>, which is the project folder, always writable</li><li><code>C:\Godot\</code>, next to the editor</li></ul>
+      <p class="explain"><code>res://</code> is read-only in an exported game (it is packed). <code>user://</code> is created for you per user and per game and is guaranteed writable; in Part 2 you can switch to a custom user dir name.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>A <code>Sprite2D</code> has <code>position = Vector2(100, -50)</code> and no parent offset. Where is it relative to the origin?</p>
+      <ul><li>100 right and 50 down</li><li>100 right and 50 up</li><li>100 left and 50 up</li></ul>
+      <p class="explain">In Godot 2D, positive X is right and positive Y is <strong>down</strong>, so a negative Y moves up. <code>Vector2.UP</code> is <code>(0, -1)</code>.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>Which folder is safe to delete while Godot is closed, and should be kept out of version control?</p>
+      <ul><li><code>day01/</code> with your scenes</li><li>The <code>.import</code> files next to your assets</li><li><code>.godot/</code></li></ul>
+      <p class="explain"><code>.godot/</code> is a regenerated cache. <code>.import</code> files hold real import settings and must be committed, and your scenes are your project.</p>
+    </div>
+  </div>
+
+  <!-- 10. DOCS -->
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/getting_started/introduction/first_look_at_the_editor.html" target="_blank" rel="noopener">First look at Godot's interface</a>: the same areas as today's tour, including the five workspaces and the built-in class reference.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/project_manager.html" target="_blank" rel="noopener">Using the Project Manager</a>: creating, importing, tags, recovery mode and the Asset Library tab.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/rendering/renderers.html" target="_blank" rel="noopener">Overview of renderers</a>: the full Forward+ / Mobile / Compatibility feature comparison.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/customizing_editor.html" target="_blank" rel="noopener">Customizing the interface</a>: moving docks, floating windows and saving layouts.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/script_editor.html" target="_blank" rel="noopener">Script Editor</a>: every menu of the code editor, breakpoints, bookmarks and find in files.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/io/data_paths.html" target="_blank" rel="noopener">File paths in Godot projects</a>: <code>res://</code>, <code>user://</code> and editor data locations on each OS.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/game_embedding.html" target="_blank" rel="noopener">Game embedding</a>: the Game workspace, Game bar, pause, frame advance and camera override.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/best_practices/version_control_systems.html" target="_blank" rel="noopener">Version control systems</a>: what to ignore and commit.</li>
+  </ul>
+
+  <!-- 11. WRAP-UP -->
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li>Godot (standard, non-.NET, stable) runs from <code>C:\Godot\</code> and is pinned to my taskbar.</li>
+    <li><code>C:\GodotProjects\g00-sandbox</code> opens from the Project Manager and <kbd>F5</kbd> shows <em>Hello Godot</em>; the day's scenes exist in <code>res://day01/</code>: <code>hello.tscn</code>, <code>other.tscn</code>, <code>playground_2d.tscn</code>, <code>playground_3d.tscn</code>.</li>
+    <li>Editor Settings: indentation Type = Spaces, Size = 4, Add Type Hints on; the script editor status bar says <em>Spaces</em>.</li>
+    <li>I can name all nine editor areas, reset the layout, and open the class reference with <kbd>F1</kbd>.</li>
+    <li>I made a backup (Git commit or a zip in <code>C:\GodotBackups\</code>) and I know <code>.godot/</code> can be deleted.</li>
+  </ul>
+  <p><strong>Tomorrow (Day 2):</strong> you go from clicking to coding: nodes and scenes properly, a fast typed GDScript tour, the Input Map, signals in two ways, groups, a custom Resource, an autoload and tweens, finishing with a small playable "Click the Icon" toy in this same sandbox project.</p>
+
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Editor tour | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="reference" data-id="editor-tour" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Reference · Editor</div>
+    <h1>Editor tour</h1>
+    <p class="lead">Every part of the Godot 4 editor, labelled, with the default layout. Keep this page open in a second tab on Day 1 and whenever you ask yourself "where is that button?". Each area has a table: control, what it does, shortcut.</p>
+    <div class="chips"><span class="chip blue">Reference</span><span class="chip green">Godot 4.x docs (master)</span><span class="chip">Windows shortcuts</span></div>
+  </header>
+
+  <div class="callout version"><span class="callout-title">Version note</span>
+    <p>This page follows the official docs in the repository, which describe the <code>master</code> branch and so may be one or two minor versions newer than your stable download. Menu and button names are checked against the docs wherever possible. Where an entry could not be confirmed in the docs it is marked <em>(name may differ slightly by version)</em>. Hover any button for one second to see its tooltip and current shortcut. Shortcuts are listed for Windows; see the <a href="shortcuts.html">Shortcuts</a> page for macOS keys.</p></div>
+
+  <h2 id="overview">1. The default layout at a glance</h2>
+  <p>Nine areas matter. They use the same words everywhere in the course, so learn the numbers once.</p>
+
+  <figure class="editor-diagram">
+  <svg viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="layout-title layout-desc" style="width:100%;max-width:960px;height:auto;display:block;margin:12px auto;font-family:Segoe UI,Arial,sans-serif">
+    <title id="layout-title">Default Godot 4 editor layout</title>
+    <desc id="layout-desc">Numbered diagram: 1 Menu bar, 2 Workspace buttons, 3 Play buttons, 4 Scene dock, 5 FileSystem dock, 6 Viewport and toolbar, 7 Inspector, 8 Node tab, 9 Bottom panel.</desc>
+    <rect x="0" y="0" width="960" height="600" rx="8" fill="#151a24" stroke="#478cbf" stroke-width="2"/>
+    <!-- top bar -->
+    <rect x="4" y="4" width="952" height="40" fill="#202735" stroke="#478cbf"/>
+    <text x="16" y="29" font-size="14" fill="#dde3ee">Scene   Project   Debug   Editor   Help</text>
+    <rect x="352" y="9" width="256" height="30" rx="4" fill="#2a3346" stroke="#478cbf"/>
+    <text x="364" y="29" font-size="14" fill="#dde3ee">2D    3D    Script    Game    AssetLib</text>
+    <rect x="706" y="9" width="244" height="30" rx="4" fill="#2a3346" stroke="#478cbf"/>
+    <text x="718" y="29" font-size="14" fill="#dde3ee">Run  Pause  Stop  Scene  Specific</text>
+    <!-- scene tabs -->
+    <rect x="4" y="46" width="952" height="26" fill="#1b2230" stroke="#478cbf"/>
+    <text x="214" y="64" font-size="13" fill="#dde3ee">main.tscn   player.tscn   +</text>
+    <!-- scene dock -->
+    <rect x="4" y="74" width="196" height="238" fill="#202735" stroke="#478cbf"/>
+    <text x="14" y="94" font-size="13" fill="#9fb4d0">Scene   |   Import</text>
+    <text x="14" y="116" font-size="13" fill="#dde3ee">+  (chain)  Filter nodes</text>
+    <text x="14" y="140" font-size="13" fill="#dde3ee">Main</text>
+    <text x="30" y="160" font-size="13" fill="#dde3ee">Player</text>
+    <text x="30" y="180" font-size="13" fill="#dde3ee">World</text>
+    <!-- filesystem dock -->
+    <rect x="4" y="314" width="196" height="228" fill="#202735" stroke="#478cbf"/>
+    <text x="14" y="334" font-size="13" fill="#9fb4d0">FileSystem</text>
+    <text x="14" y="358" font-size="13" fill="#dde3ee">res://</text>
+    <text x="30" y="378" font-size="13" fill="#dde3ee">icon.svg</text>
+    <text x="30" y="398" font-size="13" fill="#dde3ee">main.tscn</text>
+    <!-- viewport -->
+    <rect x="202" y="74" width="512" height="468" fill="#151a24" stroke="#478cbf"/>
+    <rect x="202" y="74" width="512" height="30" fill="#202735" stroke="#478cbf"/>
+    <text x="212" y="94" font-size="13" fill="#dde3ee">Select  Move  Rotate  Scale  |  Snap  Lock  Group  |  View</text>
+    <line x1="458" y1="108" x2="458" y2="540" stroke="#8b3a3a" stroke-width="1" opacity="0.6"/>
+    <line x1="206" y1="320" x2="710" y2="320" stroke="#3a8b4a" stroke-width="1" opacity="0.6"/>
+    <rect x="400" y="260" width="120" height="120" rx="6" fill="none" stroke="#478cbf" stroke-dasharray="6 4"/>
+    <text x="418" y="326" font-size="14" fill="#9fb4d0">2D / 3D Viewport</text>
+    <!-- inspector -->
+    <rect x="716" y="74" width="240" height="468" fill="#202735" stroke="#478cbf"/>
+    <rect x="716" y="74" width="240" height="26" fill="#2a3346" stroke="#478cbf"/>
+    <text x="726" y="92" font-size="13" fill="#dde3ee">Inspector</text>
+    <text x="800" y="92" font-size="13" fill="#9fb4d0">Node</text>
+    <text x="850" y="92" font-size="13" fill="#9fb4d0">History</text>
+    <text x="726" y="124" font-size="13" fill="#dde3ee">Filter properties</text>
+    <text x="726" y="148" font-size="13" fill="#dde3ee">Node2D</text>
+    <text x="736" y="168" font-size="13" fill="#9fb4d0">Transform</text>
+    <text x="736" y="188" font-size="13" fill="#9fb4d0">Visibility</text>
+    <text x="736" y="214" font-size="12" fill="#e5c07b">Node tab: Signals | Groups</text>
+    <!-- bottom panel -->
+    <rect x="4" y="544" width="952" height="52" fill="#202735" stroke="#478cbf"/>
+    <text x="14" y="574" font-size="13" fill="#dde3ee">Output   Debugger   Audio   Animation   Shader Editor   (SpriteFrames / TileSet / TileMap when needed)</text>
+    <!-- callouts -->
+    <g font-size="13" font-weight="bold" text-anchor="middle" fill="#0d1117">
+      <circle cx="262" cy="24" r="12" fill="#478cbf"/><text x="262" y="29">1</text>
+      <circle cx="480" cy="24" r="12" fill="#478cbf"/><text x="480" y="29">2</text>
+      <circle cx="684" cy="24" r="12" fill="#478cbf"/><text x="684" y="29">3</text>
+      <circle cx="170" cy="94" r="12" fill="#478cbf"/><text x="170" y="99">4</text>
+      <circle cx="170" cy="334" r="12" fill="#478cbf"/><text x="170" y="339">5</text>
+      <circle cx="320" cy="228" r="12" fill="#478cbf"/><text x="320" y="233">6</text>
+      <circle cx="930" cy="124" r="12" fill="#478cbf"/><text x="930" y="129">7</text>
+      <circle cx="822" cy="62" r="12" fill="#e5c07b"/><text x="822" y="67">8</text>
+      <circle cx="930" cy="574" r="12" fill="#478cbf"/><text x="930" y="579">9</text>
+    </g>
+  </svg>
+  <figcaption>Default layout. 1 Menu bar · 2 Workspace buttons · 3 Play buttons · 4 Scene dock · 5 FileSystem dock · 6 Viewport + toolbar · 7 Inspector · 8 Node tab (Signals, Groups) · 9 Bottom panel. The scene tabs sit between the top bar and the viewport.</figcaption>
+  </figure>
+
+  <table>
+    <tr><th>#</th><th>Course term</th><th>Where it is</th><th>What it is</th><th>Jump to</th></tr>
+    <tr><td>1</td><td><strong>Menu bar</strong></td><td>top-left</td><td>Scene, Project, Debug, Editor, Help menus</td><td><a href="#menu-bar">section 5</a></td></tr>
+    <tr><td>2</td><td><strong>Workspace buttons</strong></td><td>top center</td><td>2D, 3D, Script, Game, AssetLib</td><td><a href="#workspaces">section 3</a></td></tr>
+    <tr><td>3</td><td><strong>Play buttons</strong></td><td>top right</td><td>Run Project, Pause, Stop, Run Current Scene, Run Specific Scene (+ Movie Maker Mode toggle)</td><td><a href="#play-buttons">section 4</a></td></tr>
+    <tr><td>4</td><td><strong>Scene dock</strong></td><td>top-left</td><td>Node tree of the open scene</td><td><a href="#scene-dock">section 8</a></td></tr>
+    <tr><td>5</td><td><strong>FileSystem dock</strong></td><td>bottom-left</td><td>Files of <code>res://</code></td><td><a href="#filesystem-dock">section 9</a></td></tr>
+    <tr><td>6</td><td><strong>Viewport</strong> + toolbar</td><td>center</td><td>2D/3D canvas; toolbar on top changes with context</td><td><a href="#toolbar-2d">sections 6-7</a></td></tr>
+    <tr><td>7</td><td><strong>Inspector</strong></td><td>right</td><td>Properties of the selected node or resource</td><td><a href="#inspector">section 10</a></td></tr>
+    <tr><td>8</td><td><strong>Node tab</strong></td><td>next to Inspector</td><td><strong>Signals</strong> and <strong>Groups</strong> sub-tabs (the official docs say "Signals dock" and "Groups dock")</td><td><a href="#node-tab">section 11</a></td></tr>
+    <tr><td>9</td><td><strong>Bottom panel</strong></td><td>bottom strip</td><td>Output, Debugger, Audio, Animation, Shader Editor, SpriteFrames, TileSet, TileMap</td><td><a href="#bottom-panels">section 12</a></td></tr>
+    <tr><td>-</td><td><strong>Script editor</strong></td><td>Script workspace</td><td>File list left, code center, class docs and outline</td><td><a href="#script-editor">section 13</a></td></tr>
+    <tr><td>-</td><td><strong>Output panel</strong></td><td>bottom panel tab</td><td>Where <code>print()</code> text and errors appear</td><td><a href="#output-panel">section 12</a></td></tr>
+  </table>
+
+  <div class="callout tip"><span class="callout-title">Docks are movable</span>
+    <p>The positions above are the <em>default</em>. If your editor looks different, a dock may have been moved or floated. Reset it with <kbd class="menu">Editor &gt; Editor Layouts &gt; Default</kbd> (see <a href="#layouts">section 18</a>).</p></div>
+
+  <h2 id="project-manager">2. The Project Manager</h2>
+  <p>The first window you see when you launch Godot (and the one you return to with <kbd class="menu">Project &gt; Quit to Project List</kbd>). It is a separate process from the editor.</p>
+  <table>
+    <tr><th>Control</th><th>What it does</th></tr>
+    <tr><td><kbd class="ui">Projects</kbd> tab</td><td>List of known projects. Double-click one to open it in the editor. Use the filter bar to search; <code>tag:name</code> filters by tag.</td></tr>
+    <tr><td><kbd class="ui">Asset Library</kbd> tab</td><td>Download templates and demos. First visit shows <kbd class="ui">Go Online</kbd>: the engine never touches the internet until you opt in (Network Mode in Settings).</td></tr>
+    <tr><td><kbd class="ui">Create</kbd> (top-left)</td><td>New project dialog: <kbd class="ui">Project Name</kbd>, <kbd class="ui">Browse</kbd> for a folder (green tick = empty folder), optional <kbd class="ui">Create Folder</kbd> toggle, renderer choice (Forward+, Mobile, Compatibility; changeable later), optional version control, then <kbd class="ui">Create</kbd>.</td></tr>
+    <tr><td><kbd class="ui">Import</kbd></td><td>Select an existing folder or its <code>project.godot</code> file (or a zip file, which Godot extracts) to add it to the list.</td></tr>
+    <tr><td><kbd class="ui">Manage Tags</kbd></td><td>Add tags to a project (plus button, type name, OK). Tags travel with the project folder. A tag disappears from the list when no project uses it any more (restart the Project Manager).</td></tr>
+    <tr><td>Dropdown next to <kbd class="ui">Edit</kbd></td><td><kbd class="ui">Edit in recovery mode</kbd>: use after crashes. Disables tool scripts, editor plugins, GDExtension addons, automatic scene restoring and running the project. Back up first. Godot normally offers it automatically after a crash.</td></tr>
+    <tr><td><kbd class="ui">Settings</kbd> (top-right)</td><td>Editor language (default = system language), theme and color preset, display scale, network mode, directory naming convention for auto-created folders.</td></tr>
+  </table>
+  <p>File browser inside Create/Import: back/forward arrows, up arrow (parent folder), refresh, favorite/unfavorite, show/hide hidden folders, grid/list view, new folder, and left-side <strong>Favorites</strong> and <strong>Recent</strong> lists.</p>
+  <ul class="docs-links"><li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/project_manager.html" target="_blank" rel="noopener">Using the Project Manager</a></li></ul>
+
+  <h2 id="workspaces">3. The five workspaces</h2>
+  <p>The <strong>Workspace buttons</strong> at the top center switch the main screen. The active one is highlighted. Selecting a 2D node in the Scene dock switches to <kbd class="ui">2D</kbd> automatically, and a Node3D switches to <kbd class="ui">3D</kbd>.</p>
+  <table>
+    <tr><th>Workspace</th><th>Use it for</th><th>Notes</th></tr>
+    <tr><td><kbd class="ui">2D</kbd></td><td>All 2D games, and building user interfaces (Control nodes).</td><td>Shortcut to jump here from the Script workspace: <kbd>Ctrl</kbd>+<kbd>F1</kbd> (stated in the signals tutorial).</td></tr>
+    <tr><td><kbd class="ui">3D</kbd></td><td>Meshes, lights, level design for 3D games.</td><td>Needs a <code>Camera3D</code> in the scene to see anything when you run it.</td></tr>
+    <tr><td><kbd class="ui">Script</kbd></td><td>Complete code editor, debugger controls, built-in class reference.</td><td>Also opens when you click a node's <kbd class="ui">Open Script</kbd> icon or double-click a <code>.gd</code> file.</td></tr>
+    <tr><td><kbd class="ui">Game</kbd></td><td>Shows the project while it runs from the editor; lets you pause, step, change speed, pick nodes and move a debug camera.</td><td>Changes made here are <strong>not</strong> saved when the game stops. See <a href="#game-workspace">section 17</a>.</td></tr>
+    <tr><td><kbd class="ui">AssetLib</kbd> (Asset Library; the docs call it "Asset Store" in places)</td><td>Browse and install user-submitted addons, tools and templates.</td><td>Needs network mode set to online.</td></tr>
+  </table>
+
+  <h3 id="scene-tabs">Scene tabs (below the workspace buttons)</h3>
+  <table>
+    <tr><th>Control</th><th>What it does</th></tr>
+    <tr><td>Tab per open scene</td><td>Click to switch scene. An asterisk or marker means unsaved changes (save with <kbd>Ctrl</kbd>+<kbd>S</kbd>). Middle-click usually closes a tab <em>(name may differ slightly by version)</em>.</td></tr>
+    <tr><td><kbd class="ui">+</kbd> at the end of the tabs</td><td>Adds a new empty scene.</td></tr>
+    <tr><td>Button on the far right</td><td>Toggles distraction-free mode: maximizes the viewport by hiding docks, and restores them.</td></tr>
+  </table>
+  <div class="callout warn"><span class="callout-title">Save before you run</span>
+    <p>By default Godot saves scenes and scripts when you press Run (<code>Run &gt; Auto Save &gt; Save Before Running</code> in Editor Settings is on). If you turn that off, unsaved changes will <strong>not</strong> appear in the running game.</p></div>
+
+  <h2 id="play-buttons">4. Play buttons and Movie Maker (top right)</h2>
+  <table>
+    <tr><th>Button</th><th>What it does</th><th>Shortcut (Windows)</th></tr>
+    <tr><td><kbd class="ui">Run Project</kbd></td><td>Runs the <strong>main scene</strong> of the project. The first time, if no main scene is set, Godot asks you to select one.</td><td><kbd>F5</kbd></td></tr>
+    <tr><td><kbd class="ui">Pause</kbd></td><td>Pauses the running game (physics and idle processing stop) so you can inspect it. Check the tooltip for its key <em>(name may differ slightly by version)</em>.</td><td>hover to see</td></tr>
+    <tr><td><kbd class="ui">Stop</kbd></td><td>Stops the running project. Closing the game window works too.</td><td><kbd>F8</kbd></td></tr>
+    <tr><td><kbd class="ui">Run Current Scene</kbd></td><td>Runs the scene in the active scene tab, ignoring the project's main scene. Best for testing a single scene.</td><td><kbd>F6</kbd></td></tr>
+    <tr><td><kbd class="ui">Run Specific Scene</kbd></td><td>Opens a picker to run any scene file without opening it.</td><td>hover to see</td></tr>
+    <tr><td><kbd class="ui">Movie Maker Mode</kbd> toggle</td><td>Enables the movie-writing mode so the next run records video frames to a file (see the "Creating movies" tutorial). Leave it off unless you are recording.</td><td>-</td></tr>
+  </table>
+  <p>The renderer name and current dropdowns (for example Forward+, Mobile, Compatibility) may appear next to the play buttons; the dropdown changes the renderer used when running from the editor <em>(name may differ slightly by version)</em>.</p>
+  <div class="callout note"><span class="callout-title">"Main scene" vs "current scene"</span>
+    <p><kbd>F5</kbd> runs the project's main scene (<kbd class="menu">Project &gt; Project Settings &gt; Application &gt; Run &gt; Main Scene</kbd>). <kbd>F6</kbd> runs whichever scene tab is open. To change the main scene quickly, right-click a <code>.tscn</code> file in the FileSystem dock and choose <kbd class="ui">Set As Main Scene</kbd>.</p></div>
+  <div class="callout warn"><span class="callout-title">Windows console gotcha</span>
+    <p>If you launch Godot with its system console enabled and the editor suddenly "freezes", you have clicked inside the console window, which enters Windows selection mode. Click the console and press <kbd>Enter</kbd>.</p></div>
+
+  <h2 id="menu-bar">5. The Menu bar (top-left)</h2>
+  <p>Five menus: <kbd class="ui">Scene</kbd>, <kbd class="ui">Project</kbd>, <kbd class="ui">Debug</kbd>, <kbd class="ui">Editor</kbd>, <kbd class="ui">Help</kbd>. The Project, Debug and Editor menus have their own sections later (<a href="#project-menu">14</a>, <a href="#debug-menu">15</a>, <a href="#editor-menu">16</a>).</p>
+  <h3 id="scene-menu">Scene menu</h3>
+  <table>
+    <tr><th>Entry</th><th>What it does</th><th>Shortcut</th></tr>
+    <tr><td><kbd class="menu">Scene &gt; New Scene</kbd></td><td>New empty scene in a new tab (same as the <kbd class="ui">+</kbd> on the scene tabs).</td><td>-</td></tr>
+    <tr><td><kbd class="menu">Scene &gt; Open Scene...</kbd></td><td>Open a <code>.tscn</code> or <code>.scn</code> file.</td><td>-</td></tr>
+    <tr><td><kbd class="menu">Scene &gt; Quick Open Scene...</kbd></td><td>Fuzzy-search picker for scene files.</td><td>-</td></tr>
+    <tr><td><kbd class="menu">Scene &gt; Save</kbd> <em>(shown as "Save Scene" in some versions)</em></td><td>Saves the current scene. Prompts for a name when it has none.</td><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td></tr>
+    <tr><td><kbd class="menu">Scene &gt; Save Scene As...</kbd></td><td>Save under a new name/path (a file dialog titled "Save Scene As").</td><td>-</td></tr>
+    <tr><td><kbd class="menu">Scene &gt; Save All Scenes</kbd></td><td>Saves every open scene <em>(name may differ slightly by version)</em>.</td><td>-</td></tr>
+    <tr><td><kbd class="menu">Scene &gt; Reload Saved Scene</kbd></td><td>Reloads the current scene from disk, discarding unsaved edits. Used after a tool script changed the scene, or after an external edit.</td><td>-</td></tr>
+    <tr><td><kbd class="menu">Scene &gt; Export As</kbd></td><td>Exports the scene to another format (for example a glTF 3D scene).</td><td>-</td></tr>
+    <tr><td>Undo / Redo / Close Scene / Open Recent</td><td>Standard entries <em>(name may differ slightly by version)</em>.</td><td>-</td></tr>
+  </table>
+  <h3 id="help-menu">Help menu</h3>
+  <table>
+    <tr><th>Entry</th><th>What it does</th><th>Shortcut</th></tr>
+    <tr><td><kbd class="menu">Help &gt; Search Help</kbd></td><td>Opens the class-reference search window. Type a class, method, property, constant or signal; double-click a result to open its page in the Script workspace.</td><td><kbd>F1</kbd> (anywhere in the editor; laptops may need <kbd>Fn</kbd>+<kbd>F1</kbd>)</td></tr>
+    <tr><td>Online Documentation, Questions &amp; Answers, Community, Report a Bug, Copy System Info, About Godot...</td><td>Links and info dialogs. <em>Copy System Info</em> is handy when reporting a bug <em>(names may differ slightly by version)</em>.</td><td>-</td></tr>
+  </table>
+  <p>More ways to open docs: right-click a node in the Scene dock &rarr; <kbd class="ui">Open Documentation</kbd>; right-click a symbol in the script editor &rarr; <kbd class="ui">Lookup Symbol</kbd>; hold <kbd>Ctrl</kbd> and click a class, function or built-in variable name in the script editor.</p>
+
+  <h2 id="toolbar-2d">6. The 2D workspace toolbar and View menu</h2>
+  <p>The toolbar sits above the viewport. Hover a button for a second to see its tooltip and shortcut. Buttons marked <em>when selected</em> appear only for certain nodes (for example a <code>Sprite2D</code> shows an extra Sprite2D menu with quick actions).</p>
+  <table>
+    <tr><th>Button</th><th>What it does</th><th>Shortcut</th></tr>
+    <tr><td><kbd class="ui">Select Mode</kbd></td><td>Click selects a node; drag a rectangle to select several; <kbd>Shift</kbd>+click adds or removes from the selection. Drag to move, hold <kbd>Ctrl</kbd> to rotate temporarily, drag the red circles to scale.</td><td><kbd>Q</kbd></td></tr>
+    <tr><td><kbd class="ui">Move Mode</kbd></td><td>Move gizmo (green arrow = Y only, red arrow = X only).</td><td><kbd>W</kbd></td></tr>
+    <tr><td><kbd class="ui">Rotate Mode</kbd></td><td>Rotate the selected nodes around the rotation pivot.</td><td><kbd>E</kbd></td></tr>
+    <tr><td><kbd class="ui">Scale Mode</kbd></td><td>Square scale handles; dragging in the negative direction flips the node.</td><td><kbd>S</kbd></td></tr>
+    <tr><td>Show list of selectable nodes at position clicked</td><td>When several nodes overlap where you click, a context menu lists them all.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Rotation pivot</kbd></td><td>Click, then click in the viewport to place a temporary pivot. <kbd>Shift</kbd>+click the button puts the pivot at the center of the selected nodes.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Pan Mode</kbd></td><td>Drag to pan without risking selecting nodes. In other modes hold <kbd>Space</kbd> and drag with the left mouse button.</td><td><kbd>G</kbd></td></tr>
+    <tr><td><kbd class="ui">Ruler Mode</kbd></td><td>Click to show global x/y coordinates; drag to measure distance in pixels (and grid counts when snapping is on).</td><td><kbd>R</kbd></td></tr>
+    <tr><td><kbd class="ui">Use Smart Snap</kbd></td><td>Snap to parent edges, node anchors, node sides, node center, other nodes, or guides (choose in the menu).</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Use Grid Snap</kbd></td><td>Snap move and scale to the grid, plus the pivot and ruler.</td><td>-</td></tr>
+    <tr><td>Snapping options menu (three dots)</td><td><kbd class="ui">Use Rotation Snap</kbd>, <kbd class="ui">Use Scale Snap</kbd>, <kbd class="ui">Snap Relative</kbd>, <kbd class="ui">Use Pixel Snap</kbd> (positions become integers), <kbd class="ui">Smart Snapping</kbd> sub-options, <kbd class="ui">Configure Snap...</kbd> (Grid Offset, Grid Step, Primary Line Every, Rotation Offset, Rotation Step, Scale Step).</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Lock selected nodes</kbd></td><td>Prevents selecting or moving in the viewport; locked nodes show a padlock in the Scene dock and can still be selected there. Click the padlock to unlock.</td><td><kbd>Ctrl</kbd>+<kbd>L</kbd> lock, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> unlock</td></tr>
+    <tr><td><kbd class="ui">Group selected nodes</kbd></td><td>Clicking any child selects the root of the group in the viewport. (This is an editor convenience, not the same as the Node tab's script Groups.)</td><td><kbd>Ctrl</kbd>+<kbd>G</kbd> group, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> ungroup</td></tr>
+    <tr><td><kbd class="ui">Skeleton Options</kbd></td><td><kbd class="ui">Show Bones</kbd>; <kbd class="ui">Make Bone2D Node(s) from Node(s)</kbd> (for cut-out animation).</td><td>-</td></tr>
+    <tr><td><kbd class="ui">View</kbd> menu</td><td>See the table below.</td><td>-</td></tr>
+    <tr><td>Node-specific menu (<em>when selected</em>)</td><td>Quick tools for the selected node (polygon point editing for <code>Polygon2D</code>, Sprite2D conversion tools, ...).</td><td>-</td></tr>
+  </table>
+
+  <h3 id="view-2d">2D View menu and viewport controls</h3>
+  <table>
+    <tr><th>Entry / control</th><th>What it does</th><th>Shortcut</th></tr>
+    <tr><td><kbd class="ui">Grid</kbd></td><td>Show grid always, only while snapping, or never.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Show Helpers</kbd></td><td>Outline of the node's previous transform during a transform operation; sizing info for Controls.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Show Rulers</kbd></td><td>Black rulers on the left and top edges.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Show Guides</kbd></td><td>Toggle purple guides (drag from a ruler into the viewport to create one; drag back to remove). Needs at least one node in the scene.</td><td><kbd>Y</kbd></td></tr>
+    <tr><td><kbd class="ui">Show Origin</kbd></td><td>The red (x) and green (y) lines through <code>0, 0</code>. Right and down are positive.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Show Viewport</kbd></td><td>Indigo rectangle = the game's default window size (<kbd class="menu">Project Settings &gt; Display &gt; Window &gt; Size</kbd>, Viewport Width/Height).</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Gizmos</kbd></td><td>Toggle Position, Lock, Groups and Transformation indicators.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Center Selection</kbd> (also the Center View button)</td><td>Centers the selected nodes on screen.</td><td><kbd>F</kbd></td></tr>
+    <tr><td><kbd class="ui">Frame to Selection</kbd></td><td>Centers and changes zoom to fit the selection.</td><td><kbd>Shift</kbd>+<kbd>F</kbd></td></tr>
+    <tr><td><kbd class="ui">Clear Guides</kbd></td><td>Deletes all guides.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Preview Canvas Scale</kbd></td><td>Previews canvas scaling in the editor when you zoom or pan; useful for Controls.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Preview Theme</kbd></td><td>Choose a theme to preview Controls without running the game.</td><td>-</td></tr>
+    <tr><td>Mouse: pan</td><td>Middle-mouse drag, scrollbars, <kbd>G</kbd> or <kbd>Space</kbd>. With <code>Editors &gt; Panning &gt; Simple Panning</code> on, <kbd>Space</kbd> alone pans.</td><td>-</td></tr>
+    <tr><td>Mouse: zoom</td><td>Mouse wheel, the <kbd class="ui">-</kbd> / <kbd class="ui">+</kbd> buttons at top-left of the viewport; click the percentage to reset to 100%.</td><td>-</td></tr>
+    <tr><td>Right-click in the viewport</td><td>Create a node or instantiate a scene at that position; with a node selected, also "move the selected node(s) here".</td><td>-</td></tr>
+    <tr><td>Drag from FileSystem dock</td><td>Adds the dragged scene/node as a sibling of the selection (child if the root is selected). <kbd>Shift</kbd>+drop = child of selected; <kbd>Alt</kbd>+drop = child of root; <kbd>Alt</kbd>+<kbd>Shift</kbd>+drop = choose the node type.</td><td>-</td></tr>
+  </table>
+  <ul class="docs-links"><li><a href="https://docs.godotengine.org/en/stable/tutorials/2d/introduction_to_2d.html" target="_blank" rel="noopener">Introduction to 2D</a>: source for the two tables above.</li></ul>
+
+  <h2 id="toolbar-3d">7. The 3D workspace toolbar and View menus</h2>
+  <p>Units: <strong>1 unit = 1 meter</strong>; <code>Y</code> is up; the coordinate system is right-handed; red/green/blue = X/Y/Z. The 3D workspace has a main toolbar (below) and a separate <strong>viewport View menu</strong> (the "Perspective" button, top-left inside the viewport).</p>
+  <table>
+    <tr><th>Button</th><th>What it does</th><th>Shortcut</th></tr>
+    <tr><td><kbd class="ui">Transform Mode</kbd></td><td>Combined move + rotate gizmo.</td><td><kbd>Q</kbd></td></tr>
+    <tr><td><kbd class="ui">Move Mode</kbd></td><td>Arrows move along an axis; colored squares move in a plane.</td><td><kbd>W</kbd></td></tr>
+    <tr><td><kbd class="ui">Rotate Mode</kbd></td><td>Arcs rotate around an axis.</td><td><kbd>E</kbd></td></tr>
+    <tr><td><kbd class="ui">Scale Mode</kbd></td><td>Cubes replace arrows; drag to scale.</td><td><kbd>R</kbd></td></tr>
+    <tr><td><kbd class="ui">Select Mode</kbd></td><td>Click or rectangle-select nodes; <kbd>Shift</kbd>+click toggles.</td><td><kbd>V</kbd></td></tr>
+    <tr><td>Show the list of selectable nodes at the clicked position</td><td>Context menu listing every node under the cursor.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Lock</kbd></td><td>Lock selected nodes (padlock in the Scene dock).</td><td><kbd>Ctrl</kbd>+<kbd>L</kbd>, unlock <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd></td></tr>
+    <tr><td><kbd class="ui">Group selected nodes</kbd></td><td>Editor-only grouping for selection.</td><td><kbd>Ctrl</kbd>+<kbd>G</kbd> (ungroup: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> in 2D docs)</td></tr>
+    <tr><td><kbd class="ui">Ruler Mode</kbd></td><td>Click and drag to measure in meters.</td><td><kbd>M</kbd></td></tr>
+    <tr><td><kbd class="ui">Use Local Space</kbd></td><td>Gizmo follows the node's own rotation instead of global axes.</td><td><kbd>T</kbd></td></tr>
+    <tr><td><kbd class="ui">Use Snap</kbd></td><td>Move/rotate snap to a grid. Hold <kbd>Ctrl</kbd> while dragging for temporary snapping.</td><td><kbd>Y</kbd></td></tr>
+    <tr><td><kbd class="ui">Use Trackball</kbd></td><td>Dragging the node center rotates it like a trackball.</td><td><kbd>U</kbd></td></tr>
+    <tr><td><kbd class="ui">Preserve Children Transform</kbd></td><td>Transforming a node keeps the global transform of its children.</td><td><kbd>P</kbd></td></tr>
+    <tr><td>Toggle preview sunlight</td><td>Editor-only fake sun, used only when the scene has no <code>DirectionalLight3D</code>. Not present when you run.</td><td>-</td></tr>
+    <tr><td>Toggle preview environment</td><td>Editor-only fake sky/environment, used when the scene has no <code>WorldEnvironment</code>.</td><td>-</td></tr>
+    <tr><td>Edit Sun and Environment Settings (three dots)</td><td>Configure the preview light and environment (shared by every scene of the project). Holding <kbd>Shift</kbd> while clicking <kbd class="ui">Add Sun to Scene</kbd> or <kbd class="ui">Add Environment to Scene</kbd> there adds both.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Transform</kbd> menu</td><td><kbd class="ui">Snap Object to Floor</kbd>, <kbd class="ui">Transform Dialog</kbd> (type exact translate/rotate/scale values), <kbd class="ui">Snap Settings</kbd> (transform, rotate in degrees, scale in percent).</td><td>-</td></tr>
+    <tr><td><kbd class="ui">View</kbd> menu (main toolbar)</td><td>Show/hide grid (1x1 m by default) and origin; toggle gizmo types per kind (open eye = visible, closed = hidden, half-open = also visible through opaque surfaces); <kbd class="ui">Settings</kbd> sets Vertical Field of View, Z-Near and Z-Far of the editor camera.</td><td>-</td></tr>
+    <tr><td>Node-specific menu (<em>when selected</em>)</td><td>E.g. a <kbd class="ui">Mesh</kbd> menu appears when a <code>MeshInstance3D</code> is selected (collision generation, outlines, ...).</td><td>-</td></tr>
+  </table>
+
+  <h3 id="view-3d">3D viewport: navigation and the viewport View menu</h3>
+  <table>
+    <tr><th>Action</th><th>Default control</th></tr>
+    <tr><td>Orbit</td><td>Middle mouse drag; or drag the little manipulator gizmo at the top-right of the viewport. Click one of its colored circles to snap to that orthogonal view.</td></tr>
+    <tr><td>Pan</td><td><kbd>Shift</kbd>+middle mouse drag (right mouse drag pans in orthogonal mode)</td></tr>
+    <tr><td>Zoom</td><td>Mouse wheel, or <kbd>Ctrl</kbd>+middle mouse drag (Godot navigation scheme)</td></tr>
+    <tr><td>Free-look (fly)</td><td>Hold the right mouse button in a Perspective view, or press <kbd>Shift</kbd>+<kbd>F</kbd> to toggle it. Move the mouse to look; <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> fly; <kbd>E</kbd> up; <kbd>Q</kbd> down. <kbd>Shift</kbd> = faster, <kbd>Alt</kbd> = slower, mouse wheel changes and keeps the speed.</td></tr>
+    <tr><td>Focus selection</td><td><kbd>F</kbd> centers the view on the selected object.</td></tr>
+    <tr><td>Perspective / Orthogonal</td><td><kbd>Keypad 5</kbd> toggles. No numpad? Enable <kbd class="menu">Editor Settings &gt; Editors &gt; 3D &gt; Navigation &gt; Emulate Numpad</kbd> (keys 0-9 on the top row act as numpad keys).</td></tr>
+    <tr><td>Snap while transforming</td><td>Hold <kbd>Ctrl</kbd> while moving, rotating or scaling.</td></tr>
+    <tr><td>View layouts (split the view)</td><td>Viewport View menu &gt; layout entries, e.g. <kbd>Ctrl</kbd>+<kbd>2</kbd> splits into two views (stated in the 3D game tutorial).</td></tr>
+    <tr><td>Trackpad users</td><td>Enable <kbd class="menu">Editor Settings &gt; Editors &gt; 3D &gt; Navigation &gt; Emulate 3 Button Mouse</kbd>; scheme "Tablet/Trackpad" uses <kbd>Alt</kbd> orbit, <kbd>Shift</kbd> pan, <kbd>Ctrl</kbd> zoom.</td></tr>
+    <tr><td>Other schemes</td><td><kbd class="menu">Editor Settings &gt; Editors &gt; 3D &gt; Navigation &gt; Navigation Scheme</kbd>: Godot (default), Maya, Modo, Tablet/Trackpad.</td></tr>
+    <tr><td>Blender-style G/R/S</td><td>Since 4.2, bind <em>Begin Translate/Rotate/Scale Transformation</em> in the 3D editor category of Editor Settings &gt; Shortcuts, then e.g. <kbd>G</kbd>, <kbd>Y</kbd>, <kbd>2</kbd>, <kbd>.</kbd>, <kbd>5</kbd>, <kbd>Enter</kbd> moves up 2.5 units.</td></tr>
+  </table>
+  <p>The <strong>viewport View menu</strong> (the <kbd class="ui">Perspective</kbd> label with three dots, top-left of the viewport) holds, in current versions: the view type (Top, Bottom, Left, Right, Front, Rear views), <kbd class="ui">Perspective</kbd> / <kbd class="ui">Orthogonal</kbd>, display modes (Normal, Wireframe, Overdraw, Lighting/Unshaded and debug draws), <kbd class="ui">View Environment</kbd>, <kbd class="ui">View Gizmos</kbd>, <kbd class="ui">View Information</kbd>, <kbd class="ui">View Frame Time</kbd>, view layouts, and <kbd class="ui">Half Resolution</kbd> <em>(exact item names may differ slightly by version)</em>. <kbd class="ui">Half Resolution</kbd> renders the 3D viewport at half resolution and can be up to 4x faster on high-DPI screens; it is the first thing to try if the editor feels slow.</p>
+  <div class="callout tip"><span class="callout-title">Black 3D viewport when running?</span>
+    <p>A 3D scene shows nothing at runtime without a <code>Camera3D</code>. The editor's preview sun and environment disappear at runtime too: add a <code>DirectionalLight3D</code> and a <code>WorldEnvironment</code> to the scene.</p></div>
+  <ul class="docs-links"><li><a href="https://docs.godotengine.org/en/stable/tutorials/3d/introduction_to_3d.html" target="_blank" rel="noopener">Introduction to 3D</a>: source for this section.</li></ul>
+
+  <h2 id="scene-dock">8. The Scene dock (top-left)</h2>
+  <p>Shows the node tree of the scene open in the active tab. In an empty scene it offers four quick-root buttons.</p>
+  <table>
+    <tr><th>Control</th><th>What it does</th><th>Shortcut</th></tr>
+    <tr><td><kbd class="ui">2D Scene</kbd></td><td>Creates a <code>Node2D</code> root.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">3D Scene</kbd></td><td>Creates a <code>Node3D</code> root.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">User Interface</kbd></td><td>Creates a <code>Control</code> root.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Other Node</kbd></td><td>Opens the <kbd class="ui">Create New Node</kbd> dialog to pick any node type as the root. In an empty scene it is the same as <kbd class="ui">Add Child Node</kbd>.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Add Child Node</kbd> (the <kbd class="ui">+</kbd> icon)</td><td>Opens <kbd class="ui">Create New Node</kbd> (search box, node list, <kbd class="ui">Create</kbd> button). The new node becomes a child of the selected node.</td><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td></tr>
+    <tr><td><kbd class="ui">Instantiate Child Scene</kbd> (chain icon)</td><td>Pick a saved <code>.tscn</code> and add it as a child (an <em>instance</em>).</td><td>-</td></tr>
+    <tr><td>Filter box</td><td>Type to filter nodes by name.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Attach Script</kbd> / <kbd class="ui">Open Script</kbd> icons (right of a selected node)</td><td>Attach a new or existing script; once attached the icon opens it in the Script workspace.</td><td>-</td></tr>
+    <tr><td>Padlock, groups and eye icons beside names</td><td>Padlock = locked in the viewport (click to unlock). Eye = toggles visibility of a <code>CanvasItem</code>/<code>Node3D</code>.</td><td>-</td></tr>
+    <tr><td><kbd class="ui">Remote</kbd> / <kbd class="ui">Local</kbd> (shown only while the game runs)</td><td><strong>Remote</strong> = live tree of the running game; inspect and tweak properties (changes vanish when the game stops). <strong>Local</strong> = your saved scene.</td><td>-</td></tr>
+    <tr><td>Rename</td><td>Select node, press <kbd>F2</kbd>, or double-click it (or right-click &rarr; Rename).</td><td><kbd>F2</kbd></td></tr>
+    <tr><td>Duplicate</td><td>Duplicates the selected node (and its children).</td><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td></tr>
+  </table>
+
+  <h3 id="scene-context">Scene dock right-click menu</h3>
+  <p>The entries below depend on what is selected (a plain node, a scene instance, the root, a node with a script). Verified entries are in the docs; the others are the standard Godot 4 entries <em>(name may differ slightly by version)</em>.</p>
+  <table>
+    <tr><th>Entry</th><th>What it does</th><th>Verified</th></tr>
+    <tr><td><kbd class="ui">Add Child Node...</kbd></td><td>Opens the Create New Node dialog; the node is added under the right-clicked node.</td><td>docs</td></tr>
+    <tr><td><kbd class="ui">Instantiate Child Scene...</kbd></td><td>Adds a scene file as a child.</td><td>docs (button)</td></tr>
+    <tr><td><kbd class="ui">Attach Script</kbd></td><td>Opens the new-script dialog (Path, Template, Create). Replace the generated file with the listing the lesson gives.</td><td>docs</td></tr>
+    <tr><td><kbd class="ui">Extend Script...</kbd> / <kbd class="ui">Detach Script</kbd></td><td>Create a script that extends the node's current script / remove the script.</td><td>version</td></tr>
+    <tr><td><kbd class="ui">Access as Unique Name</kbd></td><td>Marks the node as a <em>scene unique node</em>. A <code>%</code> appears next to its name, and scripts can use <code>%NodeName</code> or <code>get_node("%NodeName")</code> from anywhere <em>inside the same scene</em>. Same effect as renaming the node to start with <code>%</code>.</td><td>docs</td></tr>
+    <tr><td><kbd class="ui">Editable Children</kbd></td><td>Only on instanced scenes. Reveals the instance's internal nodes so you can change their properties in this scene (shown differently, for example in a lighter color). Needed to reach nodes inside an instance, e.g. to add an animation track to a child of an instance.</td><td>docs mention</td></tr>
+    <tr><td><kbd class="ui">Load as Placeholder</kbd></td><td>Instance is loaded only when needed (placeholder), useful for large scenes.</td><td>version</td></tr>
+    <tr><td><kbd class="ui">Make Local</kbd></td><td>Converts an instance back into ordinary nodes owned by this scene (breaks the link to the scene file).</td><td>version</td></tr>
+    <tr><td><kbd class="ui">Open in Editor</kbd></td><td>Opens the instanced scene's own tab.</td><td>version</td></tr>
+    <tr><td><kbd class="ui">Save Branch as Scene...</kbd></td><td>Saves the selected node and its children as a new <code>.tscn</code> and replaces the branch by an instance of it. The quickest way to extract a reusable scene.</td><td>version</td></tr>
+    <tr><td><kbd class="ui">Merge From Scene...</kbd></td><td>Pick another scene and merge its nodes into this one.</td><td>version</td></tr>
+    <tr><td><kbd class="ui">Change Type...</kbd></td><td>Swap the node's class (e.g. <code>Node2D</code> to <code>CharacterBody2D</code>) while keeping name, children and compatible properties.</td><td>version (mentioned in best practices)</td></tr>
+    <tr><td><kbd class="ui">Reparent...</kbd> / <kbd class="ui">Reparent to New Node</kbd> / <kbd class="ui">Make Scene Root</kbd></td><td>Move the node elsewhere in the tree, wrap it in a new node, or make it the root.</td><td>version</td></tr>
+    <tr><td><kbd class="ui">Copy Node Path</kbd></td><td>Copies the path from the root to the node (paste it into code as a <code>NodePath</code>/<code>$Path</code>).</td><td>version</td></tr>
+    <tr><td><kbd class="ui">Cut</kbd> / <kbd class="ui">Copy</kbd> / <kbd class="ui">Paste</kbd> / <kbd class="ui">Delete Node(s)</kbd> / <kbd class="ui">Duplicate</kbd></td><td>Edit nodes in the tree. Pasting a copy keeps its children.</td><td>version</td></tr>
+    <tr><td><kbd class="ui">Expand Branch</kbd> / <kbd class="ui">Collapse Branch</kbd></td><td>Show or hide children.</td><td>version</td></tr>
+    <tr><td><kbd class="ui">Open Documentation</kbd></td><td>Opens the class page for this node type in the Script workspace.</td><td>docs</td></tr>
+  </table>
+  <div class="callout tip"><span class="callout-title">Drag to script</span>
+    <p>Hold <kbd>Ctrl</kbd> while dragging a node from the Scene dock into the script editor to insert a ready-made <code>@onready var</code> line for that node (or a path), as described in the EditorSettings class reference.</p></div>
+
+  <h2 id="filesystem-dock">9. The FileSystem dock (bottom-left)</h2>
+  <p>Mirrors the <code>res://</code> folder. Godot imports assets automatically when they appear in it (drag files in from Windows Explorer or copy them in). Double-click opens: scenes in a scene tab, scripts in the Script workspace, resources in the Inspector.</p>
+  <table>
+    <tr><th>Control</th><th>What it does</th></tr>
+    <tr><td>Path bar and search box</td><td>Shows the current folder; type to search file names.</td></tr>
+    <tr><td>Favorites, split/list view toggles, sort</td><td>Star folders to pin them; switch between a split tree + list and a single tree view; change sort order <em>(layout persists in saved editor layouts)</em>.</td></tr>
+    <tr><td>Drag and drop</td><td>Drag a scene into the 2D/3D viewport or Scene dock to instance it; drag a resource onto a matching Inspector property (the property highlights); drag a texture onto a <code>Sprite2D</code>'s <kbd class="ui">Texture</kbd>.</td></tr>
+  </table>
+  <h3 id="filesystem-context">FileSystem right-click menu</h3>
+  <table>
+    <tr><th>Entry</th><th>What it does</th></tr>
+    <tr><td><kbd class="ui">New Folder...</kbd></td><td>Creates a folder in the selected location.</td></tr>
+    <tr><td><kbd class="ui">New Scene...</kbd></td><td>Creates and opens an empty scene file.</td></tr>
+    <tr><td><kbd class="ui">New Script...</kbd></td><td>Creates a <code>.gd</code> file (Path, Template, Create).</td></tr>
+    <tr><td><kbd class="ui">New Resource...</kbd></td><td>Creates a resource file of a chosen type (e.g. a <code>Theme</code>, or a custom resource whose script declares <code>class_name</code>).</td></tr>
+    <tr><td><kbd class="ui">New TextFile...</kbd></td><td>Creates a plain text file with an allowed extension <em>(name may differ slightly by version)</em>.</td></tr>
+    <tr><td><kbd class="ui">Set As Main Scene</kbd></td><td>On a <code>.tscn</code>: makes it the scene <kbd>F5</kbd> runs.</td></tr>
+    <tr><td><kbd class="ui">Copy Path</kbd></td><td>Copies the <code>res://</code> path. <kbd class="ui">Copy UID</kbd> copies the stable <code>uid://</code> identifier.</td></tr>
+    <tr><td><kbd class="ui">Rename...</kbd>, <kbd class="ui">Duplicate...</kbd>, <kbd class="ui">Move To...</kbd>, <kbd class="ui">Delete</kbd></td><td>File management. Rename and move <strong>inside the editor</strong> so references update; renaming in Windows Explorer breaks paths (UIDs usually recover them).</td></tr>
+    <tr><td><kbd class="ui">Open</kbd> / <kbd class="ui">Open in External Program</kbd> / <kbd class="ui">Show in File Manager</kbd></td><td>Open in the editor, in the OS-associated app, or reveal in Windows Explorer.</td></tr>
+    <tr><td><kbd class="ui">Add to Favorites</kbd></td><td>Pins the folder at the top of the dock.</td></tr>
+    <tr><td><kbd class="ui">Reimport</kbd> (imported assets)</td><td>Re-runs the importer. Import settings live in the Import tab of the dock stack (Scene/Import).</td></tr>
+  </table>
+  <p><em>(Entries not named in the docs are standard Godot 4 entries; names may differ slightly by version.)</em></p>
+
+  <h2 id="inspector">10. The Inspector (right side)</h2>
+  <p>Lists every property of the selected node or resource. It updates when you select another node in the Scene dock or choose <kbd class="ui">Open</kbd> from the FileSystem menu. If it is hidden: <kbd class="menu">Editor &gt; Editor Docks &gt; Inspector</kbd>.</p>
+  <table>
+    <tr><th>Area / control</th><th>What it does</th></tr>
+    <tr><td>Top row, left to right</td><td>New resource (creates one in memory), Open a resource from the FileSystem, Save the edited resource, a tools menu (<kbd class="ui">Edit Resource from Clipboard</kbd>, <kbd class="ui">Copy Resource</kbd>, <kbd class="ui">Show in FileSystem</kbd>, <kbd class="ui">Make Resource Built-In</kbd>), "&lt;" and "&gt;" history arrows, and a history list.</td></tr>
+    <tr><td>Node icon + name row</td><td>Clicking the name lists sub-resources of the node. The button at the right opens the node's documentation.</td></tr>
+    <tr><td>Search / filter bar</td><td>Case-insensitive, matches letters in order (<code>vsb</code> finds <code>Visibility</code>). Clear it to reset.</td></tr>
+    <tr><td>Class sections</td><td>Properties are grouped per class in the inheritance chain (e.g. <code>Node2D</code>, <code>CanvasItem</code>, <code>Node</code>), each foldable. Right-click a class header &rarr; <kbd class="ui">Open Documentation</kbd>.</td></tr>
+    <tr><td>Property right-click</td><td>Copy / paste value, copy property path, <kbd class="ui">Favorite Property</kbd> (pinned to the top for all objects of that class), open documentation. Hover a property for its description and its script name.</td></tr>
+    <tr><td>Number fields</td><td>Click and type, or hold the left mouse button and drag to scrub the value.</td></tr>
+    <tr><td>Sub-resource property (e.g. <kbd class="ui">Shape</kbd>)</td><td>Dropdown arrow: pick a new resource type (<kbd class="ui">New CapsuleShape2D</kbd>...), <kbd class="ui">Quick Load</kbd> (search the project for a resource), <kbd class="ui">Load</kbd> (file dialog), or drag a file in. Click the loaded resource to expand its own properties.</td></tr>
+    <tr><td><kbd class="ui">Make Unique</kbd> (sub-resource menu)</td><td>Gives this node its own copy of a shared resource. Duplicated nodes and instanced scenes <em>share</em> sub-resources, so editing one edits all.</td></tr>
+    <tr><td>Revert icon (circular arrow)</td><td>Appears next to a value that differs from the default; click to restore it.</td></tr>
+    <tr><td>Chain icon</td><td>Linked values (e.g. scale x/y); click to unlink and edit independently.</td></tr>
+    <tr><td>Tools menu (next to the filter bar)</td><td><kbd class="ui">Expand All</kbd>, <kbd class="ui">Collapse All</kbd>, <kbd class="ui">Expand Non-Default</kbd>, <kbd class="ui">Property Name Style</kbd> (Raw / Capitalized / Localized), <kbd class="ui">Copy Properties</kbd>, <kbd class="ui">Paste Properties</kbd>, <kbd class="ui">Make Sub-Resources Unique</kbd>.</td></tr>
+    <tr><td>Script variables</td><td>Variables marked <code>@export</code> appear as extra properties under the script's name at the bottom of the Inspector.</td></tr>
+  </table>
+  <div class="callout note"><span class="callout-title">Name styles</span>
+    <p>The Inspector shows <em>Capitalized</em> names (<code>Gravity Scale</code>) while code uses the raw name (<code>gravity_scale</code>). The course gives both the first time a property appears. Switch with <kbd class="ui">Property Name Style &gt; Raw</kbd> if you prefer seeing script names.</p></div>
+
+  <h2 id="node-tab">11. The Node tab: Signals and Groups</h2>
+  <p>A tab next to the Inspector. It has two sub-tabs for the selected node.</p>
+  <table>
+    <tr><th>Sub-tab</th><th>What it shows / does</th></tr>
+    <tr><td><kbd class="ui">Signals</kbd></td><td>List of signals the node can emit. <strong>Double-click</strong> a signal (e.g. <code>pressed</code>) to open the connection window. <em>Simple</em> mode connects to a node that already has a script and generates the receiver method, named by convention <code>_on_&lt;node_name&gt;_&lt;signal_name&gt;</code>; <kbd class="ui">Advanced</kbd> (bottom-left of the window) lets you connect to any node/built-in method and bind extra arguments. Click <kbd class="ui">Connect</kbd> to finish; Godot jumps to the Script workspace where the new method has a connection icon in the left margin. Editor-made connections are shown there; connections made in code are not. If you use an external editor, the generated code may not appear, so connect in code instead.</td></tr>
+    <tr><td><kbd class="ui">Groups</kbd></td><td>Select a node, click the <kbd class="ui">+</kbd> button, name the group in <kbd class="ui">Create New Group</kbd> (optionally tick <kbd class="ui">Global</kbd> to make it project-wide with a description). Tick the checkbox next to a group to put the selected node in it. Groups appear under <em>Scene Groups</em> or <em>Global Groups</em>. Global groups are also managed in <kbd class="menu">Project &gt; Project Settings &gt; Globals &gt; Groups</kbd> (the docs describe a Groups tab in the Globals dock).</td></tr>
+  </table>
+  <p>The docs sometimes say "Signals dock" and "Groups dock"; the course says <strong>Node tab &gt; Signals</strong> and <strong>Node tab &gt; Groups</strong>.</p>
+
+  <h2 id="bottom-panels">12. The Bottom panel</h2>
+  <p>A strip of collapsed tabs below the viewport. Click a tab to expand it upward; click it again to collapse. Some tabs appear only when relevant (select an <code>AnimationPlayer</code> and the Animation tab appears). Show or hide panels with the shortcuts in <kbd class="menu">Editor &gt; Editor Settings &gt; Shortcuts</kbd>, category <em>Bottom Panels</em>.</p>
+  <table>
+    <tr><th>Tab</th><th>What it is for</th></tr>
+    <tr><td><kbd class="ui">Output</kbd></td><td>Text printed by <code>print()</code> and by the editor; errors (red), warnings (yellow), editor messages (gray), log (normal). Filter buttons on the right, <kbd class="ui">Filter Messages</kbd> box, a brush icon to clear. Opens automatically when you run (<code>Run &gt; Bottom Panel &gt; Action on Play</code>) and is cleared on each run (<code>Run &gt; Output &gt; Always Clear Output on Play</code>).</td></tr>
+    <tr><td><kbd class="ui">Debugger</kbd></td><td>Sub-tabs: <strong>Stack Trace</strong> (opens at a breakpoint; Step Into, Step Over, Break, Continue, copy error), <strong>Errors</strong>, <strong>Evaluator</strong> (expression REPL while paused), <strong>Profiler</strong>, <strong>Visual Profiler</strong> (CPU/GPU render timing), <strong>Network Profiler</strong>, <strong>Monitors</strong> (FPS, memory, node counts), <strong>Video RAM</strong>, <strong>Misc</strong> (Clicked Control, Clicked Control Type).</td></tr>
+    <tr><td><kbd class="ui">Audio</kbd></td><td>The audio bus mixer: buses (Master, Music, SFX...), volume, mute/solo, effects, the bus layout file (<code>default_bus_layout.tres</code>).</td></tr>
+    <tr><td><kbd class="ui">Animation</kbd></td><td>Timeline editor for the selected <code>AnimationPlayer</code>: create animations, add tracks, insert keyframes. Play from beginning: <kbd>Shift</kbd>+<kbd>D</kbd>; stop: <kbd>S</kbd>.</td></tr>
+    <tr><td><kbd class="ui">Shader Editor</kbd></td><td>Code editor for shaders and visual shader graphs (when a shader or material is selected).</td></tr>
+    <tr><td><kbd class="ui">SpriteFrames</kbd></td><td>Appears when an <code>AnimatedSprite2D</code>/<code>AnimatedSprite3D</code> is selected: frame lists per animation, speed (FPS), loop.</td></tr>
+    <tr><td><kbd class="ui">TileSet</kbd> and <kbd class="ui">TileMap</kbd></td><td>Appear when a <code>TileMapLayer</code> with a <code>TileSet</code> is selected. <em>TileSet</em> edits the tiles (atlas, physics, terrains, patterns); the second tab paints cells onto the layer (named <em>TileMap</em> in the editor UI even though the node is <code>TileMapLayer</code>; name may differ slightly by version).</td></tr>
+    <tr><td><kbd class="ui">Search Results</kbd></td><td>Results of Find in Files / Replace in Files from the script editor. Click a result to jump to the line.</td></tr>
+  </table>
+  <h3 id="output-panel">Output panel details</h3>
+  <p>The <strong>Output panel</strong> is the first place to look when something goes wrong. Red lines carry the exact error text (see the <a href="troubleshooting.html">Troubleshooting</a> page). Click an error with a script path to jump to the line. Print helpers: <code>print()</code>, <code>printt()</code>, <code>prints()</code>, <code>push_warning()</code>, <code>push_error()</code>, <code>print_rich()</code>.</p>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/debug/output_panel.html" target="_blank" rel="noopener">Output panel</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/debug/debugger_panel.html" target="_blank" rel="noopener">Debugger panel</a></li>
+  </ul>
+
+  <h2 id="script-editor">13. The Script editor (Script workspace)</h2>
+  <p>Layout: menus along the top; on the left the <strong>script panel</strong> (filter bar, list of open scripts and doc pages, the current file name, and an <strong>Outline</strong> of methods or doc sections with a <kbd class="ui">Filter Methods</kbd> bar); in the center the <strong>coding area</strong> (line numbers, minimap, fold arrows, breakpoint gutter); below it the status bar (error/warning counts, zoom percent, line and column, tabs vs. spaces).</p>
+  <table>
+    <tr><th>Control</th><th>What it does</th><th>Shortcut</th></tr>
+    <tr><td><kbd class="ui">Search Help</kbd> (button, top-right of the Script workspace)</td><td>Opens the class-reference search; double-click a result to read it in the Script workspace.</td><td><kbd>F1</kbd></td></tr>
+    <tr><td>Online docs button, history arrows, float button</td><td>Open the online docs; step back/forward through viewed files; detach the editor into its own window (not available in Single Window Mode).</td><td>-</td></tr>
+    <tr><td>Script panel filter bar</td><td>Case-insensitive subsequence search of open files (<code>btn</code> finds <code>button.gd</code>). Type <code>*</code> to list all unsaved files.</td><td>-</td></tr>
+    <tr><td>Right-click a file in the list</td><td>Save, close, <kbd class="ui">Copy Script Path</kbd>, <kbd class="ui">Show in FileSystem</kbd>, <kbd class="ui">Move Up</kbd>/<kbd class="ui">Move Down</kbd>, <kbd class="ui">Sort</kbd>, <kbd class="ui">Toggle Files Panel</kbd>, <kbd class="ui">Close Docs</kbd>. Middle-click a file to close it.</td><td>-</td></tr>
+    <tr><td>Outline</td><td>Click a method to jump to it. A small button toggles alphabetical vs. source order.</td><td>-</td></tr>
+    <tr><td><kbd class="menu">File</kbd> menu</td><td>New Script..., New Text File..., Open..., Reopen Closed Script, Open Recent, Save, Save As..., Save All, Soft Reload Tool Script, Copy Script Path, Show in FileSystem, History Previous/Next, Theme, Close, Close All, Close Other Tabs, Close Docs, Run (for an <code>EditorScript</code>), Toggle Files Panel.</td><td>-</td></tr>
+    <tr><td><kbd class="menu">Edit</kbd> menu</td><td>Undo, Redo, Cut, Copy, Paste, Select All, Duplicate Selection, Duplicate Lines, Evaluate Selection (computes <code>83 * 3</code>), Toggle Word Wrap; <kbd class="ui">Line</kbd> (Move Up/Down, Indent, Unindent, Delete Line, Toggle Comment); <kbd class="ui">Folding</kbd> (Fold/Unfold Line, Fold All, Unfold All, Create Code Region); Completion Query; Trim Trailing Whitespaces; Trim Final Newlines; <kbd class="ui">Indentation</kbd> (Convert Indent to Spaces/Tabs, Auto Indent); Convert Case; Syntax Highlighter.</td><td><kbd>Ctrl</kbd>+<kbd>K</kbd> toggles comment; <kbd>Ctrl</kbd>+<kbd>Space</kbd> completion</td></tr>
+    <tr><td><kbd class="menu">Search</kbd> menu</td><td><kbd class="ui">Find...</kbd> (quick bar with <kbd class="ui">Match Case</kbd>, <kbd class="ui">Whole Words</kbd>), Find Next, Find Previous, <kbd class="ui">Replace...</kbd> (with <kbd class="ui">Selection Only</kbd>), <kbd class="ui">Find in Files...</kbd> (project-wide; results appear in the bottom <kbd class="ui">Search Results</kbd> tab), <kbd class="ui">Replace in Files...</kbd> (cannot be undone: commit first), Contextual Help.</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> Replace in Files; <kbd>F1</kbd> contextual help</td></tr>
+    <tr><td><kbd class="menu">Go To</kbd> menu</td><td><kbd class="ui">Go to Function...</kbd>, <kbd class="ui">Go to Line...</kbd>, <kbd class="ui">Bookmarks</kbd> (Toggle, Remove All, Next, Previous, list), <kbd class="ui">Breakpoints</kbd> (toggle, navigate).</td><td>-</td></tr>
+    <tr><td><kbd class="menu">Debug</kbd> menu (script editor)</td><td>Break, Continue, Step Over, Step Into, and <kbd class="ui">Debug with External Editor</kbd> (shortcut configurable under <em>Editor Settings &gt; Shortcuts &gt; Debugger</em>).</td><td>-</td></tr>
+    <tr><td>Gutter</td><td>Click left of the line number to toggle a breakpoint (red dot; green triangle = where the debugger stopped). Blue marker = bookmark. An override icon opens the original function's docs; a receiver icon shows where a connected signal comes from.</td><td>-</td></tr>
+    <tr><td>Zoom</td><td>Click the percentage in the status bar or use the mouse wheel with <kbd>Ctrl</kbd>.</td><td><kbd>Ctrl</kbd>+mouse wheel</td></tr>
+    <tr><td>Multi-caret / rename symbol</td><td>Alt+left click adds carets; select a symbol and press <kbd>Ctrl</kbd>+<kbd>D</kbd> repeatedly to select the next occurrences, then type to rename inline.</td><td><kbd>Alt</kbd>+click, <kbd>Ctrl</kbd>+<kbd>D</kbd></td></tr>
+    <tr><td>Lookup Symbol</td><td>Right-click &rarr; <kbd class="ui">Lookup Symbol</kbd>, or <kbd>Ctrl</kbd>+click a name: opens its class reference page.</td><td><kbd>Ctrl</kbd>+click</td></tr>
+  </table>
+  <div class="callout note"><span class="callout-title">Indentation: set it on Day 1</span>
+    <p>The course writes all code with <strong>4 spaces</strong>. Set <kbd class="menu">Editor &gt; Editor Settings &gt; Text Editor &gt; Behavior &gt; Indent &gt; Type</kbd> to <kbd class="ui">Spaces</kbd> and <kbd class="ui">Size</kbd> to <code>4</code>. The status bar shows whether the open file uses tabs or spaces. If a pasted listing triggers <em>Mixed use of tabs and spaces</em>, use <kbd class="menu">Edit &gt; Indentation &gt; Convert Indent to Spaces</kbd>. (Godot's own style guide recommends tabs; the course chooses spaces for copy-paste safety.)</p></div>
+  <ul class="docs-links"><li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/script_editor.html" target="_blank" rel="noopener">Script Editor</a>: full menu reference.</li></ul>
+
+  <h2 id="project-menu">14. The Project menu and Project Settings</h2>
+  <table>
+    <tr><th>Entry</th><th>What it does</th></tr>
+    <tr><td><kbd class="menu">Project &gt; Project Settings...</kbd></td><td>Opens the Project Settings window. Tabs: <kbd class="ui">General</kbd> (searchable via <kbd class="ui">Filter Settings</kbd>, grouped by category), <kbd class="ui">Input Map</kbd>, <kbd class="ui">Localization</kbd>, <kbd class="ui">Globals</kbd> (Autoload, Groups), <kbd class="ui">Plugins</kbd>, <kbd class="ui">Import Defaults</kbd>. The <kbd class="ui">Advanced Settings</kbd> toggle reveals all settings. The circular arrow beside a setting resets it. Saved to <code>project.godot</code>.</td></tr>
+    <tr><td><kbd class="menu">Project &gt; Export...</kbd></td><td>Opens the Export dialog: presets, templates, filters (<kbd class="ui">Export</kbd> tab). See Day 4 and the Ship Kit days.</td></tr>
+    <tr><td><kbd class="menu">Project &gt; Install Android Build Template...</kbd></td><td>Copies the Gradle project into <code>res://android</code> so you can build AABs and use plugins.</td></tr>
+    <tr><td><kbd class="menu">Project &gt; Open User Data Folder</kbd></td><td>Opens the folder that <code>user://</code> maps to, in Windows Explorer <em>(name may differ slightly by version)</em>.</td></tr>
+    <tr><td><kbd class="menu">Project &gt; Version Control</kbd></td><td>Git plugin entries (only when the Godot Git Plugin is installed) <em>(name may differ slightly by version)</em>.</td></tr>
+    <tr><td><kbd class="menu">Project &gt; Tools</kbd></td><td>Includes <kbd class="ui">Upgrade Project Files</kbd> and <kbd class="ui">Upgrade Mesh Surfaces</kbd> (project migration helpers), <kbd class="ui">Engine Compilation Configuration Editor</kbd> (smaller custom builds), and <kbd class="ui">Download Project Source</kbd> (web editor).</td></tr>
+    <tr><td><kbd class="menu">Project &gt; Reload Current Project</kbd></td><td>Restarts the editor on the same project <em>(name may differ slightly by version)</em>. Useful after changing an autoload or enabling a plugin misbehaves.</td></tr>
+    <tr><td><kbd class="menu">Project &gt; Quit to Project List</kbd></td><td>Closes the editor and returns to the Project Manager. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd>.</td></tr>
+  </table>
+  <p>Project Settings paths you will use most often in the course:</p>
+  <table>
+    <tr><th>Path in the window</th><th>Why</th></tr>
+    <tr><td><code>Application &gt; Config &gt; Name</code>, <code>Icon</code></td><td>Game name and icon (Day 4, store listings).</td></tr>
+    <tr><td><code>Application &gt; Run &gt; Main Scene</code></td><td>What <kbd>F5</kbd> runs.</td></tr>
+    <tr><td><code>Display &gt; Window &gt; Size &gt; Viewport Width / Viewport Height</code></td><td>Base resolution of your game.</td></tr>
+    <tr><td><code>Display &gt; Window &gt; Stretch &gt; Mode / Aspect / Scale Mode</code></td><td>How the game scales when the window resizes: <code>canvas_items</code> and <code>keep</code>/<code>expand</code> in this course.</td></tr>
+    <tr><td><code>Rendering &gt; Textures &gt; Canvas Textures &gt; Default Texture Filter</code></td><td>Set to <code>Nearest</code> for pixel art.</td></tr>
+    <tr><td><code>Rendering &gt; 2D &gt; Snapping</code> (Advanced)</td><td>Snap 2D transforms and polygons to pixel at runtime.</td></tr>
+    <tr><td><code>Physics &gt; Common &gt; Physics Ticks per Second</code></td><td>Physics rate (60 by default).</td></tr>
+    <tr><td><code>Layer Names &gt; 2D Physics / 3D Physics</code></td><td>Name the collision layers (world, player, enemies...).</td></tr>
+    <tr><td><code>Debug &gt; GDScript</code> (Advanced)</td><td>Enable or turn off specific GDScript warnings.</td></tr>
+  </table>
+
+  <h2 id="debug-menu">15. The Debug menu</h2>
+  <p>Toggles that affect the <em>running</em> game started from the editor. Entries marked with a check stay on until you turn them off.</p>
+  <table>
+    <tr><th>Entry</th><th>What it does</th></tr>
+    <tr><td><kbd class="ui">Deploy with Remote Debug</kbd></td><td>With one-click deploy (a phone), the exported app connects back to this computer so you can debug it. Not needed for local debugging.</td></tr>
+    <tr><td><kbd class="ui">Small Deploy with Network Filesystem</kbd></td><td>Deploys a minimal executable and serves project files over the network; on Android over USB. Speeds up iteration on devices.</td></tr>
+    <tr><td><kbd class="ui">Visible Collision Shapes</kbd></td><td>Draws collision shapes and raycasts (2D and 3D) in the running project. Turn this on first for any "why do they not collide" problem.</td></tr>
+    <tr><td><kbd class="ui">Visible Paths</kbd></td><td>Shows curves used by path nodes.</td></tr>
+    <tr><td><kbd class="ui">Visible Navigation</kbd></td><td>Shows navigation meshes and polygons.</td></tr>
+    <tr><td><kbd class="ui">Visible Avoidance</kbd></td><td>Shows avoidance shapes, radii and velocities.</td></tr>
+    <tr><td><kbd class="ui">Debug CanvasItem Redraws</kbd></td><td>Flashes redrawn 2D items (low-processor-mode debugging).</td></tr>
+    <tr><td><kbd class="ui">Synchronize Scene Changes</kbd></td><td>Edits you make in the editor's Local scene tree are replicated into the running game.</td></tr>
+    <tr><td><kbd class="ui">Synchronize Script Changes</kbd></td><td>Script edits are hot-reloaded into the running game.</td></tr>
+    <tr><td><kbd class="ui">Keep Debug Server Open</kbd></td><td>Editor keeps listening for projects started outside the editor.</td></tr>
+    <tr><td><kbd class="ui">Customize Run Instances...</kbd></td><td>Run several instances at once (multiplayer testing): Enable Multiple Instances, Main Run Args, Main Feature Tags, per-instance Launch Arguments and Feature Tags. User args must be after <code>-- </code> (two dashes and a space).</td></tr>
+  </table>
+
+  <h2 id="editor-menu">16. The Editor menu and Editor Settings key paths</h2>
+  <table>
+    <tr><th>Entry</th><th>What it does</th></tr>
+    <tr><td><kbd class="menu">Editor &gt; Editor Settings...</kbd></td><td>Settings shared by all projects (not stored in the project). Hover a setting for its description. Search box at the top.</td></tr>
+    <tr><td><kbd class="menu">Editor &gt; Editor Docks</kbd></td><td>Show a hidden dock (e.g. <kbd class="ui">Inspector</kbd>).</td></tr>
+    <tr><td><kbd class="menu">Editor &gt; Editor Layouts</kbd></td><td>Save, load, delete dock layouts; <kbd class="ui">Default</kbd> restores the factory layout. See <a href="#layouts">section 18</a>.</td></tr>
+    <tr><td><kbd class="menu">Editor &gt; Manage Editor Features...</kbd></td><td>Profiles to hide editor features (useful for teaching).</td></tr>
+    <tr><td><kbd class="menu">Editor &gt; Manage Export Templates...</kbd></td><td>Download and install export templates matching your exact editor version, or install from a file. Required before any export (Day 4).</td></tr>
+    <tr><td><kbd class="menu">Editor &gt; Open Editor Data/Settings Folder</kbd></td><td>Opens the folder with editor settings and <code>editor_layouts.cfg</code> <em>(name may differ slightly by version)</em>.</td></tr>
+  </table>
+  <h3 id="editor-settings-paths">Editor Settings key paths you will need</h3>
+  <table>
+    <tr><th>Goal</th><th>Path (as shown in the Editor Settings window)</th><th>Script name</th></tr>
+    <tr><td>Indent with spaces</td><td><code>Text Editor &gt; Behavior &gt; Indent &gt; Type</code> = Spaces</td><td><code>text_editor/behavior/indent/type</code></td></tr>
+    <tr><td>Indent size 4</td><td><code>Text Editor &gt; Behavior &gt; Indent &gt; Size</code> = 4</td><td><code>text_editor/behavior/indent/size</code></td></tr>
+    <tr><td>Save on focus loss</td><td><code>Interface &gt; Editor &gt; Behavior &gt; Save on Focus Loss</code> (scenes and scripts saved when the editor loses focus)</td><td><code>interface/editor/behavior/save_on_focus_loss</code></td></tr>
+    <tr><td>Auto-save scripts every N seconds</td><td><code>Text Editor &gt; Behavior &gt; Files &gt; Autosave Interval Secs</code> (0 = off)</td><td><code>text_editor/behavior/files/autosave_interval_secs</code></td></tr>
+    <tr><td>Save everything when pressing Run</td><td><code>Run &gt; Auto Save &gt; Save Before Running</code></td><td><code>run/auto_save/save_before_running</code></td></tr>
+    <tr><td>Editor UI too small or large</td><td><code>Interface &gt; Editor &gt; Appearance &gt; Display Scale</code> (Auto, presets, Custom + <code>Custom Display Scale</code>). Older docs show it as "Interface &gt; Editor &gt; Display Scale". On Windows, Auto does not follow the OS scale factor: set it by hand on 4K screens.</td><td><code>interface/editor/appearance/display_scale</code></td></tr>
+    <tr><td>Editor language English</td><td><code>Interface &gt; Editor &gt; Localization &gt; Editor Language</code> (also in Project Manager settings), so menu names match this course</td><td><code>interface/editor/localization/editor_language</code></td></tr>
+    <tr><td>Single window (no floating script editor)</td><td><code>Interface &gt; Editor &gt; Display &gt; Single Window Mode</code></td><td><code>interface/editor/display/single_window_mode</code></td></tr>
+    <tr><td>Editor feels slow / noisy</td><td><code>Interface &gt; Editor &gt; Timers &gt; Low Processor Mode Sleep (µsec)</code> to <code>33000</code>; <code>Interface &gt; Editor &gt; Display &gt; Update Continuously</code> only for VRR flicker</td><td><code>interface/editor/timers/low_processor_mode_sleep_usec</code></td></tr>
+    <tr><td>Use VS Code / external editor</td><td><code>Text Editor &gt; External &gt; Use External Editor</code>, <code>Exec Path</code> (on Windows point to <code>code.cmd</code>), <code>Exec Flags</code> (e.g. <code>{project} --goto {file}:{line}:{col}</code>; auto-detected since 4.5). Also enable <code>Text Editor &gt; Behavior &gt; Files &gt; Auto Reload Scripts on External Change</code></td><td><code>text_editor/external/use_external_editor</code></td></tr>
+    <tr><td>3D without numpad / trackpad</td><td><code>Editors &gt; 3D &gt; Navigation &gt; Emulate Numpad</code> and <code>Emulate 3 Button Mouse</code>; <code>Navigation Scheme</code></td><td><code>editors/3d/navigation/emulate_numpad</code></td></tr>
+    <tr><td>2D panning with Space only</td><td><code>Editors &gt; Panning &gt; Simple Panning</code></td><td><code>editors/panning/simple_panning</code></td></tr>
+    <tr><td>Keep Output panel between runs</td><td><code>Run &gt; Output &gt; Always Clear Output on Play</code> (off)</td><td><code>run/output/always_clear_output_on_play</code></td></tr>
+    <tr><td>Debug port blocked by firewall</td><td><code>Network &gt; Debug &gt; Remote Port</code> (default 6007; try 7007)</td><td><code>network/debug/remote_port</code></td></tr>
+    <tr><td>Light or OLED theme, theme preset</td><td><code>Interface &gt; Theme</code> (preset, e.g. Black (OLED))</td><td><code>interface/theme/color_preset</code></td></tr>
+    <tr><td>Rebind every shortcut</td><td><kbd class="menu">Editor &gt; Editor Settings &gt; Shortcuts</kbd></td><td>-</td></tr>
+  </table>
+  <div class="callout note"><span class="callout-title">Setting names move between versions</span>
+    <p>Editor setting categories are reorganised from time to time (for example Display Scale moved into an <em>Appearance</em> group). If a path is not found, type the last word (<code>scale</code>) into the Editor Settings search box.</p></div>
+
+  <h2 id="game-workspace">17. The Game workspace (embedded game window)</h2>
+  <p>When you press Run, the <kbd class="ui">Game</kbd> workspace represents the running project. The game <strong>always runs in a separate process</strong>: if it crashes, the editor survives. Three embedding modes:</p>
+  <table>
+    <tr><th>Mode</th><th>Behaviour</th></tr>
+    <tr><td><strong>Floating window</strong> (default)</td><td>Game runs in its own window with a Game bar on top; clicking the Game workspace button focuses that window.</td></tr>
+    <tr><td><strong>Main window</strong></td><td>Game runs inside the editor; clicking Game switches to that tab.</td></tr>
+    <tr><td><strong>Disabled</strong></td><td>Game runs like an exported build; there is no Game bar and no node picking.</td></tr>
+  </table>
+  <p>Configure it in the dropdown in the top-right of the Game bar: <kbd class="ui">Embed Game on Next Play</kbd> and <kbd class="ui">Make Window Floating on Next Play</kbd>. Window sizing options (affect floating and main-window modes): <kbd class="ui">Fixed Size</kbd> (default, the project's viewport size or the window width/height override), <kbd class="ui">Keep Aspect Ratio</kbd>, <kbd class="ui">Stretch to Fit</kbd> (matches a non-embedded run).</p>
+  <table>
+    <tr><th>Game bar control</th><th>What it does</th><th>Shortcut</th></tr>
+    <tr><td>Pause</td><td>Stops physics and idle processing but keeps rendering and input, so you can select nodes and inspect them.</td><td><kbd>F9</kbd></td></tr>
+    <tr><td>Frame advance</td><td>Only while paused: advance one frame (diagnose short-lived collisions).</td><td><kbd>F10</kbd></td></tr>
+    <tr><td>Game speed menu + reset</td><td>Slow motion or fast-forward; multiplies <code>Engine.time_scale</code>. The physics tick rate is multiplied by the same factor.</td><td>-</td></tr>
+    <tr><td>Interaction mode: <kbd class="ui">Input</kbd> / <kbd class="ui">2D</kbd> / <kbd class="ui">3D</kbd></td><td>Input = normal play. 2D or 3D disables game input so you can select <code>Node2D</code>/<code>Control</code> or <code>Node3D</code> nodes and inspect them in the Inspector.</td><td>-</td></tr>
+    <tr><td>Select mode / list of selectable nodes / toggle selection visibility</td><td>Pick nodes; show a list of overlapping nodes; hide the orange selection outline. <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+right-click shows the list while in select mode. Advanced: <em>Don't Select Locked Nodes</em>, <em>Select Group over Children</em>.</td><td>-</td></tr>
+    <tr><td>Mute game audio</td><td>Mutes only the game.</td><td>-</td></tr>
+    <tr><td>Camera override</td><td>Detach from the game camera and fly around. 2D: middle mouse or <kbd>Space</kbd>+left mouse to pan, wheel to zoom. 3D: hold right mouse + <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to fly, middle mouse orbits, <kbd>Shift</kbd>+middle pans. Options: Reset 2D/3D Camera, Manipulate In-Game (default), Manipulate From Editors.</td><td>-</td></tr>
+  </table>
+  <div class="callout warn"><span class="callout-title">Changes in the Game workspace are temporary</span>
+    <p>Property edits made via the Game workspace or the <strong>Remote</strong> scene tree vanish when the game stops. To keep a change, edit the <strong>Local</strong> scene tree with <kbd class="menu">Debug &gt; Synchronize Scene Changes</kbd> enabled. Window mode changes such as fullscreen are not supported while embedded, and with multiple run instances only the first is embedded.</p></div>
+  <ul class="docs-links"><li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/game_embedding.html" target="_blank" rel="noopener">Game embedding</a></li></ul>
+
+  <h2 id="layouts">18. Customizing and resetting the layout</h2>
+  <ul>
+    <li><strong>Resize</strong> a dock or panel: drag its edge.</li>
+    <li><strong>Move</strong> a dock: click the three vertical dots at the top of the dock and choose a new location, or <kbd class="ui">Make Floating</kbd> to turn it into its own window. Close a floating dock with its X (or <kbd>Alt</kbd>+<kbd>F4</kbd> while it is focused) to put it back.</li>
+    <li><strong>Split the script or shader editor</strong> into its own window with the button in its top-right corner (Windows, macOS, Linux; not in Single Window Mode).</li>
+    <li><strong>Save a layout</strong>: arrange the docks, then <kbd class="menu">Editor &gt; Editor Layouts &gt; Save</kbd>, type a name, <kbd class="ui">Save</kbd>. Saved: dock moves and sizes, floating docks, FileSystem dock mode/sort/selected and unfolded paths.</li>
+    <li><strong>Load / delete</strong>: <kbd class="menu">Editor &gt; Editor Layouts</kbd> lists saved layouts and <kbd class="ui">Default</kbd> (hard-coded, cannot be removed); use <kbd class="ui">Delete</kbd> to remove one.</li>
+    <li><strong>Reset everything</strong>: <kbd class="menu">Editor &gt; Editor Layouts &gt; Default</kbd>. If you ever overwrote the default by saving a layout named <code>Default</code> (case-sensitive), delete that <code>Default</code> layout to get the factory one back. Layouts are stored in <code>editor_layouts.cfg</code> in the editor config folder.</li>
+  </ul>
+  <div class="callout tip"><span class="callout-title">If the editor misbehaves</span>
+    <p>Crash on open? Use <em>Edit in recovery mode</em> in the Project Manager. Slow or flickering? See <a href="troubleshooting.html#editor-slow">Troubleshooting</a>. Strange cached state? Close the editor and delete the project's <code>.godot</code> folder; it is regenerated on the next open (see the glossary entry for <a href="glossary.html#godot-folder">.godot folder</a>).</p></div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/getting_started/introduction/first_look_at_the_editor.html" target="_blank" rel="noopener">First look at Godot's interface</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/customizing_editor.html" target="_blank" rel="noopener">Customizing the interface</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/inspector_dock.html" target="_blank" rel="noopener">Inspector dock</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/project_settings.html" target="_blank" rel="noopener">Project Settings</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/external_editor.html" target="_blank" rel="noopener">Using an external text editor</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/debug/overview_of_debugging_tools.html" target="_blank" rel="noopener">Overview of debugging tools</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/scene_unique_nodes.html" target="_blank" rel="noopener">Scene unique nodes</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/groups.html" target="_blank" rel="noopener">Groups</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_editorsettings.html" target="_blank" rel="noopener">EditorSettings class reference</a>: every editor setting with a description.</li>
+  </ul>
+  <p>See also: <a href="shortcuts.html">Shortcuts</a> · <a href="node-cheatsheet.html">Node cheatsheet</a> · <a href="troubleshooting.html">Troubleshooting</a>.</p>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

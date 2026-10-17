@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game 10 - Deep Digger | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="game" data-id="g10" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Publishable game 10 · 2D · Extraction</div>
+    <h1>Deep Digger</h1>
+    <p class="lead">An endless landscape miner. Fly a drill through noise-carved rock, spend fuel, fill a cargo bay, and sell at the surface. Deeper rock pays more and hits harder. The Ship Kit supplies the menu, pause, settings, audio buses, and save autoload. This page is the design contract for Days 27 and 28.</p>
+    <div class="chips"><span class="chip blue">Days 27–28</span><span class="chip green">TileMapLayer, FastNoiseLite, CharacterBody2D</span><span class="chip">1280×720 landscape</span></div>
+  </header>
+
+  <h2 id="design">Game design</h2>
+  <p>You drop a three-cell shaft through a dirt crust and dig until the tank or the hull says stop. Ore is the only thing that occupies cargo. The surface refills fuel at 40 per second and hull at 8 per second. Selling is a button, not a timer. Hull failure is the loss condition for a dive: cargo is wiped, the drill returns to the shaft, credits and upgrades remain.</p>
+  <p>Controls, all from the Ship Kit input map: <code>move_left</code>, <code>move_right</code>, <code>move_up</code>, <code>move_down</code> (WASD and arrows) fly the drill. Holding a direction into a solid cell drills it. <code>interact</code> (<kbd>E</kbd>) opens and closes the shop when the drill's cell Y is 2 or less; underground it only toasts that the shop is on the surface. <code>pause</code> (<kbd>Escape</kbd>) is the Ship Kit pause menu. The drill uses <code>MOTION_MODE_FLOATING</code> at 110 pixels per second, or 44 when fuel is empty, and it will not dig at empty.</p>
+  <p>Window: 1280×720, stretch mode <code>canvas_items</code>, aspect <code>expand</code>, Mobile renderer. Package id <code>com.yourname.deepdigger</code>. Localization prefix <code>DIGGER_</code>. Project folder <code>C:\GodotProjects\deep-digger</code>, copied from the Ship Kit. Autoloads stay <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, <code>SceneRouter</code>. Do not redefine them.</p>
+
+  <h3>Formulas</h3>
+  <p><code>depth = max(0, cell_y - 2)</code>. Surface is any cell with <code>cell_y &lt;= 2</code>.</p>
+  <p>Fuel burn per second while thrusting or while the dig timer is advancing. Holding still costs nothing. Gas multiplies this by 3.</p>
+  <p><code>(1.6 + 0.035 * depth) * (1 - 0.08 * efficiency_level)</code></p>
+  <p>On the frame a tile breaks, also subtract <code>hardness * 0.8</code>. The break is refused when fuel is below that cost, when the tile is bedrock, or when the tile is ore and cargo is full.</p>
+  <p>Dig seconds: <code>hardness / (1 + 0.35 * drill_level)</code>. Move speed is 110, times 0.4 when fuel is 0.</p>
+  <table class="timebox">
+    <tr><td>Tile</td><td>Atlas x</td><td>Solid</td><td>Hardness</td><td>Cargo</td><td>Unit value</td></tr>
+    <tr><td>Dirt</td><td>0</td><td>yes</td><td>0.35</td><td>0</td><td>0</td></tr>
+    <tr><td>Stone</td><td>1</td><td>yes</td><td>0.90</td><td>0</td><td>0</td></tr>
+    <tr><td>Copper</td><td>2</td><td>yes</td><td>0.70</td><td>1</td><td>8</td></tr>
+    <tr><td>Iron</td><td>3</td><td>yes</td><td>1.10</td><td>1</td><td>18</td></tr>
+    <tr><td>Gold</td><td>4</td><td>yes</td><td>1.40</td><td>1</td><td>45</td></tr>
+    <tr><td>Crystal</td><td>5</td><td>yes</td><td>1.80</td><td>1</td><td>120</td></tr>
+    <tr><td>Magma</td><td>6</td><td>no</td><td>—</td><td>0</td><td>0</td></tr>
+    <tr><td>Gas</td><td>7</td><td>no</td><td>—</td><td>0</td><td>0</td></tr>
+    <tr><td>Bedrock</td><td>8</td><td>yes</td><td>never</td><td>0</td><td>0</td></tr>
+  </table>
+  <p>Sell payout is the sum, per ore, of <code>floor(units * unit_value * (1 + 0.10 * assay_level))</code>. Ten copper is 80 credits with assay 0, which is the first fuel tank.</p>
+  <p>Upgrade cost from level <code>L</code> to <code>L + 1</code> is <code>base * (L + 1) * (L + 1)</code>.</p>
+  <table class="timebox">
+    <tr><td>Id</td><td>Base</td><td>Max level</td><td>Effect</td></tr>
+    <tr><td><code>tank</code></td><td>80</td><td>5</td><td>max fuel = 100 + 40 × level</td></tr>
+    <tr><td><code>drill</code></td><td>100</td><td>5</td><td>dig time uses the formula above</td></tr>
+    <tr><td><code>cargo</code></td><td>90</td><td>5</td><td>capacity = 20 + 12 × level</td></tr>
+    <tr><td><code>hull</code></td><td>150</td><td>4</td><td>max hull = 100 + 25 × level</td></tr>
+    <tr><td><code>efficiency</code></td><td>120</td><td>4</td><td>burn × (1 − 0.08 × level). Cap 4 keeps the multiplier at 0.68.</td></tr>
+    <tr><td><code>assay</code></td><td>200</td><td>3</td><td>sell × (1 + 0.10 × level)</td></tr>
+  </table>
+  <p>Worked tank prices: 80, 320, 720, 1280, 2000. Hull prices stop at 2400 (level 3 to 4). Assay prices: 200, 800, 1800.</p>
+  <p>Pressure, only when <code>depth &gt; 40</code>: <code>(depth - 40) * 0.15 * (1 - 0.20 * hull_level)</code> hull per second. Magma: 18 hull per second while the drill's cell is magma. At hull 0, cargo is cleared, fuel becomes 20% of max, hull becomes 35% of max, the drill moves to cell <code>(0, 1)</code>, <code>Events.game_over</code> emits the credit total, and the slot saves. Darkness alpha is <code>clamp(depth / 120, 0, 0.72)</code>.</p>
+  <p>Caves: cave noise above <code>0.32</code> is air. Ore noise places crystal below depth 80 above <code>0.72</code>, gold below 48 above <code>0.62</code>, iron below 24 above <code>0.50</code>, copper below 8 above <code>0.42</code>. Magma is cave noise below <code>-0.75</code> past depth 30. Gas is cave noise from <code>0.20</code> to <code>0.32</code> past depth 18. Bedrock is a thin vein where the absolute cave value is under <code>0.015</code> past depth 16. Cave frequency is <code>0.045</code>, ore frequency <code>0.09</code>, both <code>TYPE_SIMPLEX_SMOOTH</code> and <code>FRACTAL_FBM</code>.</p>
+
+  <h2 id="scope">Scope: what "done" means</h2>
+  <p>Store-ready means the list below, not a content update. Stretch goals are not part of the two days.</p>
+  <ul class="checklist">
+    <li>Ship Kit main menu, settings (volume, fullscreen, locale), and pause menu still work. Autoload scripts were not rewritten.</li>
+    <li>F5 opens the menu. Play uses <code>SceneRouter</code> and lands in <code>res://game/game.tscn</code>.</li>
+    <li>Drill flies, digs, refuels on the surface, and refuses bedrock.</li>
+    <li>Shop sells at the formula and buys the six upgrades at the table. First tank is 80 credits.</li>
+    <li>Magma and pressure can fail a dive without deleting credits or upgrades.</li>
+    <li>Chunks unload past a radius of 2. Dug cells stay empty when the chunk loads again.</li>
+    <li><code>SaveManager.save_slot(&amp;"run", data)</code> restores seed, cargo, upgrades, tutorial step, and holes. Profile keys <code>best_depth</code> and <code>best_credits</code> use <code>set_value</code>. Counters are cast with <code>int()</code> on load.</li>
+    <li>Save also runs about every 8 seconds and on focus-out, app pause, and window close.</li>
+    <li><code>DIGGER_</code> strings exist for <code>en</code>, <code>es</code>, and <code>de</code>. The other Ship Kit locale columns are filled, even where they still match English.</li>
+    <li>Tutorial lines advance from first dig, to first ore, to a return from depth past 8, to opening the shop.</li>
+    <li>Credits scene and <code>licenses/THIRD_PARTY.txt</code> name the generated atlas. Godot's license files are still present.</li>
+    <li>Windows release exe at <code>C:\GodotProjects\deep-digger\build\DeepDigger.exe</code> keeps a dug cell across a full quit.</li>
+    <li>Android debug build uses package <code>com.yourname.deepdigger</code>, landscape, and reaches the mine. Version <code>1.0.0</code>.</li>
+  </ul>
+
+  <h2 id="architecture">Architecture</h2>
+  <pre class="scene-tree">Game (Node2D)                      [game.gd, class_name DiggerGame]
+├── World (Node2D)
+│   └── Terrain (TileMapLayer)     [terrain.gd, class_name DiggerTerrain]
+├── Drill (CharacterBody2D)        [drill.gd, class_name DiggerDrill, group player]
+│   ├── Body (Polygon2D)
+│   ├── CollisionShape2D           circle radius 6
+│   └── Camera2D                   zoom 2, limit top -180
+├── HUD (CanvasLayer, layer 1)     [hud.gd, class_name DiggerHud]
+│   ├── Darkness (ColorRect)       unique name
+│   ├── MarginContainer
+│   │   └── VBoxContainer
+│   │       ├── FuelLabel, FuelBar
+│   │       ├── HullLabel, HullBar
+│   │       ├── InfoLabel, DigLabel
+│   │       └── TutorialLabel
+│   └── Shop (Panel)               [shop.gd, class_name DiggerShop]
+│       └── buttons: Sell, Tank, Drill, Cargo, Hull, Efficiency, Assay, Close
+└── PauseMenu                      instance of res://ui/pause_menu.tscn, layer 20</pre>
+  <p><code>DiggerGame</code> owns the numbers and the slot. <code>DiggerTerrain</code> owns noise, <code>set_cell</code>, <code>erase_cell</code>, and the dug dictionary. <code>DiggerDrill</code> owns movement and the dig timer. The HUD and the shop only read and call the game. Group <code>digger_game</code> is added in code. Group <code>player</code> is how the terrain finds who to stream around. Chunks are 16×16. Source id is 0 unless the TileSet panel shows another atlas id. Physics layer: tiles on <code>world</code>, drill on <code>player</code> masked to <code>world</code>. Columns 6 and 7 have no collision polygon.</p>
+  <p>Slot <code>&amp;"run"</code> stores seed, credits, fuel, hull, cargo, upgrades, tutorial step, best depth, dug list as <code>[[x, y], …]</code>, and player position as <code>[x, y]</code>. <code>Events.game_started</code>, <code>score_changed</code>, <code>game_over</code>, <code>toast_requested</code>, and <code>achievement_unlocked</code> with id <code>digger_depth_50</code> are emitted. They are not redeclared.</p>
+  <h3>File map</h3>
+  <table class="timebox">
+    <tr><td><code>res://game/game.tscn</code></td><td>Scene above</td></tr>
+    <tr><td><code>res://game/game.gd</code></td><td>Balance, save, shop API</td></tr>
+    <tr><td><code>res://game/terrain.gd</code></td><td>FastNoiseLite chunks</td></tr>
+    <tr><td><code>res://game/drill.gd</code></td><td>Body and dig timer</td></tr>
+    <tr><td><code>res://game/hud.gd</code></td><td>Bars, depth, darkness</td></tr>
+    <tr><td><code>res://game/shop.gd</code></td><td>Sell and buy</td></tr>
+    <tr><td><code>res://game/make_tiles.gd</code></td><td>EditorScript, one shot</td></tr>
+    <tr><td><code>res://assets/art/tiles.png</code></td><td>144×16, nine columns</td></tr>
+    <tr><td><code>res://assets/art/tileset.tres</code></td><td>Tile size 16</td></tr>
+    <tr><td><code>res://i18n/translations.csv</code></td><td><code>DIGGER_</code> rows</td></tr>
+  </table>
+
+  <h2 id="assets">Assets and credits</h2>
+  <p>The mine is a generated atlas: nine 16×16 rectangles drawn by <code>make_tiles.gd</code> into <code>res://assets/art/tiles.png</code>. No download is required. The drill is a <code>Polygon2D</code> triangle. Optional hit audio is an exported <code>AudioStream</code> on the drill, played with <code>Audio.play_sfx_varied</code>. Leave it empty to ship silent.</p>
+  <div class="callout external"><span class="callout-title">External resource: Kenney</span>
+    <p>If you replace the squares, use <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a> (CC0). Search for a top-down or abstract tilesheet and pick the file by looking at it. Pack versions rename files, so this course does not name one. The Godot tileset tutorial's example pack is Kenney's Abstract Platformer. Rebuild collision if the tile size is not 16. Verify the license on the pack page before you ship.</p>
+  </div>
+  <p>Paste into the credits scene and into <code>licenses/THIRD_PARTY.txt</code>, without removing the Godot license block:</p>
+  <pre class="plain">Deep Digger tiles: generated atlas (make_tiles.gd).
+Optional art: Kenney CC0, kenney.nl/assets</pre>
+
+  <h2 id="days">Where you build it</h2>
+  <ul>
+    <li><a href="../days/day27.html">Day 27</a>: copy the kit, window and layers, generate the atlas, TileSet collision, chunk fill, drill, fuel, cargo, HUD.</li>
+    <li><a href="../days/day28.html">Day 28</a>: shop and the price table, magma, gas, pressure, chunk unload, <code>SaveManager</code>, tutorial lines, credits, Windows release and Android debug. Export clicks point at <a href="../days/day16.html">Day 16</a> and the <a href="../publishing/launch-checklist.html">launch checklist</a>.</li>
+  </ul>
+
+  <h2 id="stretch">Stretch goals</h2>
+  <ul>
+    <li>Winch upgrade: base 250, max level 1, same cost formula, teleports to the shaft without clearing cargo. The Day 28 challenge sketches it.</li>
+    <li>On-screen buttons for the four move actions, using the same Input Map so a phone without a keyboard can dig.</li>
+    <li>A second slot <code>&amp;"run2"</code> from the pause menu. <code>save_slot</code> already takes the slot name.</li>
+    <li>A second TileMapLayer, 4×4 cells per chunk, as a corner minimap of ore only.</li>
+    <li>Swap <code>tiles.png</code> for a Kenney sheet and keep atlas X equal to the kind index, or the dig table breaks.</li>
+    <li>A depth biome that only changes the <code>ColorRect</code> darkness color, not the noise thresholds.</li>
+  </ul>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

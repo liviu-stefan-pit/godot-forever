@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Launch checklist | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="publishing" data-id="launch-checklist" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Publishing</div>
+    <h1>Launch checklist</h1>
+    <p class="lead">Go means every box in the matching store section is checked on the build you are about to upload. A no on any box in "Both stores" stops the upload. Store-only boxes stop that store only. Tick them on the candidate build, not on yesterday's export.</p>
+    <div class="chips"><span class="chip blue">Windows release</span><span class="chip green">Signed AAB</span></div>
+  </header>
+
+  <h2 id="both">Both stores</h2>
+  <ul class="checklist">
+    <li>The export used <code>--export-release</code> or the Export Project button with <strong>Export With Debug unchecked</strong>.</li>
+    <li>The game boots to the main menu, starts a run, pauses, opens settings, and quits without a red error in a release run.</li>
+    <li>Volume, fullscreen, and locale survive a restart. A remapped key survives a restart (<code>user://input_map.cfg</code>).</li>
+    <li>A run saved with <code>SaveManager.save_slot</code> loads. Integers were cast with <code>int()</code>. Closing the app or backgrounding it on Android calls <code>SaveManager.flush()</code>.</li>
+    <li>Credits open from the menu and show <code>Engine.get_license_text()</code>. <code>GODOT_COPYRIGHT.txt</code> and <code>THIRD_PARTY.txt</code> match <a href="licenses.html">Licenses and credits</a>.</li>
+    <li>UI keys use <code>tr()</code> or auto-translate. You clicked through at least <code>en</code> and one other column from <code>translations.csv</code>.</li>
+    <li>Stretch is <code>canvas_items</code> / <code>expand</code>. A short window and a tall window keep buttons inside the safe area.</li>
+    <li>Keyboard, a gamepad (focus lands on a button), and touch (the on-screen buttons) can start and pause a run.</li>
+    <li>Package name, version, and save folder match this game, not <code>ship-kit</code> left over from the template copy.</li>
+    <li>No editor-only path, password, or keystore sits in <code>res://</code>.</li>
+  </ul>
+
+  <h2 id="steam-go">Steam go / no-go</h2>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>Steamworks labels move. Confirm the list against <a href="https://partner.steamgames.com" target="_blank" rel="noopener">partner.steamgames.com</a> (search "store checklist" and "SteamPipe"). The Godot side is only the Windows release export. Details are on <a href="steam.html">the Steam page</a> and <a href="../days/day29.html">Day 29</a>.</p></div>
+  <ul class="checklist">
+    <li>Partner account is in good standing and the app fee for this app id is paid.</li>
+    <li>The build uploaded with SteamCMD is the release exe plus <code>GODOT_COPYRIGHT.txt</code>, not an editor binary and not a debug export.</li>
+    <li>Depot and branch you set live are the ones you just uploaded. Launch the build from the Steam client, not by double-clicking the exe, before you say it works.</li>
+    <li>Store capsules and screenshots match the sizes the partner checklist shows today.</li>
+    <li>Achievements you show in the store exist in Steamworks and are unlocked from the game through GodotSteam. If you have no achievements, the store does not promise any.</li>
+    <li>A controller can reach the menu and play the game. Steam Deck is checked against the current Deck checklist on the partner site, or you are not marking the game Deck Verified yourself.</li>
+  </ul>
+
+  <h2 id="play-go">Google Play go / no-go</h2>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>Policy pages live on <a href="https://play.google.com/console" target="_blank" rel="noopener">play.google.com/console</a>. Search "data safety", "content rating", "closed testing", and "target API". Counts and API levels change. Godot export steps are on <a href="google-play.html">the Play page</a> and <a href="../days/day30.html">Day 30</a>.</p></div>
+  <ul class="checklist">
+    <li>The file is an <code>.aab</code> from a Gradle build. Export With Debug was off. Release keystore password and key password match. The keystore is backed up outside the project.</li>
+    <li>Play App Signing is decided (upload key versus app signing key) and you still have the upload key.</li>
+    <li><code>gradle_build/target_sdk</code> meets the target API Play Console shows for this app today. <code>version/code</code> is higher than any build already uploaded.</li>
+    <li>Unique name is the final package name. You have not published a different game with it.</li>
+    <li>Data safety form matches what the game actually does. The template stores saves on device only. Ads or accounts change the form.</li>
+    <li>Content rating questionnaire is finished. Store listing has the icon, screenshots, and descriptions the console is asking for at their current sizes.</li>
+    <li>The track you are shipping to is the one you tested. A new personal account does not skip the closed test: confirm the current tester count and duration on the console (this course has been teaching 12 testers for 14 days, and that rule has changed before).</li>
+    <li>Billing, if you turned it on, uses the Godot Google Play Billing plugin from the official docs, with products created in the console. Ads stay off unless you accepted the ad policy on purpose.</li>
+  </ul>
+
+  <h2 id="no-go">Automatic no-go</h2>
+  <ul>
+    <li>Debug export, missing license text, or a crash on launch.</li>
+    <li>Save data lost when the Android app is paused.</li>
+    <li>You cannot find the keystore.</li>
+    <li>The store page promises a platform, language, or achievement the build does not have.</li>
+  </ul>
+  <p>When every box you need is checked, upload. When one is not, fix that box and export again. Do not patch the store listing to hide a broken build.</p>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

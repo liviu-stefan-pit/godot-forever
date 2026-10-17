@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Steam guide | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="publishing" data-id="steam" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Publishing</div>
+    <h1>Steam guide</h1>
+    <p class="lead">Steam sells and updates a Windows build you already know how to export. Godot does not upload that build. Steamworks, store images, depots, and SteamCMD are outside the engine docs. GodotSteam achievements are an addon, also outside the engine docs. The click-by-click day is <a href="../days/day29.html">Day 29</a>.</p>
+    <div class="chips"><span class="chip blue">--export-release</span><span class="chip green">Windows Desktop preset</span></div>
+  </header>
+
+  <h2 id="godot-side">What is actually a Godot step</h2>
+  <ol class="steps">
+    <li>Install export templates that match the editor: <kbd class="menu">Editor &gt; Manage Export Templates...</kbd>.</li>
+    <li>Preset name stays <code>Windows Desktop</code> unless you change the command to match. Architecture <code>x86_64</code>.</li>
+    <li>Export with <strong>Export With Debug unchecked</strong>, or from PowerShell with <code>--headless --export-release</code>. The docs spell the flag <code>--export-release</code>, not a debug export.</li>
+    <li>Output folder is outside <code>res://</code>, for this course <code>C:\GodotProjects\ship-kit-build\windows\</code>. Copy <code>GODOT_COPYRIGHT.txt</code> beside the exe (<a href="licenses.html">licenses</a>).</li>
+    <li>Launch that exe once before you upload it. Then launch the same build from the Steam client after upload. Those are different tests.</li>
+  </ol>
+  <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+& "C:\Path\To\Godot.exe" --headless --path "C:\GodotProjects\ship-kit" --export-release "Windows Desktop" "C:\GodotProjects\ship-kit-build\windows\ShipKit.exe"
+</script>
+  <p>Controller support you already built is the Godot part of "Steam Input" and Deck play: actions <code>move_*</code>, <code>pause</code>, <code>confirm</code>, <code>cancel</code>, and focus via <code>ui_accept</code> plus <code>grab_focus()</code>. The docs for pads are <a href="https://docs.godotengine.org/en/stable/tutorials/inputs/controllers_gamepads_joysticks.html" target="_blank" rel="noopener">Controllers, gamepads, and joysticks</a> and <a href="https://docs.godotengine.org/en/stable/tutorials/inputs/controller_features.html" target="_blank" rel="noopener">Controller features</a>.</p>
+
+  <h2 id="steamworks">Steamworks, in the order you need it</h2>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>Everything in this section is verified on <a href="https://partner.steamgames.com" target="_blank" rel="noopener">partner.steamgames.com</a>. Search the phrases below. Buttons move. Do not trust a screenshot from a blog.</p>
+    <ul>
+      <li><strong>Account and fee.</strong> Search "getting started". The partner account is tied to a Steam user. Creating an app charges a fee per app. Read the current amount on the partner site before you pay. Day 16 only opens the account. Day 29 pays for the app when you are ready to have an app id.</li>
+      <li><strong>App id.</strong> Search "create a new application". Write the numeric app id down. You need it for depots and for <code>steam_appid.txt</code> if you use GodotSteam in the editor.</li>
+      <li><strong>Depots.</strong> Search "depots". A depot is a pile of files for one OS. This course uploads one Windows 64-bit depot. The content root is the folder that contains <code>ShipKit.exe</code>, not the Godot project folder.</li>
+      <li><strong>Store page.</strong> Search "store page" and "graphical assets". You will be asked for capsules, a header, screenshots, and a short description. Copy the pixel sizes from that checklist the week you upload. They change. Do not ship a capsule at a size you remember from an older template.</li>
+      <li><strong>SteamCMD.</strong> Search "SteamCMD". Install the tool from the instructions on the partner site. Upload with an app build script (SteamPipe). A typical script points <code>contentroot</code> at the export folder and maps <code>LocalPath</code> <code>*</code> onto the depot. Compare your script to the sample the partner docs show that week. The app id and depot id in the script must be yours, not the zeros in a sample.</li>
+      <li><strong>Branches.</strong> Upload to a beta branch first. Set the build live on <code>default</code> only after you have launched it from the Steam client.</li>
+      <li><strong>Steam Deck.</strong> Search "Steam Deck". The review looks at text size, controller-only play, and a 1280×800-class display. Your stretch mode <code>canvas_items</code> plus <code>expand</code> is the Godot half. The Deck checklist itself is on the partner site. Do not mark Verified in the store until that checklist says you can.</li>
+    </ul>
+  </div>
+
+  <h2 id="godotsteam">GodotSteam achievements</h2>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>GodotSteam is not in the engine. The engine docs do not list its methods. Download the addon that matches your Godot minor version and read the class reference that ships with it. Search "GodotSteam" from the addon page you trust, and define the achievement API names in Steamworks first (partner site, search "achievements"). Names are case-sensitive strings you invent in Steamworks, such as <code>ACH_WIN</code>.</p>
+    <p>The sequence that has been stable is: initialize Steam, set the achievement by that string, store stats. Method names differ across addon versions. This sketch is the shape, not a promise that <code>steamInit</code> is spelled this way in the build you downloaded. If the addon reference uses another name, use that name.</p>
+  </div>
+  <script type="text/x-code" data-lang="gdscript" data-file="external GodotSteam sketch">
+# Not engine API. Confirm every call in the GodotSteam build you installed.
+func _ready() -> void:
+    var ready: Dictionary = Steam.steamInit()
+    if int(ready.get("status", 0)) != 1:
+        push_error("Steam did not initialize. Achievements stay local.")
+        return
+
+func unlock(id: String) -> void:
+    Steam.setAchievement(id)
+    Steam.storeStats()
+    Events.achievement_unlocked.emit(StringName(id))
+</script>
+  <p>Put the numeric app id in <code>steam_appid.txt</code> at the project root while you test in the editor. Steamworks documents that file. Do not ship a text file full of secrets. An app id is not a password, and it is still not something to hard-code into a screenshot.</p>
+  <p>The Ship Kit signal <code>Events.achievement_unlocked(id)</code> is the game-side event. GodotSteam is the only thing that should talk to Steam. Game scripts emit the signal. One place listens and calls the addon. When you remove the addon, the game still compiles.</p>
+
+  <h2 id="docs">Docs and course pages</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_projects.html" target="_blank" rel="noopener">Exporting projects</a>: <code>--export-release</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/command_line_tutorial.html" target="_blank" rel="noopener">Command line tutorial</a>: <code>--headless</code> and the preset name.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_windows.html" target="_blank" rel="noopener">Exporting for Windows</a>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/inputs/controllers_gamepads_joysticks.html" target="_blank" rel="noopener">Controllers, gamepads, and joysticks</a>.</li>
+    <li><a href="../days/day29.html">Day 29</a> walks the upload. <a href="launch-checklist.html">Launch checklist</a> is the go / no-go list.</li>
+  </ul>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

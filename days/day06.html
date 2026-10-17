@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 6 - Platformer II: state machine, combat, pickups | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day06" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 1 · Day 6 · Game 2: Cave Runner</div>
+    <h1>Platformer II: state machine, combat, pickups</h1>
+    <p class="lead">Cave Runner already runs and jumps. Today the player becomes a state machine: dash and double jump stay locked until an orb says otherwise, an AnimationPlayer drives the sprite sheet, and hearts drop when a slime or a spike tile connects. A patrolling slime, coins and a hearts HUD finish the combat loop.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Block 1: Concepts.</strong> State machines, hurtboxes, and why abilities are flags. No editor.</td></tr>
+    <tr><td>0:20 – 1:15</td><td><strong>Block 2: AnimationPlayer.</strong> Six animations on the existing player scene.</td></tr>
+    <tr><td>1:15 – 2:05</td><td><strong>Block 3: The state machine.</strong> Replace <code>player.gd</code>, add the hurtbox, test dash and double jump with temporary flags.</td></tr>
+    <tr><td>2:05 – 2:20</td><td><strong>Break.</strong> Stand up, drink water, look away from the screen.</td></tr>
+    <tr><td>2:20 – 3:05</td><td><strong>Block 4: Damage.</strong> Spikes via tile custom data, knockback, invulnerability flicker, the slime and its rays.</td></tr>
+    <tr><td>3:05 – 3:40</td><td><strong>Block 5: Pickups and HUD.</strong> Coins, ability orbs, hearts on a CanvasLayer. Turn the debug flags off.</td></tr>
+    <tr><td>3:40 – 3:55</td><td><strong>Block 6: Quiz and wrap-up.</strong> The challenge is optional (about 25 min).</td></tr>
+    <tr class="total"><td>Total</td><td>3 h 55 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Replace the Day 5 controller with one <code>enum</code> + <code>match</code> state machine (<code>IDLE</code>, <code>RUN</code>, <code>JUMP</code>, <code>FALL</code>, <code>DASH</code>, <code>HURT</code>) that still has coyote time, jump buffering and variable jump height.</li>
+    <li>Author six AnimationPlayer animations in the editor and play them from the state machine.</li>
+    <li>Gate dash and double jump behind <code>has_dash</code> and <code>has_double_jump</code>, granted by ability orbs.</li>
+    <li>Deal damage from a slime <code>Hitbox</code> and from the spike tile's <code>damage</code> custom data, with knockback and a flicker invulnerability window.</li>
+    <li>Patrol a slime with two <code>RayCast2D</code> nodes, pick up coins, and show three hearts plus a coin count on a <code>CanvasLayer</code>.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 5 is done: <code>C:\GodotProjects\g02-cave-runner</code> runs with <kbd>F5</kbd> and shows room 1. Main scene is <code>res://rooms/room_01.tscn</code>.</li>
+    <li>These names already exist and today's code depends on them: TileSet <code>res://tiles/cave_tileset.tres</code>, room root <code>Room01</code>, layers <code>Background</code>, <code>Decor</code>, <code>Ground</code>, <code>Hazards</code> (Hazards <kbd class="ui">Physics Quadrant Size</kbd> is <code>1</code>), player scene <code>res://player/player.tscn</code> with nodes <code>Sprite2D</code>, <code>CollisionShape2D</code>, <code>Camera2D</code>, group <code>player</code>, and the player instance in room 1 at position <code>112, 556</code>.</li>
+    <li>Input actions already exist: <code>move_left</code>, <code>move_right</code>, <code>jump</code>, <code>dash</code>, <code>pause</code>. Physics layer names: <code>world</code>, <code>player</code>, <code>enemies</code>, <code>player_attacks</code>, <code>enemy_attacks</code>, <code>pickups</code>, <code>triggers</code>.</li>
+    <li>Art is already in <code>res://assets/art/</code> (<code>player_sheet.png</code> 10 frames of 32x40, <code>slime_sheet.png</code> 3 frames of 32x28, <code>coin_sheet.png</code> 4 frames of 24x24, <code>orb.png</code> 24x24, <code>heart_full.png</code> and <code>heart_empty.png</code> 24x24). Do not download anything.</li>
+    <li><strong>Bring-up if you skipped Day 5:</strong> do Day 5 first. Today's scripts call <code>$Sprite2D</code>, <code>$Camera2D</code> and the <code>damage</code> custom data on the spike tile (atlas cell 5,0). There is no shortcut scene to paste.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+
+  <h3>One enum, one match</h3>
+  <p>A platformer character is always in exactly one mode. Dash ignores gravity. Hurt ignores input. Jump can become Fall, but it cannot also be Idle. An <code>enum</code> makes that exclusive, and <code>match</code> is the switch. This is the same idea as a Unity Animator state or an Unreal enum used to pick a movement function: one variable, a function per state, transitions written in one place.</p>
+  <p>Today's states:</p>
+  <table>
+    <tr><th>State</th><th>What it is allowed to do</th></tr>
+    <tr><td><code>IDLE</code> / <code>RUN</code></td><td>Ground acceleration, jump (coyote + buffer), dash if unlocked. Leaving the floor becomes <code>FALL</code>.</td></tr>
+    <tr><td><code>JUMP</code> / <code>FALL</code></td><td>Air control, jump-cut, one extra jump if <code>has_double_jump</code>, dash if unlocked. Touching the floor returns to ground.</td></tr>
+    <tr><td><code>DASH</code></td><td>Fixed horizontal speed, no gravity, for 0.16 s. Then <code>IDLE</code> or <code>FALL</code>.</td></tr>
+    <tr><td><code>HURT</code></td><td>Knockback velocity, input ignored. After 0.28 s, back to <code>IDLE</code> or <code>FALL</code>. At 0 hearts, respawn at the spot the player started.</td></tr>
+  </table>
+  <div class="callout tip"><span class="callout-title">Why not a child node per state?</span>
+    <p>Godot can do states as child nodes (each with its own script, the parent enables one). That scales when a state needs its own nodes. Cave Runner has six small states that all share one body, so an enum keeps the Day 5 movement maths in a single file you can read top to bottom. Later games in this course can use node states; do not mix the two styles in this project.</p></div>
+
+  <h3>Hurtbox and hitbox are both Area2D</h3>
+  <p>An <code>Area2D</code> detects overlaps. It does not push anything. The convention for the rest of Cave Runner:</p>
+  <ul>
+    <li><strong>Hurtbox</strong> (on the player): "I can be hit." Layer <code>player</code>, mask <code>enemy_attacks</code>. Its script listens to <code>area_entered</code>.</li>
+    <li><strong>Hitbox</strong> (on the slime): "I deal damage." Layer <code>enemy_attacks</code>, mask empty. It only needs to be <em>monitorable</em> so the hurtbox can see it.</li>
+  </ul>
+  <p>The player's <code>CharacterBody2D</code> still masks only <code>world</code>, so the slime's body (layer <code>enemies</code>, mask <code>world</code>) does not shove the player. Touch damage is the overlap of the two areas, not a body collision. Spikes are the exception: they are solid tiles, and the player reads the <code>damage</code> custom data Day 5 stored on that tile.</p>
+
+  <h3>Ability flags</h3>
+  <p>Dash and the second jump exist in the script from the start. Two bools, <code>has_dash</code> and <code>has_double_jump</code>, default to false. Orbs call <code>grant_ability</code>. A Metroidvania gate is a flag plus geometry that assumes the new move, not a second player scene.</p>
+
+  <h2 id="build-1">Block 2: Animations on the player</h2>
+  <p>The sheet <code>player_sheet.png</code> is 10 frames of 32x40. Frames: 0-1 idle, 2-5 run, 6 jump, 7 fall, 8 dash, 9 hurt. Day 5's script sets <code>frame</code> itself. You build the AnimationPlayer now; the new script in Block 3 takes over <code>frame</code>, and you delete that responsibility from the old code by replacing the whole file.</p>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Open the player scene.</strong> In the <kbd class="ui">FileSystem</kbd> dock (bottom-left) double-click <code>player/player.tscn</code>. The Scene dock shows <code>Player</code>, <code>Sprite2D</code>, <code>CollisionShape2D</code>, <code>Camera2D</code>.</li>
+    <li><strong>Confirm the sheet is sliced.</strong> Select <code>Sprite2D</code>. In the <kbd class="ui">Inspector</kbd>, <kbd class="ui">Animation &gt; Hframes</kbd> is <code>10</code> and <kbd class="ui">Vframes</kbd> is <code>1</code>. Changing <kbd class="ui">Frame</kbd> from 0 to 9 shows each pose. Leave <kbd class="ui">Frame</kbd> at 0.</li>
+    <li><strong>Add the AnimationPlayer.</strong> Select <code>Player</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>AnimationPlayer</code>, click <kbd class="ui">Create</kbd>. It is already named <code>AnimationPlayer</code>. Why this node: it stores named animations and can set <code>Sprite2D.frame</code> on a timeline. Leave it as a direct child of <code>Player</code>, a sibling of <code>Sprite2D</code>.</li>
+    <li><strong>Open the Animation panel.</strong> With <code>AnimationPlayer</code> selected, click the <kbd class="ui">Animation</kbd> tab in the bottom panel. Drag the panel's top edge up so you can see the toolbar. You should see an <kbd class="ui">Animation</kbd> button at the top of that panel.</li>
+    <li><strong>Create the idle animation.</strong> Click <kbd class="ui">Animation</kbd> &gt; <kbd class="ui">New</kbd>. Name it exactly <code>idle</code> and confirm. In the animation toolbar, set the length field (the spin box at the end of the timeline, in seconds) to <code>0.8</code>. Click the loop icon until it is in linear loop mode (the tooltip includes "Linear"; it repeats from the start). A ping-pong loop is the other icon; do not use it.</li>
+    <li><strong>Key frame 0 at time 0.</strong> Click the current-time field at the left of the timeline and type <code>0</code>. Select <code>Sprite2D</code> in the Scene dock. In the Inspector set <kbd class="ui">Frame</kbd> to <code>0</code>. Hover that <kbd class="ui">Frame</kbd> row and click the <strong>key icon</strong> on its right. The Animation panel gains a track for <code>Sprite2D</code> and a key at time 0. If you see no key icon, the Animation panel is not editing <code>idle</code>, or the preview is playing: press the stop button on the Animation toolbar and select <code>idle</code> in the animation dropdown.</li>
+    <li><strong>Key frame 1 at 0.4 s.</strong> Set the current time to <code>0.4</code>. Select <code>Sprite2D</code>, set <kbd class="ui">Frame</kbd> to <code>1</code>, click the key icon again.</li>
+    <li><strong>Make the frame track discrete.</strong> In the Animation panel click the <code>frame</code> track name so the Inspector shows the track. Set <kbd class="ui">Update Mode</kbd> to <code>Discrete</code>. Why: <code>frame</code> is an int. Continuous mode would blend 0 into 1 and flash wrong frames. Integer tracks often default to Discrete already; still check.</li>
+    <li><strong>Create the other five animations</strong> with the same clicks (Animation &gt; New, length, loop, keys, Discrete). Use this table. Single-frame clips get one key at time 0 and do not loop.
+      <table>
+        <tr><th>Name</th><th>Length</th><th>Loop</th><th>Keys (time → frame)</th></tr>
+        <tr><td><code>run</code></td><td>0.4</td><td>Linear</td><td>0→2, 0.1→3, 0.2→4, 0.3→5</td></tr>
+        <tr><td><code>jump</code></td><td>0.2</td><td>none</td><td>0→6</td></tr>
+        <tr><td><code>fall</code></td><td>0.2</td><td>none</td><td>0→7</td></tr>
+        <tr><td><code>dash</code></td><td>0.16</td><td>none</td><td>0→8</td></tr>
+        <tr><td><code>hurt</code></td><td>0.2</td><td>none</td><td>0→9</td></tr>
+      </table>
+      Names must match the script: lowercase, no spaces. Leave <kbd class="ui">Autoplay</kbd> on the AnimationPlayer empty (the script calls <code>play</code>).</li>
+    <li><strong>Preview run.</strong> Select <code>AnimationPlayer</code>, choose <code>run</code> in the animation dropdown, and click the play button on the Animation toolbar. The sprite cycles four run frames in the viewport. Press stop. Save with <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+  </ol>
+
+  <pre class="scene-tree">Player (CharacterBody2D)          [player.gd]
+├── Sprite2D                      hframes 10, player_sheet.png
+├── CollisionShape2D              RectangleShape2D 20 x 40
+├── Camera2D
+└── AnimationPlayer               idle, run, jump, fall, dash, hurt</pre>
+
+  <div class="checkpoint"><p>Stay in the editor for this check (do not press <kbd>F6</kbd> yet). The animation dropdown lists <code>idle</code>, <code>run</code>, <code>jump</code>, <code>fall</code>, <code>dash</code>, <code>hurt</code>. In the Animation panel, press Play on <code>run</code>: it cycles frames 2-5. Playing <code>dash</code> holds the stretched pose. <em>If frames smear between two poses,</em> that track's Update Mode is still Continuous. <em>If the whole sheet appears,</em> Hframes is not 10.</p></div>
+
+  <h2 id="build-2">Block 3: Hurtbox and the state machine</h2>
+  <ol class="steps">
+    <li><strong>Create the components folder.</strong> In the FileSystem dock, right-click <code>res://</code> &gt; <kbd class="ui">New Folder...</kbd> and create <code>components</code>. Also create <code>enemies</code>, <code>pickups</code> and <code>ui</code> the same way.</li>
+    <li><strong>Add the hurtbox to the player.</strong> Open <code>player.tscn</code>. Select <code>Player</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>. In the Create New Node dialog, search <code>Area2D</code>, click <kbd class="ui">Create</kbd>, press <kbd>F2</kbd>, and rename it <code>Hurtbox</code>. Why an area: it notices the slime's attack without becoming a second solid body.</li>
+    <li><strong>Shape the hurtbox.</strong> Select <code>Hurtbox</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>CollisionShape2D</code>. On that shape, <kbd class="ui">Shape</kbd> &gt; <kbd class="ui">New RectangleShape2D</kbd>, unfold it, set <kbd class="ui">Size</kbd> to <code>18</code> x <code>36</code>. Slightly smaller than the body so edges do not get tickled by a near miss.</li>
+    <li><strong>Set the hurtbox layers.</strong> Select <code>Hurtbox</code>. Inspector &gt; <kbd class="ui">Collision</kbd>. <kbd class="ui">Layer</kbd>: only bit 2 (<code>player</code>). <kbd class="ui">Mask</kbd>: only bit 5 (<code>enemy_attacks</code>). Hover the squares to read the names. Leave <kbd class="ui">Monitoring</kbd> and <kbd class="ui">Monitorable</kbd> on.</li>
+    <li><strong>Attach the hurtbox script.</strong> Right-click <code>Hurtbox</code> &gt; <kbd class="ui">Attach Script</kbd>. Path <code>res://components/hurtbox.gd</code>, click <kbd class="ui">Create</kbd>. In the script editor press <kbd>Ctrl</kbd>+<kbd>A</kbd> and replace the whole file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://components/hurtbox.gd">
+extends Area2D
+class_name Hurtbox
+
+func _ready() -> void:
+    area_entered.connect(_on_area_entered)
+
+
+func _on_area_entered(area: Area2D) -> void:
+    if area is Hitbox:
+        var hitbox := area as Hitbox
+        var player := owner as Player
+        if player != null:
+            player.take_damage(hitbox.damage, hitbox.global_position)
+      </script>
+      <code>owner</code> is the root of the scene this node was saved in, which is <code>Player</code>. <code>Hitbox</code> is a class you create in Block 4; Godot will not error on the type until that file exists, but do not run the game until the hitbox script from Block 4 is saved. If you want to run at the next checkpoint, save the hitbox script first (the next code block) even before the slime scene exists.</li>
+    <li><strong>Save an empty hitbox class now</strong> so the hurtbox parser can see <code>class_name Hitbox</code>. <kbd class="menu">Scene &gt; New Scene</kbd>, Other Node, <code>Area2D</code>, rename <code>Hitbox</code>. Right-click it &gt; <kbd class="ui">Attach Script</kbd>, path <code>res://components/hitbox.gd</code>. Replace the file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://components/hitbox.gd">
+extends Area2D
+class_name Hitbox
+
+@export var damage: int = 1
+      </script>
+      Add a child <code>CollisionShape2D</code> but leave <kbd class="ui">Shape</kbd> empty for now (each user of the scene sets it, or you set a default in Block 4). Select the <code>Hitbox</code> root. <kbd class="ui">Layer</kbd>: only bit 5 (<code>enemy_attacks</code>). <kbd class="ui">Mask</kbd>: clear every bit (it does not need to detect anything; the hurtbox detects it). <kbd class="ui">Monitoring</kbd> can stay on. <kbd class="ui">Monitorable</kbd> must stay on. Save as <code>res://components/hitbox.tscn</code>.</li>
+    <li><strong>Both ways to connect a signal, once.</strong> You already connected <code>area_entered</code> in code (<code>area_entered.connect(_on_area_entered)</code>). The editor way, which you will not also do (that would fire the function twice): select the node, open the <kbd class="ui">Node</kbd> tab beside the Inspector, open <kbd class="ui">Signals</kbd>, double-click the signal, pick the target node and the method, click <kbd class="ui">Connect</kbd>. For the rest of Cave Runner, connect in code.</li>
+    <li><strong>Replace the player script.</strong> Open <code>player.tscn</code>, select <code>Player</code>, click the script icon to open <code>res://player/player.gd</code>. <kbd>Ctrl</kbd>+<kbd>A</kbd>, delete, paste this whole file. It keeps Day 5's jump maths and adds states, health, coins and the two ability flags.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://player/player.gd">
+extends CharacterBody2D
+class_name Player
+
+signal health_changed(current: int, maximum: int)
+signal coins_changed(total: int)
+signal died
+
+enum State { IDLE, RUN, JUMP, FALL, DASH, HURT }
+
+@export_group("Run")
+@export var max_speed: float = 280.0
+@export var ground_acceleration: float = 2200.0
+@export var ground_friction: float = 2600.0
+@export var air_acceleration: float = 1500.0
+@export var air_friction: float = 500.0
+
+@export_group("Jump")
+@export var jump_height: float = 112.0
+@export var time_to_apex: float = 0.4
+@export var fall_gravity_multiplier: float = 1.6
+@export var jump_cut_multiplier: float = 0.4
+@export var max_fall_speed: float = 900.0
+@export var coyote_time: float = 0.1
+@export var jump_buffer_time: float = 0.12
+
+@export_group("Dash")
+@export var dash_speed: float = 620.0
+@export var dash_time: float = 0.16
+@export var dash_cooldown_time: float = 0.45
+
+@export_group("Health")
+@export var max_health: int = 3
+@export var hurt_time: float = 0.28
+@export var invuln_time: float = 0.85
+@export var knockback_speed: float = 260.0
+@export var knockback_up: float = -220.0
+
+@export_group("Debug")
+@export var start_with_dash: bool = false
+@export var start_with_double_jump: bool = false
+
+var health: int = 3
+var coins: int = 0
+var has_dash: bool = false
+var has_double_jump: bool = false
+var state: State = State.IDLE
+var facing: float = 1.0
+
+var _gravity: float = 0.0
+var _jump_velocity: float = 0.0
+var _coyote_timer: float = 0.0
+var _jump_buffer_timer: float = 0.0
+var _air_jumps_left: int = 0
+var _dash_left: float = 0.0
+var _dash_cooldown: float = 0.0
+var _hurt_timer: float = 0.0
+var _invuln_timer: float = 0.0
+var _dead_timer: float = 0.0
+var spawn_position: Vector2 = Vector2.ZERO
+
+@onready var sprite: Sprite2D = $Sprite2D
+@onready var camera: Camera2D = $Camera2D
+@onready var anim_player: AnimationPlayer = $AnimationPlayer
+
+
+func _ready() -> void:
+    health = max_health
+    spawn_position = global_position
+    has_dash = start_with_dash
+    has_double_jump = start_with_double_jump
+    _gravity = 2.0 * jump_height / (time_to_apex * time_to_apex)
+    _jump_velocity = -2.0 * jump_height / time_to_apex
+    health_changed.emit(health, max_health)
+    coins_changed.emit(coins)
+
+
+func _process(_delta: float) -> void:
+    var alpha: float = 1.0
+    if _invuln_timer > 0.0 and int(Time.get_ticks_msec() / 80) % 2 == 0:
+        alpha = 0.35
+    sprite.modulate = Color(1, 1, 1, alpha)
+
+
+func _physics_process(delta: float) -> void:
+    var input_x: float = Input.get_axis("move_left", "move_right")
+    _tick_timers(delta)
+    match state:
+        State.IDLE, State.RUN:
+            _ground_locomotion(input_x, delta)
+        State.JUMP, State.FALL:
+            _air_locomotion(input_x, delta)
+        State.DASH:
+            _dash_locomotion()
+        State.HURT:
+            _hurt_locomotion(delta)
+    move_and_slide()
+    _check_hazards()
+    _play_animation()
+
+
+func grant_ability(id: StringName) -> void:
+    if id == &"dash":
+        has_dash = true
+        print("Ability: dash")
+    elif id == &"double_jump":
+        has_double_jump = true
+        if not is_on_floor():
+            _air_jumps_left = maxi(_air_jumps_left, 1)
+        print("Ability: double jump")
+
+
+func add_coins(amount: int) -> void:
+    coins += amount
+    coins_changed.emit(coins)
+
+
+func take_damage(amount: int, from_global: Vector2) -> void:
+    if amount <= 0 or health <= 0 or _invuln_timer > 0.0:
+        return
+    health -= amount
+    health_changed.emit(health, max_health)
+    var away: float = signf(global_position.x - from_global.x)
+    if away == 0.0:
+        away = -facing
+    facing = away
+    velocity = Vector2(away * knockback_speed, knockback_up)
+    state = State.HURT
+    _hurt_timer = hurt_time
+    _invuln_timer = invuln_time
+    if health <= 0:
+        _dead_timer = 0.55
+        died.emit()
+
+
+func _tick_timers(delta: float) -> void:
+    if is_on_floor():
+        _coyote_timer = coyote_time
+    else:
+        _coyote_timer = maxf(_coyote_timer - delta, 0.0)
+    if Input.is_action_just_pressed("jump"):
+        _jump_buffer_timer = jump_buffer_time
+    else:
+        _jump_buffer_timer = maxf(_jump_buffer_timer - delta, 0.0)
+    _dash_cooldown = maxf(_dash_cooldown - delta, 0.0)
+    _invuln_timer = maxf(_invuln_timer - delta, 0.0)
+    if state == State.DASH:
+        _dash_left = maxf(_dash_left - delta, 0.0)
+
+
+func _ground_locomotion(input_x: float, delta: float) -> void:
+    if not is_on_floor():
+        state = State.FALL
+        _air_locomotion(input_x, delta)
+        return
+    _air_jumps_left = 1 if has_double_jump else 0
+    if input_x != 0.0:
+        facing = signf(input_x)
+    if _try_dash():
+        return
+    _handle_horizontal(input_x, delta)
+    if _try_buffered_jump():
+        state = State.JUMP
+    elif absf(velocity.x) > 20.0:
+        state = State.RUN
+    else:
+        state = State.IDLE
+
+
+func _air_locomotion(input_x: float, delta: float) -> void:
+    if is_on_floor():
+        _ground_locomotion(input_x, delta)
+        return
+    if input_x != 0.0:
+        facing = signf(input_x)
+    if _try_dash():
+        return
+    _apply_gravity(delta)
+    _handle_jump_cut()
+    if Input.is_action_just_pressed("jump") and has_double_jump and _air_jumps_left > 0:
+        velocity.y = _jump_velocity
+        _air_jumps_left -= 1
+        state = State.JUMP
+    elif velocity.y >= 0.0:
+        state = State.FALL
+    else:
+        state = State.JUMP
+    _handle_horizontal(input_x, delta)
+
+
+func _dash_locomotion() -> void:
+    velocity = Vector2(facing * dash_speed, 0.0)
+    if _dash_left <= 0.0:
+        state = State.IDLE if is_on_floor() else State.FALL
+
+
+func _hurt_locomotion(delta: float) -> void:
+    _apply_gravity(delta)
+    velocity.x = move_toward(velocity.x, 0.0, 700.0 * delta)
+    if health <= 0:
+        _dead_timer -= delta
+        if _dead_timer <= 0.0:
+            _respawn()
+        return
+    _hurt_timer -= delta
+    if _hurt_timer <= 0.0:
+        state = State.IDLE if is_on_floor() else State.FALL
+
+
+func _try_dash() -> bool:
+    if not has_dash or _dash_cooldown > 0.0:
+        return false
+    if not Input.is_action_just_pressed("dash"):
+        return false
+    var dir: float = Input.get_axis("move_left", "move_right")
+    if dir == 0.0:
+        dir = facing
+    facing = dir
+    velocity = Vector2(dir * dash_speed, 0.0)
+    _dash_left = dash_time
+    _dash_cooldown = dash_cooldown_time
+    state = State.DASH
+    return true
+
+
+func _try_buffered_jump() -> bool:
+    if _jump_buffer_timer <= 0.0 or _coyote_timer <= 0.0:
+        return false
+    velocity.y = _jump_velocity
+    _jump_buffer_timer = 0.0
+    _coyote_timer = 0.0
+    return true
+
+
+func _handle_jump_cut() -> void:
+    if Input.is_action_just_released("jump") and velocity.y < 0.0:
+        velocity.y *= jump_cut_multiplier
+
+
+func _apply_gravity(delta: float) -> void:
+    if is_on_floor() and velocity.y >= 0.0:
+        return
+    var gravity_now: float = _gravity
+    if velocity.y > 0.0:
+        gravity_now *= fall_gravity_multiplier
+    velocity.y = minf(velocity.y + gravity_now * delta, max_fall_speed)
+
+
+func _handle_horizontal(input_x: float, delta: float) -> void:
+    var accel: float = ground_acceleration if is_on_floor() else air_acceleration
+    var friction: float = ground_friction if is_on_floor() else air_friction
+    if input_x != 0.0:
+        velocity.x = move_toward(velocity.x, input_x * max_speed, accel * delta)
+    else:
+        velocity.x = move_toward(velocity.x, 0.0, friction * delta)
+
+
+func _check_hazards() -> void:
+    for i: int in get_slide_collision_count():
+        var collision := get_slide_collision(i)
+        var collider: Object = collision.get_collider()
+        if collider is not TileMapLayer:
+            continue
+        var layer := collider as TileMapLayer
+        var coords: Vector2i = layer.get_coords_for_body_rid(collision.get_collider_rid())
+        var data: TileData = layer.get_cell_tile_data(coords)
+        if data == null:
+            continue
+        var raw: Variant = data.get_custom_data("damage")
+        if typeof(raw) != TYPE_INT and typeof(raw) != TYPE_FLOAT:
+            continue
+        var damage: int = int(raw)
+        if damage > 0:
+            take_damage(damage, collision.get_position())
+            return
+
+
+func _play_animation() -> void:
+    sprite.flip_h = facing < 0.0
+    var anim: StringName = &"idle"
+    match state:
+        State.RUN:
+            anim = &"run"
+        State.JUMP:
+            anim = &"jump"
+        State.FALL:
+            anim = &"fall"
+        State.DASH:
+            anim = &"dash"
+        State.HURT:
+            anim = &"hurt"
+        _:
+            anim = &"idle"
+    if anim_player.current_animation != anim:
+        anim_player.play(anim)
+
+
+func _respawn() -> void:
+    health = max_health
+    global_position = spawn_position
+    velocity = Vector2.ZERO
+    state = State.IDLE
+    _hurt_timer = 0.0
+    _dead_timer = 0.0
+    _invuln_timer = invuln_time
+    health_changed.emit(health, max_health)
+      </script>
+    </li>
+    <li><strong>Turn the debug flags on for one test.</strong> Save the script (<kbd>Ctrl</kbd>+<kbd>S</kbd>). Select <code>Player</code> in <code>player.tscn</code>. In the Inspector open <kbd class="ui">Debug</kbd> and tick <kbd class="ui">Start With Dash</kbd> and <kbd class="ui">Start With Double Jump</kbd>. These are temporary. You will turn them off after the orbs exist. Save the scene.</li>
+    <li><strong>Run room 1.</strong> Open the <code>room_01.tscn</code> tab and press <kbd>F6</kbd>. Run, jump, tap versus hold jump. In the air, press jump again (second jump). Press <kbd>Shift</kbd> or <kbd>K</kbd> to dash. Dash should ignore gravity for a short burst, then you fall.</li>
+  </ol>
+
+  <div class="checkpoint"><p>Press <kbd>F6</kbd> with <code>room_01.tscn</code> open. The run animation plays while you move, idle blinks between two frames when you stand, jump and fall poses swap at the apex, dash shows the stretched frame. A second jump works in the air. Shift dashes. Output has no errors. <em>If you see "Animation not found"</em>, an animation name in the player does not match the table (check spelling and case). <em>If Shift does nothing</em>, <kbd class="ui">Start With Dash</kbd> is off, or the <code>dash</code> action is missing. <em>If the sprite faces the wrong way after a dash</em>, that is <code>facing</code>; walk the other direction and it should catch up.</p></div>
+
+  <div class="callout note"><span class="callout-title">One move_and_slide, after the match</span>
+    <p><code>play()</code> applies on the AnimationPlayer's next process. Facing is applied every frame in <code>_play_animation</code> by setting <code>flip_h</code>, which does not depend on the animation, so you do not get a one-frame pose glitch. Do not set <code>Sprite2D.frame</code> from this script anymore; the AnimationPlayer owns it. There is still exactly one <code>move_and_slide()</code> per physics frame.</p></div>
+
+  <h2 id="build-3">Block 4: Spikes, knockback, and the slime</h2>
+  <p>Spike damage is already in <code>_check_hazards</code>. After <code>move_and_slide()</code>, each slide collision against a <code>TileMapLayer</code> is turned into a cell with <code>get_coords_for_body_rid</code>. That cell's <code>TileData.get_custom_data("damage")</code> is the int you set on the spike tile. Rock tiles return 0. The Hazards layer's quadrant size of 1 (set on Day 5) is what makes the cell exact. Standing on spikes calls <code>take_damage</code> once, then the invulnerability timer ignores the next overlaps for 0.85 s while the sprite flickers.</p>
+  <ol class="steps">
+    <li><strong>Finish the hitbox shape.</strong> Open <code>components/hitbox.tscn</code>. Select the child <code>CollisionShape2D</code>. <kbd class="ui">Shape</kbd> &gt; <kbd class="ui">New RectangleShape2D</kbd>, size <code>28</code> x <code>16</code>. Save.</li>
+    <li><strong>Create the slime scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>. Other Node &gt; <code>CharacterBody2D</code> &gt; Create. Rename it <code>Slime</code>. Save as <code>res://enemies/slime.tscn</code>.</li>
+    <li><strong>Sprite.</strong> Add a child <code>Sprite2D</code>. Drag <code>assets/art/slime_sheet.png</code> onto <kbd class="ui">Texture</kbd>. Set <kbd class="ui">Hframes</kbd> to <code>3</code> and <kbd class="ui">Vframes</kbd> to <code>1</code>. Frames: 0 tall, 1 squashed, 2 flat (the flat frame is for the challenge; the script cycles 0 and 1).</li>
+    <li><strong>Body shape.</strong> Add a child <code>CollisionShape2D</code> to <code>Slime</code>. New <code>RectangleShape2D</code>, size <code>26</code> x <code>14</code>. Set this shape's <kbd class="ui">Position</kbd> to <code>0</code>, <code>7</code> so the bottom of the box lines up with the bottom of the 28 px sprite (the sprite is centred, so the feet are 14 px below the origin).</li>
+    <li><strong>Slime layers and group.</strong> Select <code>Slime</code>. <kbd class="ui">Collision &gt; Layer</kbd>: only bit 3 (<code>enemies</code>). <kbd class="ui">Mask</kbd>: only bit 1 (<code>world</code>). It stands on tiles and does not push the player. Node tab &gt; <kbd class="ui">Groups</kbd> &gt; type <code>enemies</code> &gt; <kbd class="ui">Add</kbd>.</li>
+    <li><strong>Instance the hitbox.</strong> Select <code>Slime</code>. In the Scene dock click the chain icon (Instantiate Child Scene), choose <code>res://components/hitbox.tscn</code>, click <kbd class="ui">Open</kbd>. The instance is named <code>Hitbox</code>. Set its <kbd class="ui">Position</kbd> to <code>0</code>, <code>6</code> so the box sits on the body. Confirm the instance still shows layer <code>enemy_attacks</code> only. The root export <kbd class="ui">Damage</kbd> stays <code>1</code>.</li>
+    <li><strong>Add the floor ray.</strong> Select <code>Slime</code>, add a child <code>RayCast2D</code>, rename it <code>FloorRay</code>. Why: a ray is a one-pixel question, "is there floor in front of my feet?" In the Inspector leave <kbd class="ui">Enabled</kbd> on. <kbd class="ui">Target Position</kbd> is set from code each frame; set it now to <code>0</code>, <code>22</code> so you can see the arrow in the viewport. <kbd class="ui">Collision Mask</kbd>: only bit 1 (<code>world</code>). Leave <kbd class="ui">Exclude Parent</kbd> on (script name <code>exclude_parent</code>, default true) so the ray does not hit the slime itself. <kbd class="ui">Collide With Areas</kbd> off, <kbd class="ui">Collide With Bodies</kbd> on.</li>
+    <li><strong>Add the wall ray.</strong> Duplicate <code>FloorRay</code> (<kbd>Ctrl</kbd>+<kbd>D</kbd>) and rename the copy <code>WallRay</code>. Set <kbd class="ui">Target Position</kbd> to <code>18</code>, <code>0</code>. Same mask: only <code>world</code>.</li>
+    <li><strong>Attach the slime script.</strong> Right-click <code>Slime</code> &gt; <kbd class="ui">Attach Script</kbd>, path <code>res://enemies/slime.gd</code>. Replace the whole file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://enemies/slime.gd">
+extends CharacterBody2D
+
+@export var speed: float = 50.0
+@export var gravity: float = 1400.0
+@export var max_fall_speed: float = 900.0
+
+var direction: float = -1.0
+var _turn_lock: float = 0.0
+
+@onready var sprite: Sprite2D = $Sprite2D
+@onready var floor_ray: RayCast2D = $FloorRay
+@onready var wall_ray: RayCast2D = $WallRay
+
+
+func _physics_process(delta: float) -> void:
+    if is_on_floor():
+        velocity.y = 0.0
+    else:
+        velocity.y = minf(velocity.y + gravity * delta, max_fall_speed)
+    _turn_lock = maxf(_turn_lock - delta, 0.0)
+    _aim_rays()
+    var ledge: bool = is_on_floor() and not floor_ray.is_colliding()
+    var wall: bool = wall_ray.is_colliding()
+    if (ledge or wall) and _turn_lock <= 0.0:
+        direction *= -1.0
+        _turn_lock = 0.25
+        _aim_rays()
+    velocity.x = direction * speed
+    move_and_slide()
+    sprite.flip_h = direction < 0.0
+    sprite.frame = int(Time.get_ticks_msec() / 180) % 2
+
+
+func _aim_rays() -> void:
+    floor_ray.position = Vector2(12.0 * direction, 8.0)
+    floor_ray.target_position = Vector2(0.0, 22.0)
+    wall_ray.position = Vector2(0.0, 2.0)
+    wall_ray.target_position = Vector2(18.0 * direction, 0.0)
+    floor_ray.force_raycast_update()
+    wall_ray.force_raycast_update()
+      </script>
+      A raycast result is from the last physics frame unless you call <code>force_raycast_update()</code> after moving the ray. The 0.25 s lock stops the slime from vibrating when it is exactly on a corner.</li>
+    <li><strong>Place two slimes in room 1.</strong> Open <code>room_01.tscn</code>. Drag <code>enemies/slime.tscn</code> into the viewport twice (or instantiate twice). Select each instance and set <kbd class="ui">Position</kbd>: first <code>220</code>, <code>562</code> (left floor, feet on the tile surface at y = 576). Second <code>980</code>, <code>562</code> (floor between the spike strip and the pit). Rename them <code>Slime1</code> and <code>Slime2</code> if you like; the script does not care.</li>
+    <li><strong>Run and touch a slime.</strong> Press <kbd>F6</kbd> on <code>room_01.tscn</code>. Enable <kbd class="menu">Debug &gt; Visible Collision Shapes</kbd> so the rays draw while the game runs.</li>
+  </ol>
+
+  <pre class="scene-tree">Slime (CharacterBody2D)           [slime.gd]  group enemies
+├── Sprite2D                      slime_sheet.png, hframes 3
+├── CollisionShape2D              26 x 14 at (0, 7)
+├── Hitbox (Area2D)               instance of hitbox.tscn
+│   └── CollisionShape2D
+├── FloorRay (RayCast2D)          mask world, points down in front of the feet
+└── WallRay (RayCast2D)           mask world, points forward</pre>
+
+  <div class="checkpoint"><p>Press <kbd>F6</kbd> on <code>room_01.tscn</code>. Each slime walks, turns at the left wall or at a ledge, and does not fall off the floor. Touching one knocks the player back, plays <code>hurt</code>, and flickers the sprite. You cannot be hit again until the flicker stops. Walking onto the spike strip (columns 22-25) or dropping into the pit does the same. After three hits the player vanishes for a moment and reappears at the start with a full set of hearts (still invisible: the HUD is next). <em>If the slime flips every frame,</em> a ray is hitting the slime or the player: mask must be only <code>world</code>, Exclude Parent on. <em>If spikes do nothing,</em> Hazards quadrant size is not 1, or the spike tile's custom data <code>damage</code> is not 1. <em>If the player is pushed by the slime body,</em> the slime mask includes <code>player</code>; clear it.</p></div>
+
+  <h2 id="build-4">Block 5: Coins, orbs, hearts</h2>
+  <ol class="steps">
+    <li><strong>Coin scene.</strong> New scene, root <code>Area2D</code>, rename <code>Coin</code>. Add <code>Sprite2D</code>, texture <code>assets/art/coin_sheet.png</code>, <kbd class="ui">Hframes</kbd> <code>4</code>. Add <code>CollisionShape2D</code>, <kbd class="ui">New CircleShape2D</kbd>, <kbd class="ui">Radius</kbd> <code>10</code>. On <code>Coin</code>: <kbd class="ui">Layer</kbd> only bit 6 (<code>pickups</code>), <kbd class="ui">Mask</kbd> only bit 2 (<code>player</code>). Node tab &gt; Groups &gt; add <code>pickups</code>. Attach a script at <code>res://pickups/coin.gd</code> and replace it:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://pickups/coin.gd">
+extends Area2D
+
+@export var value: int = 1
+@export var pickup_id: StringName = &""
+
+@onready var sprite: Sprite2D = $Sprite2D
+
+
+func _ready() -> void:
+    body_entered.connect(_on_body_entered)
+
+
+func _process(_delta: float) -> void:
+    sprite.frame = int(Time.get_ticks_msec() / 120) % 4
+
+
+func _on_body_entered(body: Node2D) -> void:
+    if body is Player:
+        (body as Player).add_coins(value)
+        queue_free()
+      </script>
+      <code>pickup_id</code> is unused today. Day 7's save file uses it so a collected coin does not come back when you re-enter the room. Save the scene as <code>res://pickups/coin.tscn</code>.</li>
+    <li><strong>Ability orb scene.</strong> New scene, root <code>Area2D</code> named <code>AbilityOrb</code>. Child <code>Sprite2D</code>, texture <code>assets/art/orb.png</code>. Child <code>CollisionShape2D</code>, circle radius <code>12</code>. Layer only <code>pickups</code>, mask only <code>player</code>. Group <code>pickups</code>. Script <code>res://pickups/ability_orb.gd</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://pickups/ability_orb.gd">
+extends Area2D
+
+@export var ability_id: StringName = &"dash"
+@export var pickup_id: StringName = &""
+
+func _ready() -> void:
+    body_entered.connect(_on_body_entered)
+
+
+func _on_body_entered(body: Node2D) -> void:
+    if body is Player:
+        (body as Player).grant_ability(ability_id)
+        queue_free()
+      </script>
+      Save as <code>res://pickups/ability_orb.tscn</code>.</li>
+    <li><strong>Place coins.</strong> Open <code>room_01.tscn</code>. Instance <code>coin.tscn</code> five times. Set each <kbd class="ui">Position</kbd> and <kbd class="ui">Pickup Id</kbd> (Inspector, on the root of the instance):
+      <table>
+        <tr><th>Position</th><th>Pickup Id</th><th>Where it sits</th></tr>
+        <tr><td><code>256, 448</code></td><td><code>coin_r1_plank_a</code></td><td>above the lower plank</td></tr>
+        <tr><td><code>448, 340</code></td><td><code>coin_r1_plank_b</code></td><td>above the upper plank</td></tr>
+        <tr><td><code>720, 250</code></td><td><code>coin_r1_block</code></td><td>on the big block</td></tr>
+        <tr><td><code>640, 552</code></td><td><code>coin_r1_floor</code></td><td>floor before the spike strip</td></tr>
+        <tr><td><code>1360, 552</code></td><td><code>coin_r1_after_pit</code></td><td>floor after the pit</td></tr>
+      </table>
+      Type the id into the field without quotes. Godot stores it as a StringName.</li>
+    <li><strong>Place the two orbs.</strong> Instance <code>ability_orb.tscn</code> twice.
+      <table>
+        <tr><th>Name the instance</th><th>Position</th><th>Ability Id</th><th>Pickup Id</th><th>Sprite modulate</th></tr>
+        <tr><td><code>DashOrb</code></td><td><code>800, 250</code></td><td><code>dash</code></td><td><code>orb_dash</code></td><td>select the child Sprite2D, <kbd class="ui">Visibility &gt; Modulate</kbd>, hex <code>66E6FF</code></td></tr>
+        <tr><td><code>JumpOrb</code></td><td><code>1360, 500</code></td><td><code>double_jump</code></td><td><code>orb_double_jump</code></td><td>modulate hex <code>FFD166</code></td></tr>
+      </table>
+      <code>ability_id</code> must be exactly <code>dash</code> or <code>double_jump</code>. Those are the only strings <code>grant_ability</code> understands. The dash orb is on the big block. The double-jump orb is on the floor after the pit, just before the right-hand opening (rows 15-17 of column 47), which becomes the exit on Day 7.</li>
+    <li><strong>Turn the debug flags off.</strong> Open <code>player.tscn</code>, select <code>Player</code>, clear <kbd class="ui">Start With Dash</kbd> and <kbd class="ui">Start With Double Jump</kbd>. Save. From now on those moves come only from the orbs.</li>
+    <li><strong>Build the hearts HUD.</strong> New scene, Other Node, <code>CanvasLayer</code>, rename <code>HeartsHud</code>. A CanvasLayer draws in screen space, on top of the camera, which is why a health bar is not a child of the player sprite. Set <kbd class="ui">Layer</kbd> to <code>1</code>.</li>
+    <li><strong>Margin and row.</strong> Add a child <code>MarginContainer</code>. With it selected, in the 2D viewport toolbar open the anchor preset control and choose <kbd class="ui">Top Left</kbd>. In the Inspector set the four <kbd class="ui">Offset</kbd> values so Left is <code>16</code>, Top is <code>16</code>, Right is <code>220</code>, Bottom is <code>48</code> (the container is 204 by 32). Add a child <code>HBoxContainer</code>, rename it <code>Row</code>. Set its <kbd class="ui">Theme Overrides &gt; Constants &gt; Separation</kbd> to <code>6</code> (add the constant override with the property's override button if the row is empty).</li>
+    <li><strong>Three hearts and a label.</strong> Under <code>Row</code>, add three <code>TextureRect</code> nodes named <code>Heart1</code>, <code>Heart2</code>, <code>Heart3</code>. On each: drag <code>heart_full.png</code> onto <kbd class="ui">Texture</kbd>, set <kbd class="ui">Custom Minimum Size</kbd> to <code>24</code> x <code>24</code>, <kbd class="ui">Expand Mode</kbd> to <code>Ignore Size</code>, <kbd class="ui">Stretch Mode</kbd> to <code>Keep</code>. Add a <code>Label</code> named <code>CoinLabel</code>, text <code>Coins: 0</code>. In the Inspector, under the label's <kbd class="ui">Control</kbd> section, tick the layout so it stays in the row (defaults are fine). Right-click <code>CoinLabel</code> in the Scene dock &gt; <kbd class="ui">Access as Unique Name</kbd>. A <code>%</code> appears beside the name. Unique names are addressed as <code>%CoinLabel</code> from the scene root, which survives moving the label later. Do the same for <code>Heart1</code>, <code>Heart2</code> and <code>Heart3</code>.</li>
+    <li><strong>HUD script.</strong> Attach <code>res://ui/hearts_hud.gd</code> to <code>HeartsHud</code>. Replace the file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://ui/hearts_hud.gd">
+extends CanvasLayer
+
+@onready var heart_1: TextureRect = %Heart1
+@onready var heart_2: TextureRect = %Heart2
+@onready var heart_3: TextureRect = %Heart3
+@onready var coin_label: Label = %CoinLabel
+
+var _full: Texture2D = preload("res://assets/art/heart_full.png")
+var _empty: Texture2D = preload("res://assets/art/heart_empty.png")
+
+
+func _ready() -> void:
+    var found: Node = get_tree().get_first_node_in_group(&"player")
+    if found is not Player:
+        return
+    var player := found as Player
+    player.health_changed.connect(_on_health_changed)
+    player.coins_changed.connect(_on_coins_changed)
+    _on_health_changed(player.health, player.max_health)
+    _on_coins_changed(player.coins)
+
+
+func _on_health_changed(current: int, maximum: int) -> void:
+    var hearts: Array[TextureRect] = [heart_1, heart_2, heart_3]
+    for i: int in hearts.size():
+        var filled: bool = i < current
+        hearts[i].texture = _full if filled else _empty
+        hearts[i].visible = i < maximum
+
+
+func _on_coins_changed(total: int) -> void:
+    coin_label.text = "Coins: %d" % total
+      </script>
+      Save as <code>res://ui/hearts_hud.tscn</code>.</li>
+    <li><strong>Put the HUD in the room.</strong> Open <code>room_01.tscn</code>, select <code>Room01</code>, instantiate <code>ui/hearts_hud.tscn</code>. It appears as <code>HeartsHud</code>. Save. Press <kbd>F5</kbd> (main scene is still room 1).</li>
+  </ol>
+
+  <pre class="scene-tree">HeartsHud (CanvasLayer)           [hearts_hud.gd]  layer 1
+└── MarginContainer
+    └── Row (HBoxContainer)
+        ├── Heart1 (TextureRect)  %Heart1
+        ├── Heart2 (TextureRect)  %Heart2
+        ├── Heart3 (TextureRect)  %Heart3
+        └── CoinLabel (Label)     %CoinLabel</pre>
+
+  <div class="checkpoint"><p>Press <kbd>F5</kbd>. Three red hearts sit at the top-left of the window and stay there when the camera moves. Touching a slime or spikes turns the rightmost heart into the empty heart, then the middle, then the last, then you respawn at the Day 5 start (<code>112, 556</code>) with three hearts again. Coins spin and disappear; the label counts them. Before the cyan orb, Shift does nothing. After it, Shift dashes, and the Output panel prints <code>Ability: dash</code>. After the gold orb, a second jump works in the air and Output prints <code>Ability: double jump</code>. <em>If the HUD is blank,</em> the player group is missing, or a unique name was not ticked (the script's <code>%</code> paths fail in the debugger). <em>If hearts do not change,</em> you instanced the HUD into the player scene instead of the room, and <code>_ready</code> ran before the player was in the group: move the instance onto <code>Room01</code>.</p></div>
+
+  <div class="callout warn"><span class="callout-title">Leave the debug flags off</span>
+    <p>If <kbd class="ui">Start With Dash</kbd> is still ticked, you cannot tell whether the orb worked. The flag and the orb both end at the same bool. Day 7 deletes those two exports and reads the flags from the <code>GameState</code> autoload instead.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Two scripts fighting over <code>frame</code>.</strong> The Day 5 <code>_update_sprite</code> function is gone because you replaced the file. If you merged by hand and left it in, the AnimationPlayer and that function take turns and the sprite strobes.</li>
+    <li><strong>Calling <code>move_and_slide()</code> inside a state function and again after the match.</strong> The body moves twice per frame and tunnels. The listing calls it once, after <code>match</code>.</li>
+    <li><strong>Hurtbox mask left at the default (bit 1, <code>world</code>).</strong> It detects tiles, not the slime's hitbox, so contact does nothing. Layer and mask are different rows.</li>
+    <li><strong>Hitbox layer left at bit 1.</strong> The hurtbox is looking for <code>enemy_attacks</code>. Both sides have to agree.</li>
+    <li><strong>Connecting <code>area_entered</code> in the editor and in <code>_ready</code>.</strong> One touch deals two damage. Use only the code connection.</li>
+    <li><strong>RayCast mask includes <code>enemies</code> or <code>player</code>, or Exclude Parent is off.</strong> The slime sees itself and spins in place.</li>
+    <li><strong>Forgetting <code>force_raycast_update</code> after moving the ray.</strong> The turn happens one frame late and, on a thin ledge, one frame late is already off the cliff.</li>
+    <li><strong>Spike cell is wrong.</strong> <code>get_coords_for_body_rid</code> returns the physics quadrant, not the tile, unless <kbd class="ui">Physics Quadrant Size</kbd> on Hazards is 1.</li>
+    <li><strong>Animation names differ by a capital letter.</strong> <code>play()</code> does not fuzzy-match. The Output line is <code>Animation not found</code>.</li>
+    <li><strong>Player mask changed to include enemies.</strong> The bodies collide and the slime pushes you. Keep the body mask at <code>world</code> only. Damage is the areas' job.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, about 25 min)</h2>
+  <div class="challenge">
+    <h3>Stomp the slime</h3>
+    <p>Falling onto a slime should bounce you and remove the slime, instead of hurting you. Use frame 2 of <code>slime_sheet.png</code> for a short squash before <code>queue_free()</code>.</p>
+    <details><summary>Hint</summary>
+      <p>In the hurtbox handler, if the player <code>state</code> is not <code>HURT</code> and <code>velocity.y &gt; 0</code> and <code>player.global_position.y &lt; area.global_position.y</code>, call a new <code>stomp()</code> on the slime (<code>area.owner</code> when the hitbox scene is instanced under the slime) and set <code>player.velocity.y</code> to the jump velocity. Give the slime <code>class_name Slime</code> so the check is typed. Do not also call <code>take_damage</code> on that path. The flat sprite is <code>sprite.frame = 2</code>; wait with <code>await get_tree().create_timer(0.12).timeout</code> before freeing. Disabling the hitbox shape for that wait needs <code>set_deferred("disabled", true)</code> if you do it inside the area callback.</p>
+    </details>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>Why does this player use one <code>enum State</code> and a <code>match</code>, instead of six independent bools?</p>
+      <ul>
+        <li>Godot 4 removed bool variables on nodes</li>
+        <li>Exactly one state is active, so dash cannot also run the ground acceleration code in the same frame</li>
+        <li>Enums are the only way to call <code>move_and_slide()</code></li>
+        <li><code>match</code> is required for <code>AnimationPlayer</code></li>
+      </ul>
+      <p class="explain">The point of the enum is exclusivity. Each branch owns its rules, and transitions are assignments to <code>state</code>. Node-per-state is a valid alternative; this project committed to the enum.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>The slime overlaps the player and nothing happens. Which pairing is the one this project uses?</p>
+      <ul>
+        <li>Player body mask includes <code>enemies</code>, slime body layer is <code>enemies</code></li>
+        <li>Both areas are on layer <code>world</code></li>
+        <li>Hurtbox masks <code>enemy_attacks</code> and listens to <code>area_entered</code>; the hitbox's layer is <code>enemy_attacks</code> and it is monitorable</li>
+        <li>The hitbox calls <code>move_and_slide()</code></li>
+      </ul>
+      <p class="explain">Areas detect overlaps when the detector's mask includes the other area's layer, monitoring is on, and the other area is monitorable. The bodies are deliberately not colliding with each other.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>You changed <code>FloorRay.target_position</code> this frame and immediately read <code>is_colliding()</code>. What do you call first?</p>
+      <ul>
+        <li><code>force_raycast_update()</code></li>
+        <li><code>move_and_slide()</code> on the ray</li>
+        <li>Nothing; rays query on demand when you read them</li>
+        <li><code>queue_free()</code> on the ray</li>
+      </ul>
+      <p class="explain">A RayCast2D stores the hit it found on the physics frame. After you move it, <code>force_raycast_update()</code> recomputes now.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>Standing on the spike tile hurts once, then not again until the flicker ends. What stops the second hit?</p>
+      <ul>
+        <li>Tile custom data only works on the first frame</li>
+        <li><code>move_and_slide()</code> disables the tile</li>
+        <li>The Hazards layer deletes the cell</li>
+        <li><code>_invuln_timer</code> makes <code>take_damage</code> return immediately</li>
+      </ul>
+      <p class="explain">The tile stays solid and keeps reporting <code>damage == 1</code>. The timer is the cooldown. Without it, three hearts would vanish in three physics frames.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Which value on the spike tile decides how many hearts a touch costs?</p>
+      <ul>
+        <li>The tile's atlas coordinates alone</li>
+        <li>Custom data layer <code>damage</code>, read with <code>TileData.get_custom_data("damage")</code></li>
+        <li>The TileMapLayer's <code>modulate</code></li>
+        <li><code>collision_layer</code> bit 5</li>
+      </ul>
+      <p class="explain">Day 5 added an int custom data layer named <code>damage</code> and set it to 1 on atlas cell (5, 0). Rock tiles stay at 0, so walking on the floor does not hurt.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/2d/2d_sprite_animation.html" target="_blank" rel="noopener">2D sprite animation</a>: the AnimationPlayer plus sprite-sheet workflow this day follows (key icon, length, loop).</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_animationplayer.html" target="_blank" rel="noopener">AnimationPlayer</a>: <code>play()</code>, <code>current_animation</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_area2d.html" target="_blank" rel="noopener">Area2D</a>: <code>area_entered</code>, <code>body_entered</code>, monitoring and monitorable.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_raycast2d.html" target="_blank" rel="noopener">RayCast2D</a>: <code>target_position</code>, <code>is_colliding()</code>, <code>force_raycast_update()</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_tilemaplayer.html" target="_blank" rel="noopener">TileMapLayer</a>: <code>get_coords_for_body_rid</code>, <code>get_cell_tile_data</code>, quadrant size.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_tiledata.html" target="_blank" rel="noopener">TileData</a>: <code>get_custom_data</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/physics/physics_introduction.html" target="_blank" rel="noopener">Physics introduction</a>: layers, masks, areas versus bodies.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_characterbody2d.html" target="_blank" rel="noopener">CharacterBody2D</a>: <code>get_slide_collision</code> after <code>move_and_slide()</code>.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li><kbd>F5</kbd> on room 1 shows the run, and the Output panel stays empty.</li>
+    <li>With both debug flags off, dash and the second jump work only after the matching orb, and each orb prints one line.</li>
+    <li>Slimes patrol and turn at walls and ledges. Contact and spike tiles remove hearts, knock the player back, and flicker them.</li>
+    <li>Three hits respawn the player at the room start with full hearts. Coins increase the HUD label.</li>
+    <li>The hearts stay pinned to the screen while the camera follows.</li>
+    <li>I zipped or committed <code>C:\GodotProjects\g02-cave-runner</code>.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> Day 7 adds a second room, per-room camera limits, parallax, 2D lights and occluders, a <code>GameState</code> autoload that saves coins, health, abilities and the checkpoint to <code>user://</code>, plus pause and a win screen. The main scene stops being <code>room_01.tscn</code>.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

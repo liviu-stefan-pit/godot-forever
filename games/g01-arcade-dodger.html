@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game 1 - Arcade Dodger | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="game" data-id="g01" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Training game 1 · 2D · Arcade</div>
+    <h1>Arcade Dodger</h1>
+    <p class="lead">A portrait dodge game in the shape of the official "Dodge the Creeps!" tutorial. You steer a character around a 480×720 field, survive as long as you can, and the creeps get faster. The project is <code>C:\GodotProjects\g01-dodger</code>. Days 3 and 4 are the build; this page is the design you are aiming at.</p>
+    <div class="chips"><span class="chip blue">Built on Days 3–4</span><span class="chip green">Area2D, RigidBody2D, CanvasLayer, GPUParticles2D</span></div>
+  </header>
+
+  <h2 id="design">Game design</h2>
+  <p>One screen, no levels. The player starts near the bottom center. Creeps spawn on the edges and fly inward. Every second alive is one point. Touching a creep ends the run. There is no win: the difficulty ramp caps, and the longest life is the score that matters.</p>
+  <table>
+    <thead><tr><th></th><th>What the player gets</th></tr></thead>
+    <tbody>
+      <tr><td>Move</td><td>Actions <code>move_left</code>, <code>move_right</code>, <code>move_up</code>, <code>move_down</code>. Each has an arrow key and WASD. <code>Input.get_vector</code> keeps diagonals at the same speed. Position is clamped to the 480×720 screen.</td></tr>
+      <tr><td>Start</td><td>The <kbd class="ui">Start</kbd> button, or <kbd>Enter</kbd> via the <code>start_game</code> action on that button's shortcut.</td></tr>
+      <tr><td>Pause</td><td><kbd>Esc</kbd>, the built-in action <code>ui_cancel</code>. Only while a round is running. Second press resumes.</td></tr>
+      <tr><td>Lose</td><td>A mob overlaps the player. The player hides, the screen shakes, music stops, the death sound plays, then "Game Over" or "New best!".</td></tr>
+      <tr><td>Score</td><td>+1 per second from <code>ScoreTimer</code>. Every 5 points is one level: spawn wait drops by 0.03 s (floor 0.20 s) and mob speed gains 12 px/s (cap +150). Player speed stays 400 px/s, so at the cap the fastest creeps match the player.</td></tr>
+      <tr><td>Best</td><td>Saved at the moment it changes, shown on the title screen, cleared only after a two-click confirm.</td></tr>
+    </tbody>
+  </table>
+  <p>Keyboard is the required control set. Gamepad and touch are stretch goals. The window is portrait on purpose (the same 480×720, <code>canvas_items</code>, <code>keep</code> setup as the official tutorial), with the Mobile renderer so later 2D games match it.</p>
+
+  <h2 id="scope">Scope: what "done" means</h2>
+  <p>Training-game minimum. When every line is true in <code>g01-dodger</code>, Dodger is finished. Day 4's wrap-up is this list, played and exported.</p>
+  <ul class="checklist">
+    <li>Project <code>g01-dodger</code>, Mobile renderer, viewport 480×720, stretch mode <code>canvas_items</code>, aspect <code>keep</code>, main scene <code>main.tscn</code>.</li>
+    <li>Player is an <code>Area2D</code> on layer 2 (<code>player</code>) with mask 3 (<code>enemies</code>), moves with the four <code>move_*</code> actions, and clamps to the screen.</li>
+    <li>Walk and up animations play only while moving, and the sprite flips with direction.</li>
+    <li>Mobs are <code>RigidBody2D</code> on layer 3 with no mask and gravity scale 0. Each picks fly, swim, or walk at random.</li>
+    <li>Mobs spawn on a clockwise <code>MobPath</code>, fly inward, and <code>queue_free</code> when <code>VisibleOnScreenNotifier2D</code> fires <code>screen_exited</code>.</li>
+    <li>The first overlap ends the run: <code>body_entered</code> emits <code>hit</code>, and the collision shape is disabled with <code>set_deferred</code>.</li>
+    <li>Score increases by 1 per second. The HUD shows it with a short scale pop.</li>
+    <li>HUD is a <code>CanvasLayer</code> (process mode Always): score, best, message, Start, and Reset best score, using <code>game_theme.tres</code> and Xolonium.</li>
+    <li>Start (button or Enter) hides the buttons, shows "Get Ready", and a restart clears every node in the <code>mobs</code> group.</li>
+    <li>Game over shows "Game Over" or "New best!", then the title and the buttons return.</li>
+    <li>Juice: message tweens, a <code>GPUParticles2D</code> trail while the player moves, camera shake on death, looping music, and a death sound.</li>
+    <li>Difficulty ramp matches the table in Day 4 (wait floor 0.20 s, speed bonus cap +150).</li>
+    <li>Best score is stored with <code>ConfigFile</code> at <code>user://dodger.cfg</code> by the <code>HighScore</code> class (static functions, not an autoload) and survives an exported exe.</li>
+    <li>Esc pauses and resumes during a round. A Windows Desktop release export (<code>Dodger.exe</code> plus <code>Dodger.pck</code>, <kbd class="ui">Export With Debug</kbd> off) runs from Explorer.</li>
+  </ul>
+
+  <h2 id="architecture">Architecture</h2>
+  <p><code>Main</code> calls down into the player, the HUD, and the timers. The player and the HUD never call <code>Main</code>; they emit signals. <code>HighScore</code> is <code>class_name HighScore</code> on a <code>RefCounted</code> script with <code>static func</code> only. Nothing is registered under Project Settings &gt; Globals &gt; Autoload.</p>
+
+  <h3>Player</h3>
+  <pre class="scene-tree">Player (Area2D)                 [player.gd]   class_name Player
+├── AnimatedSprite2D            scale 0.5; animations walk, up
+├── CollisionShape2D            CapsuleShape2D
+└── Trail (GPUParticles2D)      emitting only while moving; Z Index -1</pre>
+
+  <h3>Mob</h3>
+  <pre class="scene-tree">Mob (RigidBody2D)               [mob.gd]   class_name Mob
+│                               layer 3, mask empty, gravity 0, group "mobs"
+├── AnimatedSprite2D            scale 0.75; fly, swim, walk at 3 FPS
+├── CollisionShape2D            CapsuleShape2D, rotation 90°
+└── VisibleOnScreenNotifier2D</pre>
+
+  <h3>HUD</h3>
+  <pre class="scene-tree">HUD (CanvasLayer)               [hud.gd]   class_name HUD   Process Mode: Always
+├── TopBar (MarginContainer)    Top Wide
+│   └── ScoreRow (HBoxContainer)
+│       ├── ScoreLabel (Label)  %ScoreLabel
+│       └── BestLabel (Label)   %BestLabel, horizontal Expand
+├── MessageCenter (CenterContainer)   Full Rect
+│   └── Message (Label)         %Message
+├── BottomBar (MarginContainer) Bottom Wide, %BottomBar
+│   └── Buttons (VBoxContainer)
+│       ├── StartButton (Button)
+│       └── ResetButton (Button)  %ResetButton
+└── MessageTimer (Timer)        Wait Time 2, One Shot, %MessageTimer</pre>
+
+  <h3>Main</h3>
+  <pre class="scene-tree">Main (Node)                     [main.gd]
+├── Background (ColorRect)      position (-60, -60), size (600, 840), Z Index -10
+├── Camera2D                    position (240, 360)
+├── Player                      instance of player.tscn
+├── MobTimer (Timer)            wait 0.5 s, shortened by the ramp
+├── ScoreTimer (Timer)          wait 1 s
+├── StartTimer (Timer)          wait 2 s, One Shot
+├── StartPosition (Marker2D)    position (240, 450)
+├── MobPath (Path2D)            clockwise rectangle on the window
+│   └── MobSpawnLocation (PathFollow2D)
+├── HUD                         instance of hud.tscn
+├── Music (AudioStreamPlayer)   House In a Forest Loop.ogg, -8 dB
+└── DeathSound (AudioStreamPlayer)   gameover.wav</pre>
+
+  <h3>Signals</h3>
+  <p>Connected in the editor (Node tab &gt; Signals). Do not also connect them in code.</p>
+  <table>
+    <thead><tr><th>Node</th><th>Signal</th><th>Receiver</th><th>Method</th></tr></thead>
+    <tbody>
+      <tr><td><code>Player</code></td><td><code>body_entered</code></td><td><code>Player</code></td><td><code>_on_body_entered</code></td></tr>
+      <tr><td><code>Player</code></td><td><code>hit</code></td><td><code>Main</code></td><td><code>game_over</code></td></tr>
+      <tr><td><code>VisibleOnScreenNotifier2D</code></td><td><code>screen_exited</code></td><td><code>Mob</code></td><td><code>_on_visible_on_screen_notifier_2d_screen_exited</code></td></tr>
+      <tr><td><code>StartTimer</code></td><td><code>timeout</code></td><td><code>Main</code></td><td><code>_on_start_timer_timeout</code></td></tr>
+      <tr><td><code>ScoreTimer</code></td><td><code>timeout</code></td><td><code>Main</code></td><td><code>_on_score_timer_timeout</code></td></tr>
+      <tr><td><code>MobTimer</code></td><td><code>timeout</code></td><td><code>Main</code></td><td><code>_on_mob_timer_timeout</code></td></tr>
+      <tr><td><code>StartButton</code></td><td><code>pressed</code></td><td><code>HUD</code></td><td><code>_on_start_button_pressed</code></td></tr>
+      <tr><td><code>ResetButton</code></td><td><code>pressed</code></td><td><code>HUD</code></td><td><code>_on_reset_button_pressed</code></td></tr>
+      <tr><td><code>MessageTimer</code></td><td><code>timeout</code></td><td><code>HUD</code></td><td><code>_on_message_timer_timeout</code></td></tr>
+      <tr><td><code>HUD</code></td><td><code>start_game</code></td><td><code>Main</code></td><td><code>new_game</code></td></tr>
+      <tr><td><code>HUD</code></td><td><code>reset_best_requested</code></td><td><code>Main</code></td><td><code>_on_hud_reset_best_requested</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Who owns what</h3>
+  <table>
+    <thead><tr><th>Piece</th><th>Responsibility</th></tr></thead>
+    <tbody>
+      <tr><td><code>player.gd</code></td><td>Read move actions, animate, emit <code>hit</code>, toggle <code>Trail.emitting</code>. Exposes <code>start(pos)</code>.</td></tr>
+      <tr><td><code>mob.gd</code></td><td>Pick an animation in <code>_ready</code>. Free itself off-screen. Velocity is set by <code>Main</code> before <code>add_child</code>.</td></tr>
+      <tr><td><code>hud.gd</code></td><td>Score, best, messages, pause. Signals <code>start_game</code> and <code>reset_best_requested</code>. No reference to mobs or <code>Main</code>.</td></tr>
+      <tr><td><code>main.gd</code></td><td>Spawn along <code>MobPath</code>, score, difficulty, shake <code>Camera2D.offset</code>, music, call <code>HighScore</code>.</td></tr>
+      <tr><td><code>high_score.gd</code></td><td><code>load_best</code>, <code>save_best</code>, <code>reset</code>. File <code>user://dodger.cfg</code>, section <code>scores</code>, key <code>best</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>File map</h3>
+  <table>
+    <thead><tr><th>Path</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>res://player.tscn</code>, <code>player.gd</code></td><td><code>class_name Player</code></td></tr>
+      <tr><td><code>res://mob.tscn</code>, <code>mob.gd</code></td><td><code>class_name Mob</code>, group <code>mobs</code></td></tr>
+      <tr><td><code>res://hud.tscn</code>, <code>hud.gd</code></td><td><code>class_name HUD</code></td></tr>
+      <tr><td><code>res://main.tscn</code>, <code>main.gd</code></td><td>Main scene. <code>@export var mob_scene</code> points at <code>mob.tscn</code></td></tr>
+      <tr><td><code>res://high_score.gd</code></td><td><code>class_name HighScore</code></td></tr>
+      <tr><td><code>res://game_theme.tres</code></td><td>Project theme, default font Xolonium, size 36</td></tr>
+      <tr><td><code>res://art/</code>, <code>res://fonts/</code></td><td>From the official starter zip</td></tr>
+      <tr><td><code>res://export_presets.cfg</code></td><td>Windows Desktop preset, written on Day 4</td></tr>
+      <tr><td><code>user://dodger.cfg</code></td><td>Not in the project. On Windows: <code>%APPDATA%\Godot\app_userdata\g01-dodger\dodger.cfg</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="assets">Assets and credits</h2>
+  <p>Day 3 downloads the official starter zip named in the first 2D game tutorial:</p>
+  <p><a href="https://github.com/godotengine/godot-docs-project-starters/releases/download/latest-4.x/dodge_the_creeps_2d_assets.zip" target="_blank" rel="noopener">dodge_the_creeps_2d_assets.zip</a></p>
+  <p>The tutorial pages say the archive contains the images and sounds, and to copy <code>art/</code> and <code>fonts/</code> into the project. They do not themselves print a license. The finished GDScript demo linked from that tutorial's index does. Its License section reads:</p>
+  <ul>
+    <li><code>art/House In a Forest Loop.ogg</code> Copyright © 2012 <a href="https://opengameart.org/users/horrorpen" target="_blank" rel="noopener">HorrorPen</a>, <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC-BY 3.0: Attribution</a>. Source: <a href="https://opengameart.org/content/loop-house-in-a-forest" target="_blank" rel="noopener">opengameart.org/content/loop-house-in-a-forest</a>.</li>
+    <li>Images are from "Abstract Platformer". Created in 2016 by kenney.nl, <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener">CC0 1.0 Universal</a>. Source: <a href="https://www.kenney.nl/assets/abstract-platformer" target="_blank" rel="noopener">kenney.nl/assets/abstract-platformer</a>.</li>
+    <li>Font is "Xolonium". Copyright © 2011-2016 Severin Meyer, with Reserved Font Name Xolonium, SIL Open Font License version 1.1. Details are in <code>fonts/LICENSE.txt</code>.</li>
+  </ul>
+  <div class="callout external"><span class="callout-title">External resource: verify on the official page, steps change</span>
+    <p>That License section lives in the demo README the docs link to (<a href="https://github.com/godotengine/godot-demo-projects/tree/master/2d/dodge_the_creeps" target="_blank" rel="noopener">godot-demo-projects/2d/dodge_the_creeps</a>), not in the <code>.rst</code> body. Re-read it before you ship. CC BY 3.0 requires attribution for the music. CC0 does not require credit for the images; still credit Kenney. The SIL license text has to stay with the font (<code>fonts/LICENSE.txt</code> in the zip, if present). <code>gameover.wav</code> is named in the tutorial's finishing-up page and is not given its own line in that License section; check the unpacked zip before you redistribute it.</p></div>
+  <p>Credit lines to keep with the game if you share the exe:</p>
+  <pre class="plain">Art: "Abstract Platformer" (2016) by Kenney — https://kenney.nl/assets/abstract-platformer — CC0 1.0
+Music: "House In a Forest Loop" © 2012 HorrorPen — CC BY 3.0 — https://opengameart.org/content/loop-house-in-a-forest
+Font: Xolonium © 2011-2016 Severin Meyer, Reserved Font Name "Xolonium", SIL Open Font License 1.1
+Engine: This game uses Godot Engine, available under the MIT license — https://godotengine.org/license</pre>
+  <p>The Godot attribution is the engine license, separate from the art. See the docs page on complying with licenses.</p>
+
+  <h2 id="days">Where you build it</h2>
+  <ul>
+    <li><a href="../days/day03.html">Day 3</a>: create <code>g01-dodger</code>, import the zip, player, mobs, the spawn path, and a playable loop without a HUD.</li>
+    <li><a href="../days/day04.html">Day 4</a>: HUD, theme, juice, difficulty, <code>HighScore</code>, pause, portrait check, and the Windows export.</li>
+  </ul>
+
+  <h2 id="stretch">Stretch goals</h2>
+  <ul>
+    <li>On-screen pause button (the Day 4 challenge) and a touch pad that feeds the same <code>move_*</code> actions.</li>
+    <li>Gamepad: bind a stick and buttons to the existing actions. No script changes if you only use the Input Map.</li>
+    <li>A one-file build with <kbd class="ui">Binary Format &gt; Embed Pck</kbd> ticked, then zip that exe alone.</li>
+    <li>A credits label on the title screen using the lines in Assets and credits, including <code>fonts/LICENSE.txt</code> for Xolonium.</li>
+    <li>Two more feelings, still on these scenes: a brief color flash on <code>hit</code>, and a pitch change on <code>DeathSound</code> via <code>pitch_scale</code>.</li>
+  </ul>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

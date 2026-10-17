@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ship Kit: API and layout | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="publishing" data-id="ship-kit" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Publishing · template</div>
+    <h1>Ship Kit: API and layout</h1>
+    <p class="lead">Games 6–10 copy <code>C:\GodotProjects\ship-kit</code> and call these autoloads. The names and signatures on this page are the contract. Days <a href="../days/day15.html">15</a> and <a href="../days/day16.html">16</a> are the click-by-click build. If a script here and a script in those days ever disagree, the scripts below were copied from Day 15 and win.</p>
+    <div class="chips"><span class="chip blue">Autoloads: Events, Settings, SaveManager, Audio, SceneRouter</span><span class="chip green">Mobile · 1280×720 · canvas_items · expand</span></div>
+  </header>
+
+  <h2 id="layout">Folder layout</h2>
+  <p>The template project uses the Mobile renderer. Viewport width 1280 and height 720. Stretch mode <code>canvas_items</code>, aspect <code>expand</code> (set on Day 16). Portrait games change the two size fields and handheld orientation. They do not rename these folders.</p>
+  <pre class="plain">res://
+├── autoload/     events.gd  settings.gd  save_manager.gd  audio.gd  scene_router.gd
+├── ui/           main_menu.tscn/.gd  settings_menu.tscn/.gd  pause_menu.tscn/.gd
+│                 credits.tscn/.gd  toast.tscn/.gd  safe_area.gd  theme/game_theme.tres
+├── i18n/         translations.csv  and the imported .translation files
+├── licenses/     GODOT_LICENSE.txt  GODOT_COPYRIGHT.txt  THIRD_PARTY.txt
+├── game/         game.tscn and everything specific to that game
+├── data/         Resource scripts and .tres
+├── assets/       art/  audio/  fonts/
+└── default_bus_layout.tres     buses: Master, Music, SFX</pre>
+
+  <h2 id="autoloads">Autoload order</h2>
+  <p>Project Settings, Globals tab, Autoload section. Singleton checkbox on for every row. Node Name is the global you type in GDScript. It is not the filename.</p>
+  <table>
+    <tr><th>Order</th><th>Node Name</th><th>Path</th><th>Extends</th></tr>
+    <tr><td>1</td><td><code>Events</code></td><td><code>res://autoload/events.gd</code></td><td><code>Node</code></td></tr>
+    <tr><td>2</td><td><code>Settings</code></td><td><code>res://autoload/settings.gd</code></td><td><code>Node</code></td></tr>
+    <tr><td>3</td><td><code>SaveManager</code></td><td><code>res://autoload/save_manager.gd</code></td><td><code>Node</code></td></tr>
+    <tr><td>4</td><td><code>Audio</code></td><td><code>res://autoload/audio.gd</code></td><td><code>Node</code></td></tr>
+    <tr><td>5</td><td><code>SceneRouter</code></td><td><code>res://autoload/scene_router.gd</code></td><td><code>CanvasLayer</code> layer 100</td></tr>
+  </table>
+
+  <h2 id="events">Events</h2>
+  <p>Signal bus only. No methods. Connect with <code>Events.score_changed.connect(_on_score_changed)</code>. Emit with <code>Events.score_changed.emit(score)</code>.</p>
+  <table>
+    <tr><th>Signal</th><th>When a game emits it</th></tr>
+    <tr><td><code>game_started</code></td><td>Play is pressed. The main menu emits it before <code>go_to</code>.</td></tr>
+    <tr><td><code>game_paused(is_paused: bool)</code></td><td><code>ShipPauseMenu</code> when pause opens or closes. <code>SceneRouter.go_to</code> emits <code>false</code> if it has to unpause.</td></tr>
+    <tr><td><code>game_over(score: int)</code></td><td>The game, when a run ends.</td></tr>
+    <tr><td><code>score_changed(score: int)</code></td><td>The game, whenever the visible score changes.</td></tr>
+    <tr><td><code>achievement_unlocked(id: StringName)</code></td><td>The game, after it decides an achievement fired. Steam wiring is Day 29 and stays outside this signal.</td></tr>
+    <tr><td><code>settings_changed</code></td><td><code>Settings</code> after <code>set_volume</code>, <code>set_fullscreen</code>, <code>set_locale</code>, or <code>set_value</code>.</td></tr>
+    <tr><td><code>toast_requested(text: String)</code></td><td>Anyone. <code>toast.tscn</code> shows <code>tr(text)</code>. Pass a translation key.</td></tr>
+  </table>
+
+  <h2 id="settings">Settings</h2>
+  <p>File <code>user://settings.cfg</code> via <code>ConfigFile</code>. Input remaps in <code>user://input_map.cfg</code>. Volumes are linear 0.0–1.0. Bus argument is <code>&amp;"Master"</code>, <code>&amp;"Music"</code>, or <code>&amp;"SFX"</code>.</p>
+  <table>
+    <tr><th>Method</th><th>Behavior</th></tr>
+    <tr><td><code>get_volume(bus: StringName) -&gt; float</code></td><td>Linear 0.0–1.0 from <code>AudioServer.get_bus_volume_linear</code>.</td></tr>
+    <tr><td><code>set_volume(bus: StringName, linear: float) -&gt; void</code></td><td>Clamps, applies, saves, emits <code>Events.settings_changed</code>.</td></tr>
+    <tr><td><code>is_fullscreen() -&gt; bool</code></td><td>True for fullscreen or exclusive fullscreen.</td></tr>
+    <tr><td><code>set_fullscreen(on: bool) -&gt; void</code></td><td><code>DisplayServer.window_set_mode</code>, saves, emits <code>settings_changed</code>.</td></tr>
+    <tr><td><code>get_locale() -&gt; String</code></td><td><code>TranslationServer.get_locale</code>.</td></tr>
+    <tr><td><code>set_locale(locale: String) -&gt; void</code></td><td><code>TranslationServer.set_locale</code>, saves, emits <code>settings_changed</code>.</td></tr>
+    <tr><td><code>get_value(section: String, key: String, default: Variant = null) -&gt; Variant</code></td><td>Extra config keys. The menus use section <code>ui</code>, key <code>return_scene</code>.</td></tr>
+    <tr><td><code>set_value(section: String, key: String, value: Variant) -&gt; void</code></td><td>Writes, saves, emits <code>settings_changed</code>.</td></tr>
+    <tr><td><code>save_settings() -&gt; void</code></td><td>Writes <code>user://settings.cfg</code>.</td></tr>
+    <tr><td><code>save_input_map() -&gt; void</code></td><td>Every action, events stored with <code>var_to_str</code>.</td></tr>
+    <tr><td><code>load_input_map() -&gt; void</code></td><td>Called from <code>_ready</code>. Missing file means keep the editor map.</td></tr>
+  </table>
+  <p>Config sections the kit writes: <code>audio</code> (bus name to linear float), <code>video/fullscreen</code>, <code>general/locale</code>, <code>ui/return_scene</code>.</p>
+
+  <h2 id="savemanager">SaveManager</h2>
+  <p><code>const FORMAT_VERSION: int = 1</code>. Slots are <code>user://saves/&lt;slot&gt;.json</code>. The write is atomic: <code>.tmp</code>, then <code>DirAccess.rename_absolute</code> after removing the old file. Envelope:</p>
+  <pre class="plain">{
+    "format": 1,
+    "saved_at": 0,
+    "data": {}
+}</pre>
+  <p><code>saved_at</code> is unix time from <code>Time.get_unix_time_from_system</code>, stored with <code>int()</code>. JSON still returns numbers as floats. Cast counters at the call site with <code>int()</code>. Do not store integers past 2^53. Idle-clicker magnitudes are strings.</p>
+  <p>The profile is <code>user://profile.json</code> with <code>format</code> and <code>values</code>. <code>set_value</code> marks it dirty and writes about 1 second later. <code>flush</code> writes now. <code>flush</code> also runs on <code>NOTIFICATION_WM_CLOSE_REQUEST</code> (then quit, because auto-accept quit is off), <code>NOTIFICATION_APPLICATION_PAUSED</code>, <code>NOTIFICATION_APPLICATION_FOCUS_OUT</code>, and <code>NOTIFICATION_WM_GO_BACK_REQUEST</code>.</p>
+  <table>
+    <tr><th>Method</th><th>Behavior</th></tr>
+    <tr><td><code>has_slot(slot: StringName) -&gt; bool</code></td><td>True if that json file exists. Names containing <code>/</code>, <code>\</code>, or <code>..</code> are rejected.</td></tr>
+    <tr><td><code>save_slot(slot: StringName, data: Dictionary) -&gt; bool</code></td><td>False if the name is rejected or the rename fails.</td></tr>
+    <tr><td><code>load_slot(slot: StringName, default: Dictionary = {}) -&gt; Dictionary</code></td><td>A duplicate of <code>data</code>, or a duplicate of <code>default</code> if the file is missing or the format integer does not match.</td></tr>
+    <tr><td><code>delete_slot(slot: StringName) -&gt; void</code></td><td>Removes the file if it exists.</td></tr>
+    <tr><td><code>get_value(key: String, default: Variant = null) -&gt; Variant</code></td><td>Profile lookup. Not the same method as <code>Settings.get_value</code>. Settings takes a section.</td></tr>
+    <tr><td><code>set_value(key: String, value: Variant) -&gt; void</code></td><td>Profile write, debounced 1 second.</td></tr>
+    <tr><td><code>flush() -&gt; void</code></td><td>Writes the profile immediately.</td></tr>
+  </table>
+  <p>Games store a run with <code>SaveManager.save_slot(&amp;"run", {...})</code> and a small flag with <code>SaveManager.set_value("best_score", n)</code>. Read that flag back with <code>int(SaveManager.get_value("best_score", 0))</code>.</p>
+
+  <h2 id="audio">Audio</h2>
+  <p>Eight <code>AudioStreamPlayer</code> nodes on bus <code>SFX</code>. Two music players, <code>MusicA</code> and <code>MusicB</code>, on bus <code>Music</code>. The autoload's process mode is Always, and music tweens use <code>Tween.TWEEN_PAUSE_PROCESS</code>, so a fade continues while the tree is paused. <code>play_sfx</code>'s <code>volume_db</code> is a per-sound offset. It is not the bus slider.</p>
+  <table>
+    <tr><th>Method</th><th>Behavior</th></tr>
+    <tr><td><code>play_sfx(stream: AudioStream, volume_db: float = 0.0, pitch_scale: float = 1.0) -&gt; void</code></td><td>Next pooled player. Null stream returns.</td></tr>
+    <tr><td><code>play_sfx_varied(stream: AudioStream, pitch_spread: float = 0.1, volume_db: float = 0.0) -&gt; void</code></td><td>Pitch <code>1 ± pitch_spread</code>, clamped to 0.01–4.</td></tr>
+    <tr><td><code>play_music(stream: AudioStream, fade_time: float = 0.8) -&gt; void</code></td><td>Crossfade. Same stream already playing is left alone. Null calls <code>stop_music</code>.</td></tr>
+    <tr><td><code>stop_music(fade_time: float = 0.8) -&gt; void</code></td><td>Fades the active player to -80 dB and stops it.</td></tr>
+  </table>
+
+  <h2 id="scenerouter">SceneRouter</h2>
+  <p><code>const MAIN_MENU_SCENE: String = "res://ui/main_menu.tscn"</code></p>
+  <p><code>const GAME_SCENE: String = "res://game/game.tscn"</code></p>
+  <p><code>signal transition_finished</code></p>
+  <p>A full-screen <code>ColorRect</code> named <code>Fade</code> is created in <code>_ready</code>. <code>go_to</code> ignores a second call while a fade is running. If the tree is paused it unpauses and emits <code>Events.game_paused(false)</code> before the swap. It waits for <code>SceneTree.scene_changed</code> before fading in. <code>Color</code> is assigned as a whole value. Do not write <code>color.a</code> on the property and expect it to stick.</p>
+  <table>
+    <tr><th>Method</th><th>Behavior</th></tr>
+    <tr><td><code>go_to(scene_path: String, fade_time: float = 0.25) -&gt; void</code></td><td>Fade out, <code>change_scene_to_file</code>, fade in, emit <code>transition_finished</code>.</td></tr>
+    <tr><td><code>reload_current(fade_time: float = 0.25) -&gt; void</code></td><td><code>go_to</code> the current scene's <code>scene_file_path</code>.</td></tr>
+    <tr><td><code>quit_game() -&gt; void</code></td><td><code>SaveManager.flush()</code>, then <code>get_tree().quit()</code>.</td></tr>
+  </table>
+
+  <h2 id="ui">UI scenes games reuse</h2>
+  <table>
+    <tr><th>File</th><th>Contract for later days</th></tr>
+    <tr><td><code>ui/main_menu.tscn</code></td><td>Main scene. Buttons <code>%PlayButton</code>, <code>%SettingsButton</code>, <code>%CreditsButton</code>, <code>%QuitButton</code>. Play emits <code>game_started</code> and <code>go_to(GAME_SCENE)</code>.</td></tr>
+    <tr><td><code>ui/pause_menu.tscn</code></td><td><code>class_name ShipPauseMenu</code>. Instance it under <code>game.tscn</code>. <code>process_mode = Always</code>. Methods <code>toggle()</code>, <code>open_menu()</code>, <code>close_menu()</code>. Listens for the <code>pause</code> action. Emits <code>Events.game_paused</code>.</td></tr>
+    <tr><td><code>ui/settings_menu.tscn</code></td><td>Sliders call <code>set_volume</code>. Back uses <code>Settings.get_value("ui", "return_scene", MAIN_MENU_SCENE)</code>. Remap calls <code>save_input_map</code>.</td></tr>
+    <tr><td><code>ui/credits.tscn</code></td><td>Shows <code>Engine.get_license_text()</code> and names from <code>Engine.get_copyright_info()</code>. First editor run writes <code>res://licenses/GODOT_LICENSE.txt</code> if it is missing.</td></tr>
+    <tr><td><code>ui/toast.tscn</code></td><td>Layer 90. Connects to <code>toast_requested</code>. Instance it in scenes that should show toasts.</td></tr>
+    <tr><td><code>ui/safe_area.gd</code></td><td>On a Full Rect <code>Control</code>. Sets offsets from <code>DisplayServer.get_display_safe_area</code>, scaled into the stretched viewport.</td></tr>
+    <tr><td><code>i18n/translations.csv</code></td><td>Header <code>keys,en,es,de,fr,pt_BR,ru,zh_CN</code>. UI keys start with <code>UI_</code>. Game keys use <code>CLICKER_</code>, <code>BH_</code>, <code>MERGE_</code>, <code>DECK_</code>, <code>DIGGER_</code>. Button Text is the key. Call <code>tr("KEY")</code> from code.</td></tr>
+  </table>
+  <p>Input actions defined on the template: <code>move_left</code>, <code>move_right</code>, <code>move_up</code>, <code>move_down</code>, <code>jump</code>, <code>dash</code>, <code>attack</code>, <code>interact</code>, <code>pause</code>, <code>confirm</code>, <code>cancel</code>. Leave the built-in <code>ui_*</code> actions in place. They move focus.</p>
+  <p>Android package on the template: <code>com.yourname.shipkit</code>. Each copied game replaces <code>yourname</code> and the last segment (<code>idleclicker</code>, <code>bulletheaven</code>, <code>physicsmerge</code>, <code>deckbuilder</code>, <code>deepdigger</code>). Release exports uncheck Export With Debug. Keystore password equals key password.</p>
+
+  <h2 id="scripts">Scripts</h2>
+  <p>These are the Day 15 files. Replace a whole file if you repair a kit. Do not rename a function.</p>
+  <script type="text/x-code" data-lang="gdscript" data-file="res://autoload/events.gd">
+extends Node
+
+## Global signal bus. Connect with Events.score_changed.connect(_on_score_changed).
+## Emit with Events.score_changed.emit(score). Do not put game logic here.
+
+@warning_ignore("unused_signal")
+signal game_started
+
+@warning_ignore("unused_signal")
+signal game_paused(is_paused: bool)
+
+@warning_ignore("unused_signal")
+signal game_over(score: int)
+
+@warning_ignore("unused_signal")
+signal score_changed(score: int)
+
+@warning_ignore("unused_signal")
+signal achievement_unlocked(id: StringName)
+
+@warning_ignore("unused_signal")
+signal settings_changed
+
+@warning_ignore("unused_signal")
+signal toast_requested(text: String)
+      </script>
+<script type="text/x-code" data-lang="gdscript" data-file="res://autoload/settings.gd">
+extends Node
+
+## user://settings.cfg (volumes, fullscreen, locale, extra keys).
+## user://input_map.cfg (every InputMap action, via var_to_str).
+## Volumes are linear 0.0-1.0 on buses Master, Music, and SFX.
+
+const SETTINGS_PATH: String = "user://settings.cfg"
+const INPUT_PATH: String = "user://input_map.cfg"
+const BUSES: Array[StringName] = [&"Master", &"Music", &"SFX"]
+
+var _config: ConfigFile = ConfigFile.new()
+
+
+func _ready() -> void:
+    if _config.load(SETTINGS_PATH) != OK:
+        _config = ConfigFile.new()
+    _apply_audio()
+    _apply_fullscreen()
+    _apply_locale()
+    load_input_map()
+
+
+func get_volume(bus: StringName) -> float:
+    var idx: int = AudioServer.get_bus_index(bus)
+    if idx < 0:
+        push_error("Settings.get_volume: missing bus %s" % String(bus))
+        return 0.0
+    return clampf(AudioServer.get_bus_volume_linear(idx), 0.0, 1.0)
+
+
+func set_volume(bus: StringName, linear: float) -> void:
+    var idx: int = AudioServer.get_bus_index(bus)
+    if idx < 0:
+        push_error("Settings.set_volume: missing bus %s" % String(bus))
+        return
+    var clamped: float = clampf(linear, 0.0, 1.0)
+    AudioServer.set_bus_volume_linear(idx, clamped)
+    _config.set_value("audio", String(bus), clamped)
+    save_settings()
+    Events.settings_changed.emit()
+
+
+func is_fullscreen() -> bool:
+    var mode: DisplayServer.WindowMode = DisplayServer.window_get_mode()
+    return mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+
+
+func set_fullscreen(on: bool) -> void:
+    var mode: DisplayServer.WindowMode = DisplayServer.WINDOW_MODE_WINDOWED
+    if on:
+        mode = DisplayServer.WINDOW_MODE_FULLSCREEN
+    DisplayServer.window_set_mode(mode)
+    _config.set_value("video", "fullscreen", on)
+    save_settings()
+    Events.settings_changed.emit()
+
+
+func get_locale() -> String:
+    return TranslationServer.get_locale()
+
+
+func set_locale(locale: String) -> void:
+    TranslationServer.set_locale(locale)
+    _config.set_value("general", "locale", locale)
+    save_settings()
+    Events.settings_changed.emit()
+
+
+func get_value(section: String, key: String, default: Variant = null) -> Variant:
+    return _config.get_value(section, key, default)
+
+
+func set_value(section: String, key: String, value: Variant) -> void:
+    _config.set_value(section, key, value)
+    save_settings()
+    Events.settings_changed.emit()
+
+
+func save_settings() -> void:
+    var err: Error = _config.save(SETTINGS_PATH)
+    if err != OK:
+        push_error("Settings.save_settings failed: %s" % error_string(err))
+
+
+func save_input_map() -> void:
+    var cfg := ConfigFile.new()
+    for action: StringName in InputMap.get_actions():
+        var encoded := PackedStringArray()
+        for event: InputEvent in InputMap.action_get_events(action):
+            encoded.append(var_to_str(event))
+        cfg.set_value("input", String(action), encoded)
+    var err: Error = cfg.save(INPUT_PATH)
+    if err != OK:
+        push_error("Settings.save_input_map failed: %s" % error_string(err))
+
+
+func load_input_map() -> void:
+    var cfg := ConfigFile.new()
+    if cfg.load(INPUT_PATH) != OK:
+        return
+    if not cfg.has_section("input"):
+        return
+    for action_key: String in cfg.get_section_keys("input"):
+        var action := StringName(action_key)
+        if not InputMap.has_action(action):
+            continue
+        var raw: Variant = cfg.get_value("input", action_key, PackedStringArray())
+        var lines := PackedStringArray()
+        if raw is PackedStringArray:
+            lines = raw
+        elif raw is Array:
+            for item: Variant in raw:
+                lines.append(str(item))
+        else:
+            continue
+        InputMap.action_erase_events(action)
+        for line: String in lines:
+            var parsed: Variant = str_to_var(line)
+            if parsed is InputEvent:
+                InputMap.action_add_event(action, parsed)
+
+
+func _apply_audio() -> void:
+    for bus: StringName in BUSES:
+        var stored: float = float(_config.get_value("audio", String(bus), 1.0))
+        var idx: int = AudioServer.get_bus_index(bus)
+        if idx < 0:
+            push_error("Settings: bus %s is missing. Check default_bus_layout.tres" % String(bus))
+            continue
+        AudioServer.set_bus_volume_linear(idx, clampf(stored, 0.0, 1.0))
+
+
+func _apply_fullscreen() -> void:
+    var on: bool = bool(_config.get_value("video", "fullscreen", false))
+    if on:
+        DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+
+
+func _apply_locale() -> void:
+    var saved: String = str(_config.get_value("general", "locale", ""))
+    if saved.is_empty():
+        saved = OS.get_locale_language()
+    TranslationServer.set_locale(saved)
+      </script>
+<script type="text/x-code" data-lang="gdscript" data-file="res://autoload/save_manager.gd">
+extends Node
+
+## Slots: user://saves/<slot>.json
+## Envelope: {"format": FORMAT_VERSION, "saved_at": unix, "data": {...}}
+## Profile: user://profile.json under key "values", written 1 second after set_value,
+## and immediately from flush() on close, pause, and focus-out.
+## JSON turns ints into floats. Cast with int() at the call site.
+
+const FORMAT_VERSION: int = 1
+const SAVES_DIR: String = "user://saves"
+const PROFILE_PATH: String = "user://profile.json"
+
+var _profile: Dictionary = {}
+var _profile_timer: Timer
+
+
+func _ready() -> void:
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    get_tree().set_auto_accept_quit(false)
+    DirAccess.make_dir_recursive_absolute(SAVES_DIR)
+    _profile_timer = Timer.new()
+    _profile_timer.one_shot = true
+    _profile_timer.wait_time = 1.0
+    _profile_timer.timeout.connect(_write_profile)
+    add_child(_profile_timer)
+    _load_profile()
+
+
+func _notification(what: int) -> void:
+    if what == NOTIFICATION_WM_CLOSE_REQUEST:
+        flush()
+        get_tree().quit()
+    elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_GO_BACK_REQUEST:
+        flush()
+
+
+func has_slot(slot: StringName) -> bool:
+    var slot_name := _safe_slot(slot)
+    if slot_name.is_empty():
+        return false
+    return FileAccess.file_exists(_slot_path(slot_name))
+
+
+func save_slot(slot: StringName, data: Dictionary) -> bool:
+    var slot_name := _safe_slot(slot)
+    if slot_name.is_empty():
+        push_error("SaveManager.save_slot: rejected slot name")
+        return false
+    DirAccess.make_dir_recursive_absolute(SAVES_DIR)
+    var envelope := {
+        "format": FORMAT_VERSION,
+        "saved_at": int(Time.get_unix_time_from_system()),
+        "data": data,
+    }
+    return _write_atomic(_slot_path(slot_name), JSON.stringify(envelope, "\t"))
+
+
+func load_slot(slot: StringName, default: Dictionary = {}) -> Dictionary:
+    var slot_name := _safe_slot(slot)
+    if slot_name.is_empty() or not has_slot(slot):
+        return default.duplicate()
+    var file := FileAccess.open(_slot_path(slot_name), FileAccess.READ)
+    if file == null:
+        return default.duplicate()
+    var parsed: Variant = JSON.parse_string(file.get_as_text())
+    file.close()
+    if not (parsed is Dictionary):
+        push_error("SaveManager.load_slot: invalid JSON for %s" % slot_name)
+        return default.duplicate()
+    var version: int = int(parsed.get("format", 0))
+    if version != FORMAT_VERSION:
+        push_warning("SaveManager.load_slot: format %d, kit expects %d" % [version, FORMAT_VERSION])
+        return default.duplicate()
+    var data: Variant = parsed.get("data", null)
+    if data is Dictionary:
+        return (data as Dictionary).duplicate()
+    return default.duplicate()
+
+
+func delete_slot(slot: StringName) -> void:
+    var slot_name := _safe_slot(slot)
+    if slot_name.is_empty():
+        return
+    var path := _slot_path(slot_name)
+    if FileAccess.file_exists(path):
+        DirAccess.remove_absolute(path)
+
+
+func get_value(key: String, default: Variant = null) -> Variant:
+    return _profile.get(key, default)
+
+
+func set_value(key: String, value: Variant) -> void:
+    _profile[key] = value
+    _profile_timer.start()
+
+
+func flush() -> void:
+    if _profile_timer != null:
+        _profile_timer.stop()
+    _write_profile()
+
+
+func _load_profile() -> void:
+    if not FileAccess.file_exists(PROFILE_PATH):
+        _profile = {}
+        return
+    var file := FileAccess.open(PROFILE_PATH, FileAccess.READ)
+    if file == null:
+        _profile = {}
+        return
+    var parsed: Variant = JSON.parse_string(file.get_as_text())
+    file.close()
+    if parsed is Dictionary and parsed.get("values") is Dictionary:
+        _profile = parsed["values"]
+    else:
+        _profile = {}
+
+
+func _write_profile() -> void:
+    var envelope := {
+        "format": FORMAT_VERSION,
+        "values": _profile,
+    }
+    _write_atomic(PROFILE_PATH, JSON.stringify(envelope, "\t"))
+
+
+func _slot_path(slot_name: String) -> String:
+    return "%s/%s.json" % [SAVES_DIR, slot_name]
+
+
+func _safe_slot(slot: StringName) -> String:
+    var slot_name := String(slot)
+    if slot_name.is_empty():
+        return ""
+    if slot_name.contains("/") or slot_name.contains("\\") or slot_name.contains(".."):
+        return ""
+    return slot_name
+
+
+func _write_atomic(path: String, contents: String) -> bool:
+    var tmp := path + ".tmp"
+    var file := FileAccess.open(tmp, FileAccess.WRITE)
+    if file == null:
+        push_error("SaveManager: cannot write %s (%s)" % [tmp, error_string(FileAccess.get_open_error())])
+        return false
+    file.store_string(contents)
+    file.close()
+    if FileAccess.file_exists(path):
+        var removed: Error = DirAccess.remove_absolute(path)
+        if removed != OK:
+            push_error("SaveManager: cannot replace %s (%s)" % [path, error_string(removed)])
+            return false
+    var renamed: Error = DirAccess.rename_absolute(tmp, path)
+    if renamed != OK:
+        push_error("SaveManager: rename failed %s (%s)" % [path, error_string(renamed)])
+        return false
+    return true
+      </script>
+<script type="text/x-code" data-lang="gdscript" data-file="res://autoload/audio.gd">
+extends Node
+
+## play_sfx uses a pool on bus SFX so overlapping sounds do not cut each other off.
+## play_music crossfades between two players on bus Music.
+
+const SFX_POOL_SIZE: int = 8
+const SFX_BUS: StringName = &"SFX"
+const MUSIC_BUS: StringName = &"Music"
+const SILENT_DB: float = -80.0
+
+var _sfx_players: Array[AudioStreamPlayer] = []
+var _sfx_cursor: int = 0
+var _music_a: AudioStreamPlayer
+var _music_b: AudioStreamPlayer
+var _active: AudioStreamPlayer
+var _music_tween: Tween
+
+
+func _ready() -> void:
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    for _i: int in SFX_POOL_SIZE:
+        var player := AudioStreamPlayer.new()
+        player.bus = SFX_BUS
+        add_child(player)
+        _sfx_players.append(player)
+    _music_a = _make_music_player("MusicA")
+    _music_b = _make_music_player("MusicB")
+    _active = _music_a
+
+
+func play_sfx(stream: AudioStream, volume_db: float = 0.0, pitch_scale: float = 1.0) -> void:
+    if stream == null:
+        return
+    var player: AudioStreamPlayer = _sfx_players[_sfx_cursor]
+    _sfx_cursor = (_sfx_cursor + 1) % SFX_POOL_SIZE
+    player.stream = stream
+    player.volume_db = volume_db
+    player.pitch_scale = pitch_scale
+    player.play()
+
+
+func play_sfx_varied(stream: AudioStream, pitch_spread: float = 0.1, volume_db: float = 0.0) -> void:
+    var pitch: float = clampf(1.0 + randf_range(-pitch_spread, pitch_spread), 0.01, 4.0)
+    play_sfx(stream, volume_db, pitch)
+
+
+func play_music(stream: AudioStream, fade_time: float = 0.8) -> void:
+    if stream == null:
+        stop_music(fade_time)
+        return
+    if _active.playing and _active.stream == stream:
+        return
+    var incoming: AudioStreamPlayer = _music_b if _active == _music_a else _music_a
+    incoming.stream = stream
+    incoming.volume_db = SILENT_DB
+    incoming.play()
+    _fade_to(incoming, fade_time)
+
+
+func stop_music(fade_time: float = 0.8) -> void:
+    _fade_to(null, fade_time)
+
+
+func _make_music_player(node_name: String) -> AudioStreamPlayer:
+    var player := AudioStreamPlayer.new()
+    player.name = node_name
+    player.bus = MUSIC_BUS
+    player.volume_db = SILENT_DB
+    add_child(player)
+    return player
+
+
+func _fade_to(incoming: AudioStreamPlayer, fade_time: float) -> void:
+    if _music_tween != null:
+        _music_tween.kill()
+    var outgoing: AudioStreamPlayer = _active
+    if fade_time <= 0.0:
+        if incoming != null:
+            incoming.volume_db = 0.0
+            _active = incoming
+        _finish_fade(outgoing, incoming)
+        return
+    _music_tween = create_tween()
+    _music_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+    if incoming != null:
+        _music_tween.tween_property(incoming, "volume_db", 0.0, fade_time)
+        _active = incoming
+    if outgoing != null and outgoing != incoming and outgoing.playing:
+        _music_tween.parallel().tween_property(outgoing, "volume_db", SILENT_DB, fade_time)
+    _music_tween.chain().tween_callback(_finish_fade.bind(outgoing, incoming))
+
+
+func _finish_fade(outgoing: AudioStreamPlayer, incoming: AudioStreamPlayer) -> void:
+    if outgoing != null and outgoing != incoming:
+        outgoing.stop()
+        outgoing.volume_db = SILENT_DB
+    if incoming == null and outgoing != null:
+        outgoing.stop()
+        outgoing.volume_db = SILENT_DB
+      </script>
+<script type="text/x-code" data-lang="gdscript" data-file="res://autoload/scene_router.gd">
+extends CanvasLayer
+
+const MAIN_MENU_SCENE: String = "res://ui/main_menu.tscn"
+const GAME_SCENE: String = "res://game/game.tscn"
+
+signal transition_finished
+
+var _fade: ColorRect
+var _busy: bool = false
+
+
+func _ready() -> void:
+    layer = 100
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    _fade = ColorRect.new()
+    _fade.name = "Fade"
+    _fade.color = Color(0, 0, 0, 0)
+    _fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    _fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    add_child(_fade)
+
+
+func go_to(scene_path: String, fade_time: float = 0.25) -> void:
+    if _busy:
+        return
+    _busy = true
+    if get_tree().paused:
+        get_tree().paused = false
+        Events.game_paused.emit(false)
+    _fade.mouse_filter = Control.MOUSE_FILTER_STOP
+    if fade_time > 0.0:
+        var out_tween := create_tween()
+        out_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+        out_tween.tween_property(_fade, "color:a", 1.0, fade_time)
+        await out_tween.finished
+    else:
+        _set_fade_alpha(1.0)
+    var err: Error = get_tree().change_scene_to_file(scene_path)
+    if err != OK:
+        push_error("SceneRouter.go_to failed (%s): %s" % [error_string(err), scene_path])
+        _set_fade_alpha(0.0)
+        _fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        _busy = false
+        transition_finished.emit()
+        return
+    await get_tree().scene_changed
+    if fade_time > 0.0:
+        var in_tween := create_tween()
+        in_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+        in_tween.tween_property(_fade, "color:a", 0.0, fade_time)
+        await in_tween.finished
+    else:
+        _set_fade_alpha(0.0)
+    _fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    _busy = false
+    transition_finished.emit()
+
+
+func reload_current(fade_time: float = 0.25) -> void:
+    var current: Node = get_tree().current_scene
+    if current == null or current.scene_file_path.is_empty():
+        push_error("SceneRouter.reload_current: current scene has no file path")
+        return
+    go_to(current.scene_file_path, fade_time)
+
+
+func quit_game() -> void:
+    SaveManager.flush()
+    get_tree().quit()
+
+
+func _set_fade_alpha(alpha: float) -> void:
+    var next: Color = _fade.color
+    next.a = alpha
+    _fade.color = next
+      </script>
+
+  <h2 id="docs">Docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/singletons_autoload.html" target="_blank" rel="noopener">Singletons (Autoload)</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/io/saving_games.html" target="_blank" rel="noopener">Saving games</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/audio/audio_buses.html" target="_blank" rel="noopener">Audio buses</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_scenetree.html" target="_blank" rel="noopener">SceneTree</a>: <code>change_scene_to_file</code>, <code>paused</code>, <code>scene_changed</code></li>
+    <li><a href="../days/day15.html">Day 15</a> builds the autoloads. <a href="../days/day16.html">Day 16</a> builds the menus and the exports. <a href="licenses.html">Licenses</a> is the credit rule.</li>
+  </ul>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

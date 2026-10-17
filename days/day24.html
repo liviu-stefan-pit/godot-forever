@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 24 - Deckbuilder I: cards, deck, battle loop | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day24" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 24 · Deckbuilder</div>
+    <h1>Deckbuilder I: cards, deck, battle loop</h1>
+    <p class="lead">Copy the Ship Kit into a landscape project and make one fight work: twelve card resources, four enemies, draw / discard / exhaust, energy, and a turn state machine. The cards are plain buttons today. Tomorrow they become draggable controls.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:25</td><td><strong>Concepts.</strong> Resources, piles, damage formula, turn order.</td></tr>
+    <tr><td>0:25 – 1:25</td><td><strong>Project and card data.</strong> Viewport, CardData, twelve <code>.tres</code> files, combat strings.</td></tr>
+    <tr><td>1:25 – 1:40</td><td><strong>Break.</strong></td></tr>
+    <tr><td>1:40 – 2:25</td><td><strong>Enemies and the rules object.</strong> Intent steps, Battle, the starter deck.</td></tr>
+    <tr><td>2:25 – 3:35</td><td><strong>A playable fight.</strong> Combat scene, button hand, wire it to the main menu.</td></tr>
+    <tr><td>3:35 – 4:00</td><td><strong>Pitfalls, challenge, quiz, wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>4 h 0 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Open a copied Ship Kit project set to 1280×720, stretch mode <code>canvas_items</code>, aspect <code>expand</code>, Mobile renderer, landscape.</li>
+    <li>Author twelve <code>CardData</code> resources and four <code>EnemyData</code> resources with a repeating intent pattern.</li>
+    <li>Run a fight whose draw, discard, and exhaust piles, energy, Block, Weak, Vulnerable, and Strength follow the formulas on this page.</li>
+    <li>Start that fight from the Ship Kit main menu with <kbd>F5</kbd>, and also with <kbd>F6</kbd> on the combat scene.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Days 15 and 16 are done. <code>C:\GodotProjects\ship-kit</code> opens, Play reaches <code>res://game/game.tscn</code>, and the autoloads <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, and <code>SceneRouter</code> are already in Project Settings. You will call them. You will not rewrite them.</li>
+    <li>The script editor indents with spaces, size 4 (<kbd class="menu">Editor &gt; Editor Settings &gt; Text Editor &gt; Behavior &gt; Indent</kbd>).</li>
+    <li>If you skipped ahead: copy the Ship Kit with the PowerShell step in the first build section, then paste today's scripts. The fight does not need the map from Day 26.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>Data on disk, a fight in memory</h3>
+  <p>A card design is a <code>Resource</code> saved as <code>.tres</code>. That is the same idea as a ScriptableObject or a data-only prefab: one Strike asset, many references. A fight does not edit that asset. It creates a small <code>CardInstance</code> (a <code>RefCounted</code>, not saved) each time a card enters the combat deck. Anger can spawn another instance that dies when the fight ends, and the authored Strike file stays a single card.</p>
+  <p>Custom resources show up in the Create Resource dialog only after the script has <code>class_name</code> and compiles. That is why the scripts come before the <code>.tres</code> files.</p>
+
+  <h3>Four piles and a phase</h3>
+  <p>The combat deck is the draw pile. You draw 5, spend energy (3 at the start of your turn, unspent energy is discarded), then End Turn moves the hand onto the discard pile. An empty draw pile shuffles the discard pile back in. Exhaust is a third pile: the card is gone until the next fight, and the run's real deck (a list of ids) is untouched. Powers exhaust. True Grit also exhausts a random other card still in hand.</p>
+  <p>The phase is an enum: <code>PLAYER</code>, then <code>ENEMY</code>, then either the next player turn or <code>VICTORY</code> / <code>DEFEAT</code>. Buttons and, tomorrow, drop targets ask the phase before they accept a card.</p>
+
+  <h3>Damage, Block, and the two debuffs</h3>
+  <p>Block absorbs damage, then leftover damage hits HP. Block on a fighter is cleared at the <em>start</em> of that fighter's turn. Strength is a flat bonus added before multipliers. It does not tick down.</p>
+  <p>For one hit, in this order: add the attacker's Strength; if the attacker has Weak, multiply by 0.75 and floor; if the target has Vulnerable, multiply by 1.5 and floor. Weak and Vulnerable then count down by 1 at the <em>end of the afflicted fighter's turn</em>. A card applies its debuff after its own damage, so Bash does not boost the same hit that applied Vulnerable. Later cards in that hand do.</p>
+  <p>Consequence you should expect in the log: an enemy who applies Vulnerable 1 would watch it tick off at the end of your turn, before that enemy swings again, so the debuff would miss. Enemy Vulnerable on this page is therefore 2, which is still 1 when the next hit lands. Weak 2 on you weakens two of your turns, because Weak matters on your turn, before the tick.</p>
+
+  <div class="callout tip"><span class="callout-title">Coming from a typical deckbuilder</span>
+    <p>This is a small Slay-the-Spire-shaped loop: energy, five-card hands, intents you can read, a starter of Strikes and Defends. The map, relics, shop, and save slot are Day 26. The relic <em>ids</em> are already named inside <code>Battle</code> so that file does not have to be rewritten later.</p></div>
+
+  <h3>Numbers that are law for this game</h3>
+  <p>Player: 70 HP, 3 energy, draw 5. Starter deck: Strike ×5, Defend ×4, Bash ×1. One Jaw Worm is the Day 24 fight. The other cards are the reward pool (wired on Day 26).</p>
+  <table>
+    <tr><th>File / id</th><th>Cost</th><th>Type</th><th>Target</th><th>Rules</th></tr>
+    <tr><td><code>strike</code></td><td>1</td><td>Attack</td><td>Single</td><td>6 damage</td></tr>
+    <tr><td><code>defend</code></td><td>1</td><td>Skill</td><td>Self</td><td>5 Block</td></tr>
+    <tr><td><code>bash</code></td><td>2</td><td>Attack</td><td>Single</td><td>8 damage, 2 Vulnerable</td></tr>
+    <tr><td><code>pommel_strike</code></td><td>1</td><td>Attack</td><td>Single</td><td>9 damage, draw 1</td></tr>
+    <tr><td><code>iron_wave</code></td><td>1</td><td>Attack</td><td>Single</td><td>5 damage, 5 Block</td></tr>
+    <tr><td><code>clothesline</code></td><td>2</td><td>Attack</td><td>Single</td><td>12 damage, 2 Weak</td></tr>
+    <tr><td><code>shrug_it_off</code></td><td>1</td><td>Skill</td><td>Self</td><td>8 Block, draw 1</td></tr>
+    <tr><td><code>anger</code></td><td>0</td><td>Attack</td><td>Single</td><td>6 damage, copy into the discard pile</td></tr>
+    <tr><td><code>bloodletting</code></td><td>0</td><td>Skill</td><td>Self</td><td>Lose 3 HP (ignores Block), gain 2 energy</td></tr>
+    <tr><td><code>cleave</code></td><td>1</td><td>Attack</td><td>All</td><td>8 damage to each living enemy</td></tr>
+    <tr><td><code>inflame</code></td><td>1</td><td>Power</td><td>Self</td><td>2 Strength, Exhaust</td></tr>
+    <tr><td><code>true_grit</code></td><td>1</td><td>Skill</td><td>Self</td><td>7 Block, exhaust a random other card in hand</td></tr>
+  </table>
+  <table>
+    <tr><th>File / id</th><th>HP</th><th>Start</th><th>Pattern, then it repeats</th></tr>
+    <tr><td><code>jaw_worm</code></td><td>42</td><td></td><td>11 damage; 7 damage and 5 Block; 6 Block and 2 Strength</td></tr>
+    <tr><td><code>cultist</code></td><td>50</td><td>3 Strength</td><td>6 damage (the intent shows 9)</td></tr>
+    <tr><td><code>blue_slaver</code></td><td>48</td><td></td><td>13 damage; 8 damage and 2 Weak; 13 damage</td></tr>
+    <tr><td><code>ash_titan</code></td><td>86</td><td></td><td>6 damage and 2 Vulnerable; 14 damage; 10 Block and 2 Strength; 14 damage</td></tr>
+  </table>
+
+  <h2 id="build-1">Block 2: Project, card script, card files</h2>
+  <p class="steps-hint">Mark a step done when you finish it. Paste whole files with <kbd>Ctrl</kbd>+<kbd>A</kbd> unless a step says you are appending rows.</p>
+  <ol class="steps">
+    <li><strong>Copy the Ship Kit.</strong> Open PowerShell and run:
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+Copy-Item -Path C:\GodotProjects\ship-kit -Destination C:\GodotProjects\deckbuilder -Recurse
+      </script>
+      If PowerShell says the destination already exists, leave that folder alone and import it in the next step.</li>
+    <li><strong>Import.</strong> In the Godot Project Manager, click <kbd class="ui">Import</kbd>, browse to <code>C:\GodotProjects\deckbuilder\project.godot</code>, click <kbd class="ui">Import &amp; Edit</kbd>.</li>
+    <li><strong>Name.</strong> <kbd class="menu">Project &gt; Project Settings</kbd>. In the search box at the top of the settings window, type <code>config/name</code>. Set <kbd class="ui">Application &gt; Config &gt; Name</kbd> to <code>Deckbuilder</code>.</li>
+    <li><strong>Viewport.</strong> Search <code>viewport_width</code>. Set <kbd class="ui">Display &gt; Window &gt; Size &gt; Viewport Width</kbd> to <code>1280</code> and <kbd class="ui">Viewport Height</kbd> to <code>720</code>. The indigo rectangle in the 2D view is this size.</li>
+    <li><strong>Stretch.</strong> Search <code>stretch/mode</code>. Set <kbd class="ui">Display &gt; Window &gt; Stretch &gt; Mode</kbd> to <code>canvas_items</code>. Search <code>stretch/aspect</code> and set <kbd class="ui">Aspect</kbd> to <code>expand</code>. Wide windows gain extra horizontal room; the UI anchors use it. Search <code>handheld/orientation</code> and set <kbd class="ui">Display &gt; Window &gt; Handheld &gt; Orientation</kbd> to <kbd class="ui">Landscape</kbd>.</li>
+    <li><strong>Renderer.</strong> Search <code>rendering_method</code>. Set <kbd class="ui">Rendering &gt; Renderer &gt; Rendering Method</kbd> to <code>mobile</code>. This UI game does not need Forward+, and the desktop run then matches the Android export. Leave the <code>.mobile</code> override at <code>mobile</code>. Click <kbd class="ui">Close</kbd>.</li>
+    <li><strong>Confirm the main scene.</strong> Open Project Settings again, search <code>main_scene</code>, and confirm <kbd class="ui">Application &gt; Run &gt; Main Scene</kbd> is <code>res://ui/main_menu.tscn</code>. <code>SceneRouter</code> loads <code>res://game/game.tscn</code> when Play is pressed. Close settings.</li>
+    <li><strong>Folders.</strong> In the <kbd class="ui">FileSystem</kbd> dock (bottom-left), right-click <code>res://</code> → <kbd class="ui">New Folder</kbd>, name it <code>data</code> if that folder is missing. Right-click <code>data</code> → <kbd class="ui">New Folder</kbd> → <code>cards</code>. Create <code>enemies</code> the same way. Right-click <code>res://game</code> → <kbd class="ui">New Folder</kbd> → <code>combat</code>.</li>
+    <li><strong>Card script.</strong> Right-click <code>res://data</code> → <kbd class="ui">Create New</kbd> → <kbd class="ui">Script</kbd>. Set <kbd class="ui">Path</kbd> to <code>res://data/card_data.gd</code>, <kbd class="ui">Template</kbd> to <kbd class="ui">Empty</kbd>, <kbd class="ui">Inherits</kbd> to <code>Resource</code>. Leave Built-in unchecked. If the dialog shows <kbd class="ui">Class Name</kbd>, type <code>CardData</code>. Click <kbd class="ui">Create</kbd>. Select all in the script editor and replace the file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/card_data.gd">
+extends Resource
+class_name CardData
+
+enum CardType { ATTACK, SKILL, POWER }
+enum Target { SELF, SINGLE, ALL }
+
+@export var id: String = ""
+@export var name_key: String = ""
+@export var cost: int = 1
+@export var type: CardType = CardType.ATTACK
+@export var target: Target = Target.SINGLE
+@export var damage: int = 0
+@export var block: int = 0
+@export var draw: int = 0
+@export var energy_gain: int = 0
+@export var hp_loss: int = 0
+@export var strength: int = 0
+@export var weak: int = 0
+@export var vulnerable: int = 0
+@export var exhaust: bool = false
+@export var exhaust_random: bool = false
+@export var add_copy_to_discard: bool = false
+
+
+func rules_text() -> String:
+    var parts: PackedStringArray = PackedStringArray()
+    if damage > 0 and target == Target.ALL:
+        parts.append(tr("DECK_FX_DMG_ALL") % damage)
+    elif damage > 0:
+        parts.append(tr("DECK_FX_DMG") % damage)
+    if block > 0:
+        parts.append(tr("DECK_FX_BLOCK") % block)
+    if draw > 0:
+        parts.append(tr("DECK_FX_DRAW") % draw)
+    if energy_gain > 0:
+        parts.append(tr("DECK_FX_ENERGY") % energy_gain)
+    if hp_loss > 0:
+        parts.append(tr("DECK_FX_HP") % hp_loss)
+    if strength > 0:
+        parts.append(tr("DECK_FX_STR") % strength)
+    if weak > 0:
+        parts.append(tr("DECK_FX_WEAK") % weak)
+    if vulnerable > 0:
+        parts.append(tr("DECK_FX_VULN") % vulnerable)
+    if exhaust:
+        parts.append(tr("DECK_FX_EXHAUST"))
+    if exhaust_random:
+        parts.append(tr("DECK_FX_EXHAUST_RANDOM"))
+    if add_copy_to_discard:
+        parts.append(tr("DECK_FX_COPY"))
+    return " ".join(parts)
+
+
+func type_key() -> String:
+    match type:
+        CardType.ATTACK:
+            return "DECK_TYPE_ATTACK"
+        CardType.SKILL:
+            return "DECK_TYPE_SKILL"
+        _:
+            return "DECK_TYPE_POWER"
+      </script>
+    </li>
+    <li><strong>Save the script.</strong> Press <kbd>Ctrl</kbd>+<kbd>S</kbd>. The <kbd class="ui">Output</kbd> panel (bottom) should stay empty of errors. If <code>class_name</code> fails, the next dialog will not list <code>CardData</code>.</li>
+    <li><strong>Runtime card.</strong> Create <code>res://data/card_instance.gd</code> the same way. <kbd class="ui">Inherits</kbd> is <code>RefCounted</code>. Class name <code>CardInstance</code>. Replace the file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/card_instance.gd">
+extends RefCounted
+class_name CardInstance
+
+static var next_uid: int = 1
+
+var uid: int
+var data: CardData
+
+
+func _init(card_data: CardData) -> void:
+    data = card_data
+    uid = next_uid
+    next_uid += 1
+      </script>
+    </li>
+    <li><strong>Create Strike.</strong> Right-click <code>res://data/cards</code> → <kbd class="ui">Create New</kbd> → <kbd class="ui">Resource</kbd>. In the search box type <code>CardData</code>, select it, click <kbd class="ui">Create</kbd>. Save as <code>res://data/cards/strike.tres</code>. If <code>CardData</code> is missing, wait for the script scan, or use <kbd class="menu">Project &gt; Reload Current Project</kbd> and repeat this step.</li>
+    <li><strong>Fill Strike.</strong> Click <code>strike.tres</code> in the FileSystem dock. The <kbd class="ui">Inspector</kbd> (right) shows the resource. Set <kbd class="ui">Id</kbd> to <code>strike</code>, <kbd class="ui">Name Key</kbd> to <code>DECK_CARD_STRIKE</code>, <kbd class="ui">Cost</kbd> to <code>1</code>, <kbd class="ui">Type</kbd> to <kbd class="ui">Attack</kbd>, <kbd class="ui">Target</kbd> to <kbd class="ui">Single</kbd>, <kbd class="ui">Damage</kbd> to <code>6</code>. Leave every other number at 0 and both exhaust toggles off. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+  </ol>
+  <div class="checkpoint"><p>Select <code>strike.tres</code>. The Inspector title is the resource, <kbd class="ui">Damage</kbd> is 6, and <kbd class="ui">Cost</kbd> is 1. If the Inspector shows a node from the open scene instead, click the file in the FileSystem dock again.</p></div>
+  <ol class="steps">
+    <li><strong>Defend and Bash, same dialog.</strong> Duplicate the click path. <code>defend.tres</code>: id <code>defend</code>, name key <code>DECK_CARD_DEFEND</code>, cost 1, type Skill, target Self, block 5. <code>bash.tres</code>: id <code>bash</code>, name key <code>DECK_CARD_BASH</code>, cost 2, type Attack, target Single, damage 8, vulnerable 2. There is one Strike file, not five. The starter deck repeats the id <code>strike</code>.</li>
+    <li><strong>The other nine cards.</strong> For each row, <kbd class="ui">Create New</kbd> → <kbd class="ui">Resource</kbd> → <code>CardData</code>, save under <code>res://data/cards/</code> with that file name, then set the listed fields. Every unlisted number stays 0.
+      <table>
+        <tr><th>File</th><th>Name key</th><th>Inspector values that are not the default</th></tr>
+        <tr><td><code>pommel_strike.tres</code></td><td><code>DECK_CARD_POMMEL</code></td><td>id pommel_strike, cost 1, Attack, Single, damage 9, draw 1</td></tr>
+        <tr><td><code>iron_wave.tres</code></td><td><code>DECK_CARD_IRON_WAVE</code></td><td>id iron_wave, cost 1, Attack, Single, damage 5, block 5</td></tr>
+        <tr><td><code>clothesline.tres</code></td><td><code>DECK_CARD_CLOTHESLINE</code></td><td>id clothesline, cost 2, Attack, Single, damage 12, weak 2</td></tr>
+        <tr><td><code>shrug_it_off.tres</code></td><td><code>DECK_CARD_SHRUG</code></td><td>id shrug_it_off, cost 1, Skill, Self, block 8, draw 1</td></tr>
+        <tr><td><code>anger.tres</code></td><td><code>DECK_CARD_ANGER</code></td><td>id anger, cost 0, Attack, Single, damage 6, Add Copy To Discard on</td></tr>
+        <tr><td><code>bloodletting.tres</code></td><td><code>DECK_CARD_BLOODLETTING</code></td><td>id bloodletting, cost 0, Skill, Self, energy gain 2, hp loss 3</td></tr>
+        <tr><td><code>cleave.tres</code></td><td><code>DECK_CARD_CLEAVE</code></td><td>id cleave, cost 1, Attack, All, damage 8</td></tr>
+        <tr><td><code>inflame.tres</code></td><td><code>DECK_CARD_INFLAME</code></td><td>id inflame, cost 1, Power, Self, strength 2, Exhaust on</td></tr>
+        <tr><td><code>true_grit.tres</code></td><td><code>DECK_CARD_TRUE_GRIT</code></td><td>id true_grit, cost 1, Skill, Self, block 7, Exhaust Random on</td></tr>
+      </table>
+    </li>
+    <li><strong>Append combat strings.</strong> In the FileSystem dock, double-click <code>res://i18n/translations.csv</code> so it opens in the script editor. Click at the end of the file, after the last existing row. Paste the rows below. Do not paste a second header. The columns stay <code>keys,en,es,de,fr,pt_BR,ru,zh_CN</code>. French, Portuguese, Russian, and Chinese reuse the English sentence until you translate them; Spanish and German are filled.
+      <script type="text/x-code" data-lang="csv" data-file="res://i18n/translations.csv">
+DECK_END_TURN,End turn,Fin del turno,Zug beenden,End turn,End turn,End turn,End turn
+DECK_YOU,You,Tú,Du,You,You,You,You
+DECK_ENERGY,Energy %d,Energía %d,Energie %d,Energy %d,Energy %d,Energy %d,Energy %d
+DECK_PILES,Draw %d   Discard %d   Exhaust %d,Robo %d   Descarte %d   Exhaust %d,Ziehen %d   Ablage %d   Erschöpft %d,Draw %d   Discard %d   Exhaust %d,Draw %d   Discard %d   Exhaust %d,Draw %d   Discard %d   Exhaust %d,Draw %d   Discard %d   Exhaust %d
+DECK_HP,HP %d/%d,PV %d/%d,LP %d/%d,HP %d/%d,HP %d/%d,HP %d/%d,HP %d/%d
+DECK_BLOCK,Block %d,Bloqueo %d,Block %d,Block %d,Block %d,Block %d,Block %d
+DECK_STATUS,Strength %d  Weak %d  Vulnerable %d,Fuerza %d  Debilidad %d  Vulnerable %d,Stärke %d  Schwäche %d  Verwundbar %d,Strength %d  Weak %d  Vulnerable %d,Strength %d  Weak %d  Vulnerable %d,Strength %d  Weak %d  Vulnerable %d,Strength %d  Weak %d  Vulnerable %d
+DECK_WIN,Victory,Victoria,Sieg,Victory,Victory,Victory,Victory
+DECK_LOSE,Defeat,Derrota,Niederlage,Defeat,Defeat,Defeat,Defeat
+DECK_FX_DMG,Deal %d damage.,Inflige %d de daño.,Verursache %d Schaden.,Deal %d damage.,Deal %d damage.,Deal %d damage.,Deal %d damage.
+DECK_FX_DMG_ALL,Deal %d damage to all enemies.,Inflige %d de daño a todos los enemigos.,Verursache %d Schaden an allen Gegnern.,Deal %d damage to all enemies.,Deal %d damage to all enemies.,Deal %d damage to all enemies.,Deal %d damage to all enemies.
+DECK_FX_BLOCK,Gain %d Block.,Gana %d de Bloqueo.,Erhalte %d Block.,Gain %d Block.,Gain %d Block.,Gain %d Block.,Gain %d Block.
+DECK_FX_DRAW,Draw %d.,Roba %d.,Ziehe %d.,Draw %d.,Draw %d.,Draw %d.,Draw %d.
+DECK_FX_ENERGY,Gain %d Energy.,Gana %d de Energía.,Erhalte %d Energie.,Gain %d Energy.,Gain %d Energy.,Gain %d Energy.,Gain %d Energy.
+DECK_FX_HP,Lose %d HP.,Pierde %d PV.,Verliere %d LP.,Lose %d HP.,Lose %d HP.,Lose %d HP.,Lose %d HP.
+DECK_FX_STR,Gain %d Strength.,Gana %d de Fuerza.,Erhalte %d Stärke.,Gain %d Strength.,Gain %d Strength.,Gain %d Strength.,Gain %d Strength.
+DECK_FX_WEAK,Apply %d Weak.,Aplica %d de Debilidad.,Verursache %d Schwäche.,Apply %d Weak.,Apply %d Weak.,Apply %d Weak.,Apply %d Weak.
+DECK_FX_VULN,Apply %d Vulnerable.,Aplica %d de Vulnerable.,Verursache %d Verwundbar.,Apply %d Vulnerable.,Apply %d Vulnerable.,Apply %d Vulnerable.,Apply %d Vulnerable.
+DECK_FX_EXHAUST,Exhaust.,Exhaust.,Erschöpfen.,Exhaust.,Exhaust.,Exhaust.,Exhaust.
+DECK_FX_EXHAUST_RANDOM,Exhaust a random card from your hand.,Agota una carta al azar de tu mano.,Erschöpfe eine zufällige Karte deiner Hand.,Exhaust a random card from your hand.,Exhaust a random card from your hand.,Exhaust a random card from your hand.,Exhaust a random card from your hand.
+DECK_FX_COPY,Add a copy into your discard pile.,Añade una copia a tu pila de descarte.,Lege eine Kopie auf deinen Ablagestapel.,Add a copy into your discard pile.,Add a copy into your discard pile.,Add a copy into your discard pile.,Add a copy into your discard pile.
+DECK_TYPE_ATTACK,Attack,Ataque,Angriff,Attack,Attack,Attack,Attack
+DECK_TYPE_SKILL,Skill,Habilidad,Fähigkeit,Skill,Skill,Skill,Skill
+DECK_TYPE_POWER,Power,Poder,Macht,Power,Power,Power,Power
+DECK_CARD_STRIKE,Strike,Golpe,Schlag,Strike,Strike,Strike,Strike
+DECK_CARD_DEFEND,Defend,Defensa,Verteidigung,Defend,Defend,Defend,Defend
+DECK_CARD_BASH,Bash,Golpe brutal,Wucht,Bash,Bash,Bash,Bash
+DECK_CARD_POMMEL,Pommel Strike,Pommel,Knaufschlag,Pommel Strike,Pommel Strike,Pommel Strike,Pommel Strike
+DECK_CARD_IRON_WAVE,Iron Wave,Ola de hierro,Eisenwelle,Iron Wave,Iron Wave,Iron Wave,Iron Wave
+DECK_CARD_CLOTHESLINE,Clothesline,Cuerda,Wäscheleine,Clothesline,Clothesline,Clothesline,Clothesline
+DECK_CARD_SHRUG,Shrug It Off,Encogerse,Abschütteln,Shrug It Off,Shrug It Off,Shrug It Off,Shrug It Off
+DECK_CARD_ANGER,Anger,Ira,Zorn,Anger,Anger,Anger,Anger
+DECK_CARD_BLOODLETTING,Bloodletting,Sangría,Aderlass,Bloodletting,Bloodletting,Bloodletting,Bloodletting
+DECK_CARD_CLEAVE,Cleave,Hendidura,Spalten,Cleave,Cleave,Cleave,Cleave
+DECK_CARD_INFLAME,Inflame,Inflamar,Entflammen,Inflame,Inflame,Inflame,Inflame
+DECK_CARD_TRUE_GRIT,True Grit,Agallas,Zähe Entschlossenheit,True Grit,True Grit,True Grit,True Grit
+DECK_ENEMY_JAW,Jaw Worm,Gusano mandíbula,Kieferwurm,Jaw Worm,Jaw Worm,Jaw Worm,Jaw Worm
+DECK_ENEMY_CULTIST,Cultist,Sectario,Kultist,Cultist,Cultist,Cultist,Cultist
+DECK_ENEMY_SLAVER,Blue Slaver,Esclavista azul,Blauer Sklavenhalter,Blue Slaver,Blue Slaver,Blue Slaver,Blue Slaver
+DECK_ENEMY_TITAN,Ash Titan,Titán de ceniza,Asche-Titan,Ash Titan,Ash Titan,Ash Titan,Ash Titan
+DECK_LOG_TURN,Turn %d.,Turno %d.,Zug %d.,Turn %d.,Turn %d.,Turn %d.,Turn %d.
+DECK_LOG_SHUFFLE,Discard pile shuffled into the draw pile.,El descarte se baraja en el robo.,Der Ablagestapel wird in den Ziehstapel gemischt.,Discard pile shuffled into the draw pile.,Discard pile shuffled into the draw pile.,Discard pile shuffled into the draw pile.,Discard pile shuffled into the draw pile.
+DECK_LOG_PLAY,Played %s.,Juegas %s.,%s gespielt.,Played %s.,Played %s.,Played %s.,Played %s.
+DECK_LOG_DAMAGE,%s loses %d HP (%d blocked).,%s pierde %d PV (%d bloqueado).,%s verliert %d LP (%d geblockt).,%s loses %d HP (%d blocked).,%s loses %d HP (%d blocked).,%s loses %d HP (%d blocked).,%s loses %d HP (%d blocked).
+DECK_LOG_BLOCK,Gained %d Block.,Ganas %d de Bloqueo.,%d Block erhalten.,Gained %d Block.,Gained %d Block.,Gained %d Block.,Gained %d Block.
+DECK_LOG_EXHAUST,Exhausted %s.,Agotas %s.,%s erschöpft.,Exhausted %s.,Exhausted %s.,Exhausted %s.,Exhausted %s.
+DECK_LOG_ANCHOR,Anchor: +10 Block.,Ancla: +10 Bloqueo.,Anker: +10 Block.,Anchor: +10 Block.,Anchor: +10 Block.,Anchor: +10 Block.,Anchor: +10 Block.
+DECK_LOG_BAG,Bag of Preparation draws 2 more.,La bolsa de preparación roba 2 más.,Vorbereitungsbeutel zieht 2 mehr.,Bag of Preparation draws 2 more.,Bag of Preparation draws 2 more.,Bag of Preparation draws 2 more.,Bag of Preparation draws 2 more.
+DECK_LOG_VAJRA,Vajra: +1 Strength.,Vajra: +1 Fuerza.,Vajra: +1 Stärke.,Vajra: +1 Strength.,Vajra: +1 Strength.,Vajra: +1 Strength.,Vajra: +1 Strength.
+DECK_LOG_ORICHALCUM,Orichalcum: +6 Block.,Oricalco: +6 Bloqueo.,Orichalcum: +6 Block.,Orichalcum: +6 Block.,Orichalcum: +6 Block.,Orichalcum: +6 Block.,Orichalcum: +6 Block.
+DECK_INTENT_ATTACK,Attack %d,Ataque %d,Angriff %d,Attack %d,Attack %d,Attack %d,Attack %d
+DECK_INTENT_HITS,Attack %d x%d,Ataque %d x%d,Angriff %d x%d,Attack %d x%d,Attack %d x%d,Attack %d x%d,Attack %d x%d
+DECK_INTENT_BLOCK,Block %d,Bloqueo %d,Block %d,Block %d,Block %d,Block %d,Block %d
+DECK_INTENT_STR,+%d Strength,+%d Fuerza,+%d Stärke,+%d Strength,+%d Strength,+%d Strength,+%d Strength
+DECK_INTENT_WEAK,Weak %d,Debilidad %d,Schwäche %d,Weak %d,Weak %d,Weak %d,Weak %d
+DECK_INTENT_VULN,Vulnerable %d,Vulnerable %d,Verwundbar %d,Vulnerable %d,Vulnerable %d,Vulnerable %d,Vulnerable %d
+DECK_INTENT_WAIT,Wait,Esperar,Warten,Wait,Wait,Wait,Wait
+      </script>
+    </li>
+    <li><strong>Reimport the csv.</strong> Click <code>translations.csv</code> once in the FileSystem dock. Open the <kbd class="ui">Import</kbd> dock (a tab next to the <kbd class="ui">Scene</kbd> dock, top-left). The importer type is the CSV translation Day 15 set up. Click <kbd class="ui">Reimport</kbd> if it is enabled. Save the csv with <kbd>Ctrl</kbd>+<kbd>S</kbd> if the editor still shows a dot on the tab.</li>
+  </ol>
+  <div class="checkpoint"><p>The FileSystem dock lists twelve <code>.tres</code> files under <code>res://data/cards</code>. Double-click <code>inflame.tres</code>: <kbd class="ui">Exhaust</kbd> is on, <kbd class="ui">Strength</kbd> is 2, <kbd class="ui">Type</kbd> is Power. The Output panel has no parse errors.</p></div>
+
+  <h2 id="build-2">Block 3: Enemies, the catalog, the rules</h2>
+  <ol class="steps">
+    <li><strong>Intent step script.</strong> Create <code>res://data/intent_step.gd</code>, inherits <code>Resource</code>, class name <code>IntentStep</code>. Replace the file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/intent_step.gd">
+extends Resource
+class_name IntentStep
+
+@export var damage: int = 0
+@export var hits: int = 1
+@export var block: int = 0
+@export var strength: int = 0
+@export var weak: int = 0
+@export var vulnerable: int = 0
+      </script>
+    </li>
+    <li><strong>Enemy script.</strong> Create <code>res://data/enemy_data.gd</code>, inherits <code>Resource</code>, class name <code>EnemyData</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/enemy_data.gd">
+extends Resource
+class_name EnemyData
+
+@export var id: String = ""
+@export var name_key: String = ""
+@export var max_hp: int = 40
+@export var starting_strength: int = 0
+@export var pattern: Array[IntentStep] = []
+      </script>
+      Save. Reload the project if <code>IntentStep</code> is unknown to this file (Output will say the identifier is not declared). That happens when this script was parsed before <code>intent_step.gd</code> saved.</li>
+    <li><strong>Jaw Worm resource.</strong> Right-click <code>res://data/enemies</code> → <kbd class="ui">Create New</kbd> → <kbd class="ui">Resource</kbd> → <code>EnemyData</code>. Save as <code>res://data/enemies/jaw_worm.tres</code>. Set <kbd class="ui">Id</kbd> to <code>jaw_worm</code>, <kbd class="ui">Name Key</kbd> to <code>DECK_ENEMY_JAW</code>, <kbd class="ui">Max Hp</kbd> to <code>42</code>, <kbd class="ui">Starting Strength</kbd> to <code>0</code>.</li>
+    <li><strong>Three intents.</strong> In the Inspector, find <kbd class="ui">Pattern</kbd>, set its size to <code>3</code>. Click element 0, choose <kbd class="ui">New IntentStep</kbd> in the resource dropdown, then expand element 0. Set <kbd class="ui">Damage</kbd> to <code>11</code> and <kbd class="ui">Hits</kbd> to <code>1</code>. Element 1: new IntentStep, damage 7, hits 1, block 5. Element 2: new IntentStep, damage 0, hits 1, block 6, strength 2. Save.</li>
+    <li><strong>Cultist.</strong> <code>cultist.tres</code>. Id <code>cultist</code>, name key <code>DECK_ENEMY_CULTIST</code>, max HP 50, starting strength 3. Pattern size 1. That one IntentStep: damage 6, hits 1, every other field 0.</li>
+    <li><strong>Blue Slaver.</strong> <code>blue_slaver.tres</code>. Id <code>blue_slaver</code>, name key <code>DECK_ENEMY_SLAVER</code>, max HP 48, starting strength 0. Pattern size 3. Step 0: damage 13, hits 1. Step 1: damage 8, hits 1, weak 2. Step 2: damage 13, hits 1.</li>
+    <li><strong>Ash Titan.</strong> <code>ash_titan.tres</code>. Id <code>ash_titan</code>, name key <code>DECK_ENEMY_TITAN</code>, max HP 86. Pattern size 4. Step 0: damage 6, hits 1, vulnerable 2. Step 1: damage 14, hits 1. Step 2: damage 0, hits 1, block 10, strength 2. Step 3: damage 14, hits 1. Save.</li>
+  </ol>
+  <div class="checkpoint"><p>Expand <code>jaw_worm.tres</code> → <kbd class="ui">Pattern</kbd>. Three elements, none of them empty. Element 0 damage is 11. If an element says <kbd class="ui">[empty]</kbd>, the fight will crash when that step is reached: choose <kbd class="ui">New IntentStep</kbd> on the empty slot.</p></div>
+  <div class="callout docs"><span class="callout-title">Why the catalog lists paths</span>
+    <p><code>DirAccess.get_files_at</code> on <code>res://</code> does not list <code>.tres</code> files in an exported game the way the editor lists them (see the note on that method: imported resources live under <code>.godot</code>, and export adds <code>.remap</code> files). <code>load("res://data/cards/strike.tres")</code> still works in a release build. The catalog is an explicit list.</p></div>
+  <ol class="steps">
+    <li><strong>Catalog.</strong> Create <code>res://data/database.gd</code>, inherits <code>RefCounted</code>, class name <code>Database</code>. Replace with the file in the disclosure. Relic paths stay empty until Day 26; the loader is already here so you only fill the array later.
+      <details>
+        <summary>database.gd (replace the whole file)</summary>
+        <script type="text/x-code" data-lang="gdscript" data-file="res://data/database.gd">
+extends RefCounted
+class_name Database
+
+const CARD_PATHS: Array[String] = [
+    "res://data/cards/strike.tres",
+    "res://data/cards/defend.tres",
+    "res://data/cards/bash.tres",
+    "res://data/cards/pommel_strike.tres",
+    "res://data/cards/iron_wave.tres",
+    "res://data/cards/clothesline.tres",
+    "res://data/cards/shrug_it_off.tres",
+    "res://data/cards/anger.tres",
+    "res://data/cards/bloodletting.tres",
+    "res://data/cards/cleave.tres",
+    "res://data/cards/inflame.tres",
+    "res://data/cards/true_grit.tres",
+]
+
+const ENEMY_PATHS: Array[String] = [
+    "res://data/enemies/jaw_worm.tres",
+    "res://data/enemies/cultist.tres",
+    "res://data/enemies/blue_slaver.tres",
+    "res://data/enemies/ash_titan.tres",
+]
+
+const RELIC_PATHS: Array[String] = []
+
+const REWARD_IDS: Array[String] = [
+    "pommel_strike",
+    "iron_wave",
+    "clothesline",
+    "shrug_it_off",
+    "anger",
+    "bloodletting",
+    "cleave",
+    "inflame",
+    "true_grit",
+]
+
+const RELIC_IDS: Array[String] = [
+    "burning_blood",
+    "vajra",
+    "anchor",
+    "bag_of_preparation",
+    "orichalcum",
+]
+
+static var _cards: Dictionary = {}
+static var _enemies: Dictionary = {}
+static var _relics: Dictionary = {}
+
+
+static func load_all() -> void:
+    _cards.clear()
+    _enemies.clear()
+    _relics.clear()
+    for path in CARD_PATHS:
+        var res: Resource = load(path)
+        if res is CardData:
+            var card := res as CardData
+            _cards[card.id] = card
+        else:
+            push_error("Database failed to load card " + path)
+    for path in ENEMY_PATHS:
+        var res: Resource = load(path)
+        if res is EnemyData:
+            var enemy := res as EnemyData
+            _enemies[enemy.id] = enemy
+        else:
+            push_error("Database failed to load enemy " + path)
+    for path in RELIC_PATHS:
+        var res: Resource = load(path)
+        if res == null:
+            push_error("Database failed to load relic " + path)
+            continue
+        var relic_id: String = str(res.get("id"))
+        if relic_id != "":
+            _relics[relic_id] = res
+
+
+static func card(id: String) -> CardData:
+    return _cards.get(id) as CardData
+
+
+static func enemy(id: String) -> EnemyData:
+    return _enemies.get(id) as EnemyData
+
+
+static func relic(id: String) -> Resource:
+    return _relics.get(id) as Resource
+
+
+static func relic_name_key(id: String) -> String:
+    var res: Resource = relic(id)
+    if res == null:
+        return ""
+    return str(res.get("name_key"))
+
+
+static func starter_deck() -> Array[String]:
+    var deck: Array[String] = []
+    for _i in 5:
+        deck.append("strike")
+    for _i in 4:
+        deck.append("defend")
+    deck.append("bash")
+    return deck
+        </script>
+      </details>
+    </li>
+    <li><strong>Rules object.</strong> Create <code>res://game/battle.gd</code>, inherits <code>RefCounted</code>, class name <code>Battle</code>. This is not a node. Nothing in the scene tree "is" the Battle; the combat UI owns one. Replace the whole file with the disclosure. Read the phase and formula sections above before you paste, so the log lines match what you expect.
+      <details>
+        <summary>battle.gd (replace the whole file)</summary>
+        <script type="text/x-code" data-lang="gdscript" data-file="res://game/battle.gd">
+extends RefCounted
+class_name Battle
+
+signal state_changed
+signal log_line(text: String)
+signal battle_ended(victory: bool)
+signal impact(on_player: bool, enemy_index: int, amount: int)
+
+enum Phase { PLAYER, ENEMY, VICTORY, DEFEAT }
+
+const ENERGY: int = 3
+const DRAW_COUNT: int = 5
+const ANCHOR_BLOCK: int = 10
+const BAG_DRAW: int = 2
+const ORICHALCUM_BLOCK: int = 6
+const VAJRA_STRENGTH: int = 1
+
+var phase: Phase = Phase.PLAYER
+var player: Combatant
+var enemies: Array[Combatant] = []
+var draw_pile: Array[CardInstance] = []
+var hand: Array[CardInstance] = []
+var discard_pile: Array[CardInstance] = []
+var exhaust_pile: Array[CardInstance] = []
+var energy: int = 0
+var turn_number: int = 1
+var relic_ids: Array[String] = []
+
+
+class Combatant extends RefCounted:
+    var is_player: bool = false
+    var enemy_id: String = ""
+    var data: EnemyData
+    var hp: int = 0
+    var max_hp: int = 0
+    var block: int = 0
+    var strength: int = 0
+    var weak: int = 0
+    var vulnerable: int = 0
+    var intent_index: int = 0
+
+
+func start_battle(deck_ids: Array[String], enemy_ids: Array[String], relics: Array[String], hp: int, max_hp: int) -> void:
+    Database.load_all()
+    relic_ids.clear()
+    for relic_id in relics:
+        relic_ids.append(relic_id)
+    player = Combatant.new()
+    player.is_player = true
+    player.max_hp = max_hp
+    player.hp = hp
+    enemies.clear()
+    for enemy_id in enemy_ids:
+        var data: EnemyData = Database.enemy(enemy_id)
+        if data == null:
+            push_error("Missing enemy " + enemy_id)
+            continue
+        var enemy := Combatant.new()
+        enemy.enemy_id = enemy_id
+        enemy.data = data
+        enemy.max_hp = data.max_hp
+        enemy.hp = data.max_hp
+        enemy.strength = data.starting_strength
+        enemies.append(enemy)
+    draw_pile.clear()
+    hand.clear()
+    discard_pile.clear()
+    exhaust_pile.clear()
+    for card_id in deck_ids:
+        var card_data: CardData = Database.card(card_id)
+        if card_data == null:
+            push_error("Missing card " + card_id)
+            continue
+        draw_pile.append(CardInstance.new(card_data))
+    draw_pile.shuffle()
+    turn_number = 1
+    if _has_relic("vajra"):
+        player.strength += VAJRA_STRENGTH
+        _log(tr("DECK_LOG_VAJRA"))
+    _begin_player_turn()
+    state_changed.emit()
+
+
+func to_dictionary() -> Dictionary:
+    var enemy_rows: Array[Dictionary] = []
+    for enemy in enemies:
+        enemy_rows.append({
+            "id": enemy.enemy_id,
+            "hp": enemy.hp,
+            "max_hp": enemy.max_hp,
+            "block": enemy.block,
+            "strength": enemy.strength,
+            "weak": enemy.weak,
+            "vulnerable": enemy.vulnerable,
+            "intent_index": enemy.intent_index,
+        })
+    return {
+        "hp": player.hp,
+        "max_hp": player.max_hp,
+        "block": player.block,
+        "strength": player.strength,
+        "weak": player.weak,
+        "vulnerable": player.vulnerable,
+        "energy": energy,
+        "turn": turn_number,
+        "phase": int(phase),
+        "relics": _string_array(relic_ids),
+        "draw": _ids(draw_pile),
+        "hand": _ids(hand),
+        "discard": _ids(discard_pile),
+        "exhaust": _ids(exhaust_pile),
+        "enemies": enemy_rows,
+    }
+
+
+func from_dictionary(data: Dictionary) -> void:
+    Database.load_all()
+    relic_ids = _as_string_array(data.get("relics", []))
+    player = Combatant.new()
+    player.is_player = true
+    player.hp = int(data.get("hp", 70))
+    player.max_hp = int(data.get("max_hp", 70))
+    player.block = int(data.get("block", 0))
+    player.strength = int(data.get("strength", 0))
+    player.weak = int(data.get("weak", 0))
+    player.vulnerable = int(data.get("vulnerable", 0))
+    energy = int(data.get("energy", ENERGY))
+    turn_number = int(data.get("turn", 1))
+    phase = int(data.get("phase", int(Phase.PLAYER))) as Phase
+    enemies.clear()
+    var rows: Variant = data.get("enemies", [])
+    if rows is Array:
+        for row in rows:
+            if row is Dictionary:
+                var enemy := Combatant.new()
+                enemy.enemy_id = str(row.get("id", ""))
+                enemy.data = Database.enemy(enemy.enemy_id)
+                enemy.hp = int(row.get("hp", 1))
+                enemy.max_hp = int(row.get("max_hp", enemy.hp))
+                enemy.block = int(row.get("block", 0))
+                enemy.strength = int(row.get("strength", 0))
+                enemy.weak = int(row.get("weak", 0))
+                enemy.vulnerable = int(row.get("vulnerable", 0))
+                enemy.intent_index = int(row.get("intent_index", 0))
+                enemies.append(enemy)
+    draw_pile = _pile_from(data.get("draw", []))
+    hand = _pile_from(data.get("hand", []))
+    discard_pile = _pile_from(data.get("discard", []))
+    exhaust_pile = _pile_from(data.get("exhaust", []))
+    state_changed.emit()
+
+
+func can_play(uid: int) -> bool:
+    if phase != Phase.PLAYER or player == null:
+        return false
+    var card := _find_hand(uid)
+    if card == null:
+        return false
+    return energy >= card.data.cost
+
+
+func play(uid: int, enemy_index: int) -> bool:
+    if not can_play(uid):
+        return false
+    var card := _find_hand(uid)
+    var targets: Array[Combatant] = []
+    if card.data.target == CardData.Target.SELF:
+        targets.append(player)
+    elif card.data.target == CardData.Target.ALL:
+        for enemy in enemies:
+            if enemy.hp > 0:
+                targets.append(enemy)
+        if targets.is_empty():
+            return false
+    else:
+        if enemy_index < 0 or enemy_index >= enemies.size():
+            return false
+        if enemies[enemy_index].hp <= 0:
+            return false
+        targets.append(enemies[enemy_index])
+    energy -= card.data.cost
+    hand.erase(card)
+    _resolve(card, targets)
+    state_changed.emit()
+    return true
+
+
+func end_turn() -> void:
+    if phase != Phase.PLAYER or player == null:
+        return
+    if player.block == 0 and _has_relic("orichalcum"):
+        player.block += ORICHALCUM_BLOCK
+        _log(tr("DECK_LOG_ORICHALCUM"))
+    for card in hand:
+        discard_pile.append(card)
+    hand.clear()
+    if player.weak > 0:
+        player.weak -= 1
+    if player.vulnerable > 0:
+        player.vulnerable -= 1
+    phase = Phase.ENEMY
+    for enemy in enemies:
+        if enemy.hp <= 0:
+            continue
+        enemy.block = 0
+        _execute_intent(enemy)
+        if _check_end():
+            state_changed.emit()
+            return
+        if enemy.weak > 0:
+            enemy.weak -= 1
+        if enemy.vulnerable > 0:
+            enemy.vulnerable -= 1
+    turn_number += 1
+    _begin_player_turn()
+    state_changed.emit()
+
+
+func intent_lines(enemy: Combatant) -> String:
+    if enemy.data == null or enemy.data.pattern.is_empty():
+        return tr("DECK_INTENT_WAIT")
+    var step: IntentStep = enemy.data.pattern[enemy.intent_index % enemy.data.pattern.size()]
+    var parts: PackedStringArray = PackedStringArray()
+    if step.damage > 0:
+        var shown: int = _compute_damage(enemy, player, step.damage)
+        if step.hits > 1:
+            parts.append(tr("DECK_INTENT_HITS") % [shown, step.hits])
+        else:
+            parts.append(tr("DECK_INTENT_ATTACK") % shown)
+    if step.block > 0:
+        parts.append(tr("DECK_INTENT_BLOCK") % step.block)
+    if step.strength > 0:
+        parts.append(tr("DECK_INTENT_STR") % step.strength)
+    if step.weak > 0:
+        parts.append(tr("DECK_INTENT_WEAK") % step.weak)
+    if step.vulnerable > 0:
+        parts.append(tr("DECK_INTENT_VULN") % step.vulnerable)
+    if parts.is_empty():
+        return tr("DECK_INTENT_WAIT")
+    return " ".join(parts)
+
+
+func _begin_player_turn() -> void:
+    phase = Phase.PLAYER
+    player.block = 0
+    var draw_count: int = DRAW_COUNT
+    if turn_number == 1 and _has_relic("anchor"):
+        player.block += ANCHOR_BLOCK
+        _log(tr("DECK_LOG_ANCHOR"))
+    if turn_number == 1 and _has_relic("bag_of_preparation"):
+        draw_count += BAG_DRAW
+        _log(tr("DECK_LOG_BAG"))
+    energy = ENERGY
+    _draw(draw_count)
+    _log(tr("DECK_LOG_TURN") % turn_number)
+
+
+func _draw(count: int) -> void:
+    for _n in count:
+        if draw_pile.is_empty():
+            if discard_pile.is_empty():
+                return
+            draw_pile.append_array(discard_pile)
+            discard_pile.clear()
+            draw_pile.shuffle()
+            _log(tr("DECK_LOG_SHUFFLE"))
+        hand.append(draw_pile.pop_back() as CardInstance)
+
+
+func _resolve(card: CardInstance, targets: Array[Combatant]) -> void:
+    var data: CardData = card.data
+    _log(tr("DECK_LOG_PLAY") % tr(data.name_key))
+    if data.hp_loss > 0:
+        player.hp -= data.hp_loss
+        _log(tr("DECK_LOG_DAMAGE") % [tr("DECK_YOU"), data.hp_loss, 0])
+        if _check_end():
+            _move_card(card, data)
+            return
+    if data.energy_gain > 0:
+        energy += data.energy_gain
+    if data.damage > 0:
+        for target in targets:
+            if target.hp <= 0:
+                continue
+            _deal_damage(player, target, data.damage)
+        if _check_end():
+            _move_card(card, data)
+            return
+    if data.block > 0:
+        player.block += data.block
+        _log(tr("DECK_LOG_BLOCK") % data.block)
+    if data.strength > 0:
+        player.strength += data.strength
+    if data.target != CardData.Target.SELF:
+        for target in targets:
+            if data.weak > 0:
+                target.weak += data.weak
+            if data.vulnerable > 0:
+                target.vulnerable += data.vulnerable
+    if data.draw > 0:
+        _draw(data.draw)
+    if data.exhaust_random and not hand.is_empty():
+        var pick: CardInstance = hand.pick_random() as CardInstance
+        hand.erase(pick)
+        exhaust_pile.append(pick)
+        _log(tr("DECK_LOG_EXHAUST") % tr(pick.data.name_key))
+    _move_card(card, data)
+
+
+func _move_card(card: CardInstance, data: CardData) -> void:
+    if data.add_copy_to_discard:
+        discard_pile.append(CardInstance.new(data))
+    if data.exhaust:
+        exhaust_pile.append(card)
+    else:
+        discard_pile.append(card)
+
+
+func _execute_intent(enemy: Combatant) -> void:
+    if enemy.data == null or enemy.data.pattern.is_empty():
+        return
+    var step: IntentStep = enemy.data.pattern[enemy.intent_index % enemy.data.pattern.size()]
+    enemy.intent_index += 1
+    if step.strength > 0:
+        enemy.strength += step.strength
+    if step.block > 0:
+        enemy.block += step.block
+    if step.weak > 0:
+        player.weak += step.weak
+    if step.vulnerable > 0:
+        player.vulnerable += step.vulnerable
+    if step.damage <= 0:
+        return
+    for _hit in step.hits:
+        if player.hp <= 0:
+            break
+        _deal_damage(enemy, player, step.damage)
+
+
+func _deal_damage(source: Combatant, target: Combatant, base: int) -> void:
+    var amount: int = _compute_damage(source, target, base)
+    var blocked: int = mini(amount, target.block)
+    target.block -= blocked
+    var lost: int = amount - blocked
+    target.hp -= lost
+    var target_name: String = tr("DECK_YOU")
+    var enemy_index: int = -1
+    if not target.is_player:
+        enemy_index = enemies.find(target)
+        if target.data != null:
+            target_name = tr(target.data.name_key)
+    _log(tr("DECK_LOG_DAMAGE") % [target_name, lost, blocked])
+    impact.emit(target.is_player, enemy_index, lost)
+
+
+func _compute_damage(source: Combatant, target: Combatant, base: int) -> int:
+    var amount: int = base + source.strength
+    if amount < 0:
+        amount = 0
+    if source.weak > 0:
+        amount = int(floor(float(amount) * 0.75))
+    if target.vulnerable > 0:
+        amount = int(floor(float(amount) * 1.5))
+    return amount
+
+
+func _check_end() -> bool:
+    if player.hp <= 0:
+        player.hp = 0
+        phase = Phase.DEFEAT
+        battle_ended.emit(false)
+        return true
+    var living: int = 0
+    for enemy in enemies:
+        if enemy.hp > 0:
+            living += 1
+    if living == 0:
+        phase = Phase.VICTORY
+        battle_ended.emit(true)
+        return true
+    return false
+
+
+func _find_hand(uid: int) -> CardInstance:
+    for card in hand:
+        if card.uid == uid:
+            return card
+    return null
+
+
+func _has_relic(id: String) -> bool:
+    return relic_ids.has(id)
+
+
+func _ids(pile: Array[CardInstance]) -> Array[String]:
+    var ids: Array[String] = []
+    for card in pile:
+        ids.append(card.data.id)
+    return ids
+
+
+func _pile_from(value: Variant) -> Array[CardInstance]:
+    var pile: Array[CardInstance] = []
+    if value is Array:
+        for raw in value:
+            var card_data: CardData = Database.card(str(raw))
+            if card_data != null:
+                pile.append(CardInstance.new(card_data))
+    return pile
+
+
+func _as_string_array(value: Variant) -> Array[String]:
+    var out: Array[String] = []
+    if value is Array:
+        for item in value:
+            out.append(str(item))
+    return out
+
+
+func _string_array(source: Array[String]) -> Array[String]:
+    var out: Array[String] = []
+    for item in source:
+        out.append(item)
+    return out
+
+
+func _log(text: String) -> void:
+    log_line.emit(text)
+        </script>
+      </details>
+    </li>
+  </ol>
+  <div class="callout note"><span class="callout-title">Save shape, used on Day 26</span>
+    <p><code>to_dictionary()</code> stores ids and ints only. <code>SaveManager.save_slot</code> writes JSON, and JSON turns every number into a float. <code>from_dictionary()</code> puts each loaded number through <code>int()</code>. Do not remove those casts when you wire the slot. Pile shuffle uses <code>Array.shuffle()</code> (global RNG). Reward offers on Day 26 use a separate <code>RandomNumberGenerator</code> so a saved shop does not reroll.</p></div>
+  <div class="checkpoint"><p>Open <code>battle.gd</code>. The script editor outline (right side of the Script workspace, or <kbd class="menu">File &gt; Toggle Scripts Panel</kbd> if you hid it) lists <code>start_battle</code>, <code>play</code>, <code>end_turn</code>, <code>to_dictionary</code>, and <code>from_dictionary</code>. Output shows no errors. The relic logs are dormant: today's fight passes an empty relic list.</p></div>
+
+  <h2 id="build-3">Block 4: Combat scene and the menu</h2>
+  <p>Today the hand is a column of buttons. Each button carries the card uid with <code>bind</code>, because a loop variable captured by a lambda would point at the last card for every button.</p>
+  <ol class="steps">
+    <li><strong>New scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>. In the empty Scene dock, click <kbd class="ui">Other Node</kbd>, search <code>Control</code>, select it, click <kbd class="ui">Create</kbd>. Press <kbd>F2</kbd> and rename the root <code>Combat</code>.</li>
+    <li><strong>Full rectangle.</strong> Select <code>Combat</code>. In the toolbar directly above the 2D viewport, open the <kbd class="ui">Anchor</kbd> menu and choose <kbd class="ui">Full Rect</kbd>. The control snaps to the indigo 1280×720 frame.</li>
+    <li><strong>Margin.</strong> Select <code>Combat</code>, click <kbd class="ui">+</kbd> (or press <kbd>Ctrl</kbd>+<kbd>A</kbd>), add a <code>MarginContainer</code> named <code>Margin</code>. Select <code>Margin</code>, Anchor menu → <kbd class="ui">Full Rect</kbd>. In the Inspector filter box type <code>margin_</code>. Under <kbd class="ui">Theme Overrides &gt; Constants</kbd>, click the override arrow beside each of <kbd class="ui">Margin Left</kbd>, <kbd class="ui">Margin Top</kbd>, <kbd class="ui">Margin Right</kbd>, and <kbd class="ui">Margin Bottom</kbd>, and set each to <code>16</code>.</li>
+    <li><strong>Column.</strong> Add a child <code>VBoxContainer</code> of <code>Margin</code> named <code>Column</code>. Filter the Inspector for <code>size flags</code>. Under <kbd class="ui">Container Sizing</kbd>, set both <kbd class="ui">Horizontal</kbd> and <kbd class="ui">Vertical</kbd> to <kbd class="ui">Fill</kbd> and <kbd class="ui">Expand</kbd>.</li>
+    <li><strong>Top bar.</strong> Add a child <code>HBoxContainer</code> of <code>Column</code> named <code>TopBar</code>. Add four children, in order: <code>Label</code> named <code>PlayerLabel</code>, <code>Label</code> named <code>EnergyLabel</code>, <code>Label</code> named <code>PileLabel</code>, <code>Label</code> named <code>ResultLabel</code>, <code>Control</code> named <code>Spacer</code>, <code>Button</code> named <code>EndTurn</code>. Select <code>Spacer</code>, set Horizontal size flags to Fill and Expand, and set <kbd class="ui">Mouse &gt; Filter</kbd> to <kbd class="ui">Ignore</kbd> so the empty gap does not eat clicks. Select <code>EndTurn</code>, filter <code>text</code>, set <kbd class="ui">Text</kbd> to <code>End turn</code>.</li>
+    <li><strong>Unique names.</strong> Right-click <code>PlayerLabel</code> → <kbd class="ui">Access as Unique Name</kbd>. A <code>%</code> appears in the Scene dock. Do the same for <code>EnergyLabel</code>, <code>PileLabel</code>, <code>ResultLabel</code>, and <code>EndTurn</code>. Scripts then use <code>%PlayerLabel</code> instead of a long path.</li>
+    <li><strong>Battlefield.</strong> Add a child <code>HBoxContainer</code> of <code>Column</code> named <code>Battlefield</code>. Vertical size flags: Fill and Expand. Add a child <code>Panel</code> named <code>PlayerDrop</code>. Filter <code>custom minimum</code> and set <kbd class="ui">Custom Minimum Size</kbd> to <code>280 x 160</code>. Unique-name <code>PlayerDrop</code>. Add a sibling <code>HBoxContainer</code> named <code>EnemyRow</code>. Horizontal size flags Fill and Expand. Unique-name <code>EnemyRow</code>. In the Inspector filter for <code>EnemyRow</code>, search <code>separation</code>, override the theme constant <kbd class="ui">Separation</kbd> to <code>16</code>.</li>
+    <li><strong>Log and hand.</strong> Add a child <code>RichTextLabel</code> of <code>Column</code> named <code>LogLabel</code>. Unique-name it. Custom minimum size <code>0 x 120</code>. Filter <code>scroll following</code> and turn <kbd class="ui">Scroll Following</kbd> on. Leave <kbd class="ui">Bbcode Enabled</kbd> off. Add a child <code>VBoxContainer</code> of <code>Column</code> named <code>HandMount</code>. Unique-name it. Custom minimum size <code>0 x 220</code>. Override its <kbd class="ui">Separation</kbd> constant to <code>6</code>.</li>
+    <li><strong>Save the scene.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd>, path <code>res://game/combat/combat.tscn</code>. If a dialog offers to set this as the main scene, click <kbd class="ui">No</kbd>.</li>
+  </ol>
+  <pre class="scene-tree">Combat (Control)                 [combat.gd]
+└── Margin (MarginContainer)
+    └── Column (VBoxContainer)
+        ├── TopBar (HBoxContainer)
+        │   ├── %PlayerLabel (Label)
+        │   ├── %EnergyLabel (Label)
+        │   ├── %PileLabel (Label)
+        │   ├── %ResultLabel (Label)
+        │   ├── Spacer (Control)
+        │   └── %EndTurn (Button)
+        ├── Battlefield (HBoxContainer)
+        │   ├── %PlayerDrop (Panel)
+        │   └── %EnemyRow (HBoxContainer)
+        ├── %LogLabel (RichTextLabel)
+        └── %HandMount (VBoxContainer)</pre>
+  <ol class="steps">
+    <li><strong>Combat script.</strong> Select <code>Combat</code>, click the <kbd class="ui">Attach Script</kbd> button (scroll icon at the top of the Scene dock). Path <code>res://game/combat/combat.gd</code>, template Empty, inherits <code>Control</code>. If Class Name is shown, type <code>Combat</code>. Replace the whole file:
+      <details>
+        <summary>combat.gd (replace the whole file)</summary>
+        <script type="text/x-code" data-lang="gdscript" data-file="res://game/combat/combat.gd">
+extends Control
+class_name Combat
+
+signal battle_ended(victory: bool)
+
+var battle: Battle = Battle.new()
+var _hand_queued: bool = false
+
+
+func _ready() -> void:
+    battle.state_changed.connect(_refresh)
+    battle.log_line.connect(_on_log)
+    battle.battle_ended.connect(_on_battle_ended)
+    %EndTurn.pressed.connect(_on_end_turn_pressed)
+    if get_parent() == get_tree().root:
+        _debug_start()
+
+
+func _debug_start() -> void:
+    var relics: Array[String] = []
+    start_battle(Database.starter_deck(), ["jaw_worm"], relics, 70, 70)
+
+
+func start_battle(deck_ids: Array[String], enemy_ids: Array[String], relics: Array[String], hp: int, max_hp: int) -> void:
+    %LogLabel.text = ""
+    %ResultLabel.text = ""
+    visible = true
+    process_mode = Node.PROCESS_MODE_INHERIT
+    battle.start_battle(deck_ids, enemy_ids, relics, hp, max_hp)
+
+
+func load_battle(data: Dictionary) -> void:
+    %LogLabel.text = ""
+    %ResultLabel.text = ""
+    visible = true
+    process_mode = Node.PROCESS_MODE_INHERIT
+    battle.from_dictionary(data)
+
+
+func export_battle() -> Dictionary:
+    return battle.to_dictionary()
+
+
+func current_hp() -> int:
+    if battle.player == null:
+        return 0
+    return battle.player.hp
+
+
+func _on_end_turn_pressed() -> void:
+    battle.end_turn()
+
+
+func _on_hand_pressed(uid: int) -> void:
+    battle.play(uid, _first_living_enemy())
+
+
+func _on_log(text: String) -> void:
+    %LogLabel.append_text(text)
+    %LogLabel.newline()
+
+
+func _on_battle_ended(victory: bool) -> void:
+    if victory:
+        %ResultLabel.text = tr("DECK_WIN")
+    else:
+        %ResultLabel.text = tr("DECK_LOSE")
+    battle_ended.emit(victory)
+    _refresh()
+
+
+func _refresh() -> void:
+    if battle.player == null:
+        return
+    var fighter: Battle.Combatant = battle.player
+    %PlayerLabel.text = tr("DECK_HP") % [fighter.hp, fighter.max_hp]
+    %PlayerLabel.text += "  " + (tr("DECK_BLOCK") % fighter.block)
+    %PlayerLabel.text += "  " + (tr("DECK_STATUS") % [fighter.strength, fighter.weak, fighter.vulnerable])
+    %EnergyLabel.text = tr("DECK_ENERGY") % battle.energy
+    %PileLabel.text = tr("DECK_PILES") % [battle.draw_pile.size(), battle.discard_pile.size(), battle.exhaust_pile.size()]
+    %EndTurn.disabled = battle.phase != Battle.Phase.PLAYER
+    _rebuild_enemies()
+    if not _hand_queued:
+        _hand_queued = true
+        call_deferred("_rebuild_hand")
+
+
+func _rebuild_hand() -> void:
+    _hand_queued = false
+    if battle.player == null:
+        return
+    _clear(%HandMount)
+    for card in battle.hand:
+        var button := Button.new()
+        button.text = "%s   %d   %s" % [tr(card.data.name_key), card.data.cost, card.data.rules_text()]
+        button.disabled = not battle.can_play(card.uid)
+        button.pressed.connect(_on_hand_pressed.bind(card.uid))
+        %HandMount.add_child(button)
+
+
+func _rebuild_enemies() -> void:
+    var row: HBoxContainer = %EnemyRow
+    if row.get_child_count() != battle.enemies.size():
+        _clear(row)
+        for _i in battle.enemies.size():
+            var panel := Panel.new()
+            panel.custom_minimum_size = Vector2(280, 140)
+            var label := Label.new()
+            label.name = "Body"
+            label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+            label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+            panel.add_child(label)
+            label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+            label.offset_left = 12.0
+            label.offset_top = 8.0
+            label.offset_right = -12.0
+            label.offset_bottom = -8.0
+            row.add_child(panel)
+    for i in battle.enemies.size():
+        var enemy: Battle.Combatant = battle.enemies[i]
+        var panel := row.get_child(i) as Panel
+        var label := panel.get_node("Body") as Label
+        var name_text: String = enemy.enemy_id
+        if enemy.data != null:
+            name_text = tr(enemy.data.name_key)
+        label.text = "%s\n%s\n%s\n%s" % [
+            name_text,
+            tr("DECK_HP") % [enemy.hp, enemy.max_hp],
+            tr("DECK_BLOCK") % enemy.block,
+            battle.intent_lines(enemy),
+        ]
+
+
+func _clear(node: Node) -> void:
+    for child in node.get_children():
+        node.remove_child(child)
+        child.queue_free()
+
+
+func _first_living_enemy() -> int:
+    for i in battle.enemies.size():
+        if battle.enemies[i].hp > 0:
+            return i
+    return -1
+        </script>
+      </details>
+    </li>
+    <li><strong>Run the fight alone.</strong> Press <kbd>F6</kbd> (Run Current Scene). You should get five buttons, energy 3, Jaw Worm at 42 HP, and an intent of Attack 11. The log line is <code>Turn 1.</code></li>
+  </ol>
+  <div class="checkpoint"><p>Click one Strike. Energy becomes 2, the log contains <code>Played Strike.</code> and <code>Jaw Worm loses 6 HP (0 blocked).</code>, and the enemy HP label reads 36. Draw pile count drops. If every button says the raw key <code>DECK_CARD_STRIKE</code>, reimport <code>translations.csv</code> and press <kbd>F6</kbd> again. If Output says <code>Missing card strike</code>, the <code>.tres</code> id or the path in <code>CARD_PATHS</code> does not match.</p></div>
+  <ol class="steps">
+    <li><strong>End Turn.</strong> Click <kbd class="ui">End turn</kbd>. The hand leaves, Jaw Worm's HP line stays, your HP drops by 11 minus any Block you gained, and a new hand of up to 5 appears with energy 3. The intent changes to the second pattern step (7 damage and 5 Block).</li>
+    <li><strong>Open the game scene.</strong> Double-click <code>res://game/game.tscn</code>. If the root is not a <code>Control</code>, right-click it → <kbd class="ui">Change Type</kbd>, search <code>Control</code>, click <kbd class="ui">Change</kbd>. Rename the root <code>Game</code> with <kbd>F2</kbd>. Delete leftover child nodes (select them, press <kbd>Delete</kbd>). Anchor <code>Game</code> to Full Rect.</li>
+    <li><strong>Instance the fight.</strong> Select <code>Game</code>. Click the chain-link icon at the top of the Scene dock (<kbd class="ui">Instantiate Child Scene</kbd>). Choose <code>res://game/combat/combat.tscn</code>. Select the new instance, Anchor menu → Full Rect, then right-click it → <kbd class="ui">Access as Unique Name</kbd> so the Scene dock shows <code>%Combat</code>.</li>
+    <li><strong>Pause menu.</strong> With <code>Game</code> selected, click the chain-link icon again and choose <code>res://ui/pause_menu.tscn</code>. Leave that node's name as the scene defines it. It already uses process mode Always, so it can listen while the tree is paused.</li>
+    <li><strong>Game script.</strong> Select <code>Game</code>. If a script is already attached, open it and replace everything. If not, attach <code>res://game/game.gd</code>, inherits <code>Control</code>, template Empty. Replace with:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/game.gd">
+extends Control
+
+@onready var combat: Combat = %Combat
+
+
+func _ready() -> void:
+    combat.battle_ended.connect(_on_battle_ended)
+    var relics: Array[String] = []
+    combat.start_battle(Database.starter_deck(), ["jaw_worm"], relics, 70, 70)
+
+
+func _on_battle_ended(victory: bool) -> void:
+    if victory:
+        print("victory")
+    else:
+        print("defeat")
+      </script>
+    </li>
+    <li><strong>Save and play from the menu.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd>. Press <kbd>F5</kbd>. The Ship Kit main menu appears. Click Play. The same Jaw Worm fight appears over the menu transition. Press <kbd>Esc</kbd> if your pause action is bound (Ship Kit's <code>pause</code> action): the pause menu shows and the fight stops accepting the End Turn button until you resume.</li>
+  </ol>
+  <div class="checkpoint"><p><kbd>F5</kbd> → Play shows HP 70/70, energy 3, five card buttons, Jaw Worm intent Attack 11. Output stays free of errors. Winning or dying prints <code>victory</code> or <code>defeat</code> in Output. If Play opens an empty window, <code>SceneRouter.GAME_SCENE</code> is not <code>res://game/game.tscn</code>, or the Combat instance is missing its script.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong><code>CardData</code> missing in Create Resource.</strong> The script has a parse error, or it was saved after you opened the dialog. Check Output, then <kbd class="menu">Project &gt; Reload Current Project</kbd>.</li>
+    <li><strong>Empty pattern slots.</strong> An <code>[empty]</code> IntentStep crashes when that turn arrives. Every array slot needs <kbd class="ui">New IntentStep</kbd>.</li>
+    <li><strong>Five Strike files.</strong> The starter deck wants the id <code>strike</code> five times. Extra <code>.tres</code> files with the same id overwrite each other in the catalog dictionary.</li>
+    <li><strong>Lambdas in the hand loop.</strong> <code>bind(card.uid)</code> stores the uid at connect time. A lambda that reads the loop variable reads whatever card is last.</li>
+    <li><strong>Rebuilding the hand inside the button signal.</strong> <code>_rebuild_hand</code> is deferred so the button that was clicked is not freed inside its own <code>pressed</code> callback.</li>
+    <li><strong>Main scene swapped.</strong> <kbd>F5</kbd> should open the menu. If it opens the fight directly, set Main Scene back to <code>res://ui/main_menu.tscn</code>.</li>
+    <li><strong>Block "does nothing".</strong> Block is cleared at the start of your next turn. It only matters during the enemy phase that follows End Turn. Anchor (Day 26) is applied after that clear, and only on turn 1.</li>
+    <li><strong>JSON later.</strong> If a resumed fight has 11.0 energy or a bad phase, an <code>int()</code> cast was skipped in <code>from_dictionary</code>.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 25 min)</h2>
+  <div class="challenge">
+    <h3>Twin Strike</h3>
+    <p>Add <code>@export var hits: int = 1</code> on <code>CardData</code>. In <code>_resolve</code>, when damage is greater than 0, repeat <code>_deal_damage</code> <code>hits</code> times against each target, and stop early on a target whose HP is already 0. Author <code>twin_strike.tres</code>: cost 1, Attack, Single, damage 5, hits 2, name key <code>DECK_CARD_TWIN</code>. Add the path to <code>CARD_PATHS</code> and one copy to <code>starter_deck</code> in place of a Strike. Add a csv row for the name. The intent system already multiplies enemy hits; this is the same idea on a card.</p>
+    <p>Hint: do not put the extra hit on Bash's Vulnerable application. Damage still happens before the debuff.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>Why is Strike a <code>Resource</code> and the card in your hand a <code>CardInstance</code>?</p>
+      <ul>
+        <li>Resources cannot store integers, so the hand needs a second type.</li>
+        <li>The <code>.tres</code> file is the shared design. The fight holds lightweight instances so a copy added by Anger disappears when the fight ends.</li>
+        <li>Godot only allows one <code>Resource</code> in memory at a time.</li>
+        <li><code>class_name</code> works only on <code>RefCounted</code>.</li>
+      </ul>
+      <p class="explain">Editing the Strike resource would edit every future Strike. Instances point at that resource and live in the piles for one fight.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>The draw pile is empty and the discard pile has cards. You draw one. What happens first?</p>
+      <ul>
+        <li>The draw fails and the hand stays short forever.</li>
+        <li>The top of the exhaust pile is drawn.</li>
+        <li>The discard pile is moved onto the draw pile and shuffled, then one card is drawn.</li>
+        <li>The run deck is copied again from disk.</li>
+      </ul>
+      <p class="explain"><code>_draw</code> shuffles the discard into the draw pile only when the draw pile is empty and the discard pile is not. Exhaust stays out.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>You have 5 Block and the Jaw Worm's intent is Attack 11. You press End Turn without playing a Defend. What hits your HP?</p>
+      <ul>
+        <li>6. Block absorbs 5, then your Block is cleared at the start of the next player turn.</li>
+        <li>11. Block is cleared at the end of the player turn, before the enemy acts.</li>
+        <li>0. Block always lasts the whole fight.</li>
+        <li>11, and Block stays at 5.</li>
+      </ul>
+      <p class="explain">End Turn does not clear Block. The enemy hits, Block absorbs, then the next <code>_begin_player_turn</code> sets Block to 0 before you draw.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Bash deals 8 and applies 2 Vulnerable. The enemy has no Vulnerable yet. How much HP does that Bash hit remove, before Block?</p>
+      <ul>
+        <li>12, because Vulnerable applies first and 8 × 1.5 = 12.</li>
+        <li>8. The debuff is applied after this card's damage. A later card in the same hand sees Vulnerable.</li>
+        <li>6, because every attack is multiplied by 0.75.</li>
+        <li>10, because Bash also grants 2 Strength.</li>
+      </ul>
+      <p class="explain"><code>_resolve</code> deals damage, then adds Weak or Vulnerable. Floor of 8 × 1.5 would be the next damaging card, not Bash itself.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>Day 26 will save <code>energy</code> with <code>SaveManager.save_slot</code>. The fight loads and energy is the float <code>2.0</code>. What does <code>from_dictionary</code> do?</p>
+      <ul>
+        <li>It refuses the file, because JSON cannot store numbers.</li>
+        <li>It assigns the float straight into the <code>int</code> variable and hopes the warning is harmless.</li>
+        <li>It stores energy as a <code>Vector2</code> so JSON keeps the type.</li>
+        <li>It wraps the loaded value in <code>int()</code>, because JSON numbers come back as floats.</li>
+      </ul>
+      <p class="explain">The slot format is JSON. Every number becomes a float on load. Counters, HP, energy, turn, and intent index are cast with <code>int()</code>.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/resources.html" target="_blank" rel="noopener">Resources</a>: custom resources, <code>.tres</code>, and why they are the card files.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_resource.html" target="_blank" rel="noopener">Resource</a>: the base type of <code>CardData</code>, <code>IntentStep</code>, and <code>EnemyData</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_refcounted.html" target="_blank" rel="noopener">RefCounted</a>: <code>Battle</code> and <code>CardInstance</code> are not nodes and are not saved as resources.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_array.html" target="_blank" rel="noopener">Array</a>: <code>shuffle</code>, <code>pick_random</code>, <code>pop_back</code>, <code>erase</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_json.html" target="_blank" rel="noopener">JSON</a>: numbers are floats after <code>parse_string</code>. The save slot uses this.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/io/saving_games.html" target="_blank" rel="noopener">Saving games</a>: the pattern Day 26 delegates to <code>SaveManager</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_richtextlabel.html" target="_blank" rel="noopener">RichTextLabel</a>: <code>append_text</code>, <code>newline</code>, and Scroll Following on the battle log.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li><kbd>F6</kbd> on <code>combat.tscn</code> deals five cards and a Jaw Worm whose first intent is Attack 11.</li>
+    <li>Playing Strike spends 1 energy and deals 6. End Turn lets the enemy hit, then draws a new hand at 3 energy.</li>
+    <li>Defend's Block reduces that hit, and the Block line is 0 again on the following player turn.</li>
+    <li><kbd>F5</kbd> still opens the Ship Kit menu, and Play opens this fight. Pause still opens.</li>
+    <li>I can point at <code>to_dictionary</code> / <code>from_dictionary</code> and say where <code>int()</code> runs.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> replace the button column with a card <code>Control</code>, a hand layout, drag-and-drop onto the player or an enemy, and tweens for hits and hover.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

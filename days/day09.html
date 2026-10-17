@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 9 - Tower Defense II: towers, placement, victory | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day09" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 1 · Day 9 · Game 3: Bastion Defense</div>
+    <h1>Tower Defense II: towers, placement, victory</h1>
+    <p class="lead">Finish Bastion Defense. Grass cells become build sites through <code>local_to_map</code>, four tower types gain three levels each, and projectiles on the <code>player_attacks</code> layer hit enemies on the <code>enemies</code> layer. You add splash, slow, upgrade, sell, a 1×/2× speed toggle, an eight-wave level you can win, and a best-wave save.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Block 1: Concepts.</strong> Grid placement, targeting, layers, <code>Engine.time_scale</code>, JSON numbers.</td></tr>
+    <tr><td>0:20 – 1:05</td><td><strong>Block 2: Data.</strong> <code>TowerLevel</code> and <code>TowerData</code>, the balance tables, generated <code>.tres</code> files, tank, flyer and boss.</td></tr>
+    <tr><td>1:05 – 2:10</td><td><strong>Block 3: Tower and projectile.</strong> Range <code>Area2D</code>, four targeting modes, aimed shots, splash and slow.</td></tr>
+    <tr><td>2:10 – 2:25</td><td><strong>Break.</strong> Stand up, drink water, look at something far away.</td></tr>
+    <tr><td>2:25 – 3:20</td><td><strong>Block 4: Build UI.</strong> Click-to-place, upgrade, sell, 1×/2×.</td></tr>
+    <tr><td>3:20 – 3:45</td><td><strong>Block 5: The real level.</strong> Eight waves, victory, best-wave file, playtest.</td></tr>
+    <tr><td>3:45 – 4:00</td><td><strong>Block 6: Quiz + wrap-up.</strong> (The challenge is optional and not counted.)</td></tr>
+    <tr class="total"><td>Total</td><td>4 h</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Turn a mouse click into a map cell with <code>to_local</code> and <code>TileMapLayer.local_to_map</code>, and reject any cell whose <code>buildable</code> custom data is false or that already holds a tower.</li>
+    <li>Define four towers and three levels each as <code>TowerData</code> / <code>TowerLevel</code> resources, using the balance numbers in this lesson.</li>
+    <li>Fire projectiles that live on physics layer 4 (<code>player_attacks</code>) and detect enemies on layer 3 (<code>enemies</code>), including cannon splash and frost slow.</li>
+    <li>Upgrade, sell (60% of gold spent, rounded down), switch targeting, and toggle <code>Engine.time_scale</code> between 1 and 2.</li>
+    <li>Replace yesterday's leak-only level with eight waves, show victory when they clear, and save the best wave to <code>user://best_wave.json</code> with <code>int()</code> on load.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 8's project opens from <code>C:\GodotProjects\g03-bastion-defense</code>. <kbd>F5</kbd> still marches grunts along <code>GroundPath</code>, and <code>STARTING_LIVES</code> in <code>autoload/game.gd</code> is <code>20</code> again.</li>
+    <li>These nodes exist under <code>Main</code>: <code>Map</code> (unique name), <code>Paths/GroundPath</code>, <code>Paths/AirPath</code>, <code>Base</code>, <code>WaveSpawner</code>, <code>HUD</code> with <code>GoldLabel</code>, <code>LivesLabel</code>, <code>WaveLabel</code>, <code>Overlay</code>, <code>OverlayTitle</code>, <code>RestartButton</code>.</li>
+    <li>The autoload node name is <code>Game</code>. <code>Enemy</code>, <code>EnemyData</code>, <code>WaveGroup</code>, <code>WaveData</code>, <code>LevelData</code> and <code>WaveSpawner</code> are the class names from Day 8. Today does not rename them.</li>
+    <li>If the project is missing, finish Day 8's wrap-up checklist before continuing. There is nothing new to download.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+
+  <h3>Clicks are pixels, rules are cells</h3>
+  <p><code>local_to_map</code> expects a position in the <code>TileMapLayer</code>'s own coordinates. The mouse is in global coordinates, so the conversion is <code>map.local_to_map(map.to_local(get_global_mouse_position()))</code>. The reverse, for dropping a tower on the cell centre, is <code>map.to_global(map.map_to_local(cell))</code>. <code>get_cell_tile_data(cell)</code> returns <code>null</code> off the map; otherwise <code>get_custom_data("buildable")</code> is the bool you painted on Day 8. Path and rock stay false, so the route cannot be walled off. That is why this game stays on <code>Path2D</code>.</p>
+
+  <h3>One detector, two layers</h3>
+  <p>The enemy <code>Hitbox</code> is already on layer 3 (<code>enemies</code>), monitorable, and watching nothing. Towers and shots do the looking. Their <code>Area2D</code> nodes sit on layer 4 (<code>player_attacks</code>) and their mask is only layer 3. In the Inspector those are the named buttons. In code the same masks are bit values: layer 3 is <code>4</code>, layer 4 is <code>8</code> (layer 1 is bit 0). A physics shape query does not see areas unless <code>collide_with_areas</code> is true; the default only tests bodies, and our enemies are areas.</p>
+
+  <h3>Aim, splash, slow</h3>
+  <p>A tower picks one enemy inside its range circle: <strong>First</strong> (highest <code>progress_ratio</code> on that enemy's own path), <strong>Last</strong>, <strong>Closest</strong>, or <strong>Strongest</strong> (current health). It leads the shot with <code>predict_position</code> from Day 8. Cannon shells deal their full damage to every enemy in the splash radius. Frost multiplies speed by <code>slow_factor</code> (0.55 means 55% speed) through <code>apply_slow</code>, which already keeps the strongest factor and the longest duration. Frost level 3 also splashes that slow.</p>
+
+  <h3>Time scale and the save file</h3>
+  <p><code>Engine.time_scale = 2.0</code> scales <code>_physics_process</code> delta and <code>SceneTreeTimer</code> together, so the wave and the towers speed up as a pair. It does <em>not</em> reset when you reload the scene, and it does not speed audio (there is no audio today). <code>JSON.parse_string</code> turns every number into a float, so a saved <code>3</code> comes back as <code>3.0</code>. Cast with <code>int()</code> before you store the best wave.</p>
+
+  <h2 id="build-1">Block 2: Tower data and the roster</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <p>A tower type is one resource with three <code>TowerLevel</code> entries. Level 1's <code>cost</code> is the build price. Later costs are the upgrade prices. <code>attack_range</code> is in pixels. <code>slow_factor</code> of <code>1</code> means no slow. <code>splash_radius</code> of <code>0</code> means a single target. Sell refunds <code>int(gold_spent * 0.6)</code> on the whole tower, not just the last upgrade.</p>
+
+  <table>
+    <tr><th>Tower</th><th>Lv</th><th>Cost</th><th>Damage</th><th>Range</th><th>Cooldown</th><th>Shot speed</th><th>Splash</th><th>Slow factor</th><th>Slow time</th></tr>
+    <tr><td>Arrow</td><td>1</td><td>50</td><td>15</td><td>190</td><td>0.70 s</td><td>480</td><td>0</td><td>1</td><td>0</td></tr>
+    <tr><td>Arrow</td><td>2</td><td>40</td><td>24</td><td>210</td><td>0.60 s</td><td>520</td><td>0</td><td>1</td><td>0</td></tr>
+    <tr><td>Arrow</td><td>3</td><td>70</td><td>36</td><td>230</td><td>0.50 s</td><td>560</td><td>0</td><td>1</td><td>0</td></tr>
+    <tr><td>Cannon</td><td>1</td><td>110</td><td>22</td><td>160</td><td>1.50 s</td><td>260</td><td>52</td><td>1</td><td>0</td></tr>
+    <tr><td>Cannon</td><td>2</td><td>90</td><td>38</td><td>175</td><td>1.35 s</td><td>280</td><td>64</td><td>1</td><td>0</td></tr>
+    <tr><td>Cannon</td><td>3</td><td>130</td><td>60</td><td>190</td><td>1.20 s</td><td>300</td><td>76</td><td>1</td><td>0</td></tr>
+    <tr><td>Frost</td><td>1</td><td>80</td><td>5</td><td>150</td><td>0.90 s</td><td>340</td><td>0</td><td>0.55</td><td>2.0 s</td></tr>
+    <tr><td>Frost</td><td>2</td><td>70</td><td>8</td><td>170</td><td>0.80 s</td><td>360</td><td>0</td><td>0.45</td><td>2.5 s</td></tr>
+    <tr><td>Frost</td><td>3</td><td>90</td><td>12</td><td>190</td><td>0.70 s</td><td>380</td><td>36</td><td>0.40</td><td>3.0 s</td></tr>
+    <tr><td>Sniper</td><td>1</td><td>140</td><td>80</td><td>340</td><td>2.00 s</td><td>640</td><td>0</td><td>1</td><td>0</td></tr>
+    <tr><td>Sniper</td><td>2</td><td>110</td><td>140</td><td>400</td><td>1.80 s</td><td>640</td><td>0</td><td>1</td><td>0</td></tr>
+    <tr><td>Sniper</td><td>3</td><td>160</td><td>220</td><td>460</td><td>1.60 s</td><td>640</td><td>0</td><td>1</td><td>0</td></tr>
+  </table>
+  <p>Colors: Arrow <code>#3ecf8e</code>, Cannon <code>#e07a3d</code>, Frost <code>#5ec8f0</code>, Sniper <code>#e6c34a</code>. An arrow bought and sold during prep refunds 30 gold (60% of 50). Bought and upgraded once, then sold, the spend is 90 and the refund is 54.</p>
+
+  <ol class="steps">
+    <li><strong>Create <code>tower_level.gd</code>.</strong> In the FileSystem dock right-click <code>data</code>, <kbd class="ui">New &gt; Script...</kbd>, <kbd class="ui">Inherits</kbd> <code>Resource</code>, path <code>res://data/tower_level.gd</code>. Replace the file with:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/tower_level.gd">
+extends Resource
+class_name TowerLevel
+
+## Build price on level 1. Upgrade price on later levels.
+@export var cost: int = 50
+@export var damage: float = 15.0
+@export var attack_range: float = 190.0
+@export var cooldown: float = 0.7
+@export var projectile_speed: float = 480.0
+@export var splash_radius: float = 0.0
+## 1.0 means no slow. 0.55 means the enemy moves at 55% speed.
+@export var slow_factor: float = 1.0
+@export var slow_duration: float = 0.0
+      </script>
+    </li>
+    <li><strong>Create <code>tower_data.gd</code>.</strong> Same folder, path <code>res://data/tower_data.gd</code>, inherits <code>Resource</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/tower_data.gd">
+extends Resource
+class_name TowerData
+
+enum Kind { ARROW, CANNON, FROST, SNIPER }
+
+@export var display_name: String = "Tower"
+@export var kind: Kind = Kind.ARROW
+@export var color: Color = Color.WHITE
+@export var levels: Array[TowerLevel] = []
+      </script>
+      Save both scripts. If the generator later says <code>TowerLevel</code> is not declared, use <kbd class="menu">Project &gt; Reload Current Project</kbd>.
+    </li>
+    <li><strong>Generate the four tower files.</strong> Right-click <code>tools</code>, <kbd class="ui">New &gt; Script...</kbd>, <kbd class="ui">Inherits</kbd> <code>EditorScript</code>, path <code>res://tools/make_towers.gd</code>. Replace the file with:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://tools/make_towers.gd">
+@tool
+extends EditorScript
+
+# Each row: cost, damage, attack_range, cooldown, projectile_speed, splash_radius, slow_factor, slow_duration
+
+
+func _run() -> void:
+    _tower("res://data/towers/arrow.tres", "Arrow", TowerData.Kind.ARROW, Color("#3ecf8e"), [
+        [50, 15.0, 190.0, 0.70, 480.0, 0.0, 1.0, 0.0],
+        [40, 24.0, 210.0, 0.60, 520.0, 0.0, 1.0, 0.0],
+        [70, 36.0, 230.0, 0.50, 560.0, 0.0, 1.0, 0.0],
+    ])
+    _tower("res://data/towers/cannon.tres", "Cannon", TowerData.Kind.CANNON, Color("#e07a3d"), [
+        [110, 22.0, 160.0, 1.50, 260.0, 52.0, 1.0, 0.0],
+        [90, 38.0, 175.0, 1.35, 280.0, 64.0, 1.0, 0.0],
+        [130, 60.0, 190.0, 1.20, 300.0, 76.0, 1.0, 0.0],
+    ])
+    _tower("res://data/towers/frost.tres", "Frost", TowerData.Kind.FROST, Color("#5ec8f0"), [
+        [80, 5.0, 150.0, 0.90, 340.0, 0.0, 0.55, 2.0],
+        [70, 8.0, 170.0, 0.80, 360.0, 0.0, 0.45, 2.5],
+        [90, 12.0, 190.0, 0.70, 380.0, 36.0, 0.40, 3.0],
+    ])
+    _tower("res://data/towers/sniper.tres", "Sniper", TowerData.Kind.SNIPER, Color("#e6c34a"), [
+        [140, 80.0, 340.0, 2.00, 640.0, 0.0, 1.0, 0.0],
+        [110, 140.0, 400.0, 1.80, 640.0, 0.0, 1.0, 0.0],
+        [160, 220.0, 460.0, 1.60, 640.0, 0.0, 1.0, 0.0],
+    ])
+    EditorInterface.get_resource_filesystem().scan()
+    print("Wrote arrow, cannon, frost and sniper.")
+
+
+func _tower(path: String, title: String, kind: TowerData.Kind, color: Color, rows: Array) -> void:
+    var data := TowerData.new()
+    data.display_name = title
+    data.kind = kind
+    data.color = color
+    for row in rows:
+        var entry: Array = row
+        var level := TowerLevel.new()
+        level.cost = int(entry[0])
+        level.damage = float(entry[1])
+        level.attack_range = float(entry[2])
+        level.cooldown = float(entry[3])
+        level.projectile_speed = float(entry[4])
+        level.splash_radius = float(entry[5])
+        level.slow_factor = float(entry[6])
+        level.slow_duration = float(entry[7])
+        data.levels.append(level)
+    var error: Error = ResourceSaver.save(data, path)
+    if error != OK:
+        push_error("Could not save %s (error %d)" % [path, error])
+
+
+      </script>
+    </li>
+    <li><strong>Run the generator.</strong> Save, focus the Script editor, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>. Output reads <code>Wrote arrow, cannon, frost and sniper.</code></li>
+    <li><strong>Check the numbers in the Inspector.</strong> Open <code>data/towers/arrow.tres</code>. <kbd class="ui">Kind</kbd> is <code>Arrow</code>. Unfold <kbd class="ui">Levels</kbd>, then element 0: <kbd class="ui">Cost</kbd> 50, <kbd class="ui">Damage</kbd> 15, <kbd class="ui">Attack Range</kbd> 190. Open <code>frost.tres</code> and unfold level 3 (element 2): <kbd class="ui">Splash Radius</kbd> 36, <kbd class="ui">Slow Factor</kbd> 0.4, <kbd class="ui">Cost</kbd> 90. This is the same resource inspector you used for <code>grunt.tres</code>. The script only filled the twelve levels.</li>
+  </ol>
+  <div class="checkpoint"><p><code>data/towers</code> contains <code>arrow.tres</code>, <code>cannon.tres</code>, <code>frost.tres</code> and <code>sniper.tres</code>, and arrow level 1 matches the table. If <code>TowerData</code> is missing from the parser, reload the project and run the script again.</p></div>
+
+  <h2 id="build-2">Block 3: Tower, targeting, projectile</h2>
+
+  <h3>The tower scene</h3>
+  <ol class="steps">
+    <li><strong>Create the scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>, <kbd class="ui">Other Node</kbd>, type <code>Node2D</code>, rename the root <code>Tower</code>, save as <code>res://towers/tower.tscn</code>.</li>
+    <li><strong>Add the range.</strong> Select <code>Tower</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add an <code>Area2D</code> named <code>Range</code>. With <code>Range</code> selected, add a <code>CollisionShape2D</code> named <code>Shape</code>. On <code>Shape</code>, set <kbd class="ui">Shape</kbd> to <kbd class="ui">New CircleShape2D</kbd> and <kbd class="ui">Radius</kbd> to <code>190</code>. The script replaces this circle per level; the placeholder only silences the warning.</li>
+    <li><strong>Set the layers.</strong> Select <code>Range</code>. Under <kbd class="ui">Collision &gt; Layer</kbd> untick button 1 and tick button <code>4</code> (tooltip <code>player_attacks</code>). Under <kbd class="ui">Mask</kbd> untick button 1 and tick button <code>3</code> (tooltip <code>enemies</code>). Leave <kbd class="ui">Monitoring</kbd> on and turn <kbd class="ui">Monitorable</kbd> off. The tower looks for enemies. It does not need to be seen.</li>
+    <li><strong>Attach <code>tower.gd</code>.</strong> Right-click <code>Tower</code>, <kbd class="ui">Attach Script</kbd>, path <code>res://towers/tower.gd</code>. Replace the file with:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://towers/tower.gd">
+extends Node2D
+class_name Tower
+
+enum TargetMode { FIRST, LAST, CLOSEST, STRONGEST }
+
+const SELL_RATIO: float = 0.6
+const PROJECTILE_SCENE: PackedScene = preload("res://towers/projectile.tscn")
+
+var data: TowerData
+var shots_parent: Node2D
+var cell: Vector2i = Vector2i.ZERO
+var target_mode: TargetMode = TargetMode.FIRST
+
+var _level_index: int = 0
+var _spent: int = 0
+var _cooldown: float = 0.0
+var _selected: bool = false
+
+@onready var _range: Area2D = $Range
+@onready var _shape: CollisionShape2D = $Range/Shape
+
+
+func setup(parent: Node2D, map_cell: Vector2i, paid: int) -> void:
+    shots_parent = parent
+    cell = map_cell
+    _spent = paid
+
+
+func _ready() -> void:
+    # Layer 4 = 8 (player_attacks). Layer 3 = 4 (enemies).
+    _range.collision_layer = 8
+    _range.collision_mask = 4
+    _range.monitoring = true
+    _range.monitorable = false
+    add_to_group("towers")
+    _apply_level()
+
+
+func _physics_process(delta: float) -> void:
+    if Game.ended or data == null:
+        return
+    _cooldown = maxf(_cooldown - delta, 0.0)
+    var target: Enemy = _pick_target()
+    if target == null:
+        return
+    look_at(target.global_position)
+    if _cooldown > 0.0:
+        return
+    _shoot(target)
+    _cooldown = _current().cooldown
+
+
+func _current() -> TowerLevel:
+    return data.levels[_level_index]
+
+
+func _apply_level() -> void:
+    if data == null or data.levels.is_empty() or _shape == null:
+        return
+    var circle := CircleShape2D.new()
+    circle.radius = _current().attack_range
+    _shape.shape = circle
+    queue_redraw()
+
+
+func next_upgrade_cost() -> int:
+    var next: int = _level_index + 1
+    if data == null or next >= data.levels.size():
+        return -1
+    return data.levels[next].cost
+
+
+func upgrade() -> void:
+    if next_upgrade_cost() < 0:
+        return
+    _spent += next_upgrade_cost()
+    _level_index += 1
+    _cooldown = 0.0
+    _apply_level()
+
+
+func sell_value() -> int:
+    return int(float(_spent) * SELL_RATIO)
+
+
+func level_number() -> int:
+    return _level_index + 1
+
+
+func cycle_target() -> void:
+    var next: int = (int(target_mode) + 1) % TargetMode.size()
+    target_mode = next as TargetMode
+
+
+func target_label() -> String:
+    match target_mode:
+        TargetMode.FIRST:
+            return "First"
+        TargetMode.LAST:
+            return "Last"
+        TargetMode.CLOSEST:
+            return "Closest"
+        _:
+            return "Strongest"
+
+
+func set_selected(on: bool) -> void:
+    _selected = on
+    queue_redraw()
+
+
+func _pick_target() -> Enemy:
+    var best: Enemy = null
+    for area in _range.get_overlapping_areas():
+        var enemy: Enemy = area.get_parent() as Enemy
+        if enemy == null or enemy.is_dead():
+            continue
+        if best == null or _better(enemy, best):
+            best = enemy
+    return best
+
+
+func _better(candidate: Enemy, current: Enemy) -> bool:
+    match target_mode:
+        TargetMode.FIRST:
+            return candidate.progress_ratio > current.progress_ratio
+        TargetMode.LAST:
+            return candidate.progress_ratio < current.progress_ratio
+        TargetMode.CLOSEST:
+            var candidate_dist: float = global_position.distance_squared_to(candidate.global_position)
+            var current_dist: float = global_position.distance_squared_to(current.global_position)
+            return candidate_dist < current_dist
+        _:
+            return candidate.health > current.health
+
+
+func _shoot(target: Enemy) -> void:
+    if shots_parent == null:
+        push_error("Tower has no Projectiles node.")
+        return
+    var stats: TowerLevel = _current()
+    var origin: Vector2 = global_position
+    var aim: Vector2 = target.global_position
+    if stats.projectile_speed > 1.0:
+        var flight: float = origin.distance_to(aim) / stats.projectile_speed
+        aim = target.predict_position(flight)
+    var direction: Vector2 = origin.direction_to(aim)
+    if direction.length_squared() < 0.001:
+        direction = Vector2.RIGHT
+    var shot: Projectile = PROJECTILE_SCENE.instantiate() as Projectile
+    shot.damage = stats.damage
+    shot.speed = stats.projectile_speed
+    shot.splash_radius = stats.splash_radius
+    shot.slow_factor = stats.slow_factor
+    shot.slow_duration = stats.slow_duration
+    shot.direction = direction
+    shot.global_position = origin
+    shots_parent.add_child(shot)
+
+
+func _draw() -> void:
+    if data == null or data.levels.is_empty():
+        return
+    if _selected:
+        var reach: float = _current().attack_range
+        draw_circle(Vector2.ZERO, reach, Color(1, 1, 1, 0.07))
+        draw_arc(Vector2.ZERO, reach, 0.0, TAU, 48, Color(1, 1, 1, 0.45), 2.0)
+    var body: Color = data.color
+    draw_rect(Rect2(-18, -18, 36, 36), body.darkened(0.4))
+    draw_rect(Rect2(-12, -12, 24, 24), body)
+    for i in data.levels.size():
+        var pip: Color = Color(0, 0, 0, 0.45)
+        if i <= _level_index:
+            pip = Color.WHITE
+        draw_circle(Vector2(-12.0 + float(i) * 12.0, 26.0), 3.0, pip)
+      </script>
+      Godot will mark a preload error until <code>projectile.tscn</code> exists. Save, then build that scene next. Do not press <kbd>F6</kbd> yet.
+    </li>
+  </ol>
+  <pre class="scene-tree">Tower (Node2D)              [tower.gd]
+└── Range (Area2D)          layer 4 player_attacks, mask layer 3 enemies
+    └── Shape (CollisionShape2D)   CircleShape2D, resized in code</pre>
+
+  <h3>The projectile</h3>
+  <p>A fast shot can jump over a 22 px runner between physics frames, especially at 2×. The projectile is still an <code>Area2D</code> on the attack layer, but the hit test steps along the flight in 8 px bites and queries the physics space with <em>this node's</em> collision mask. Splash uses a second query at the impact, same mask, larger radius, full damage to each enemy once.</p>
+  <ol class="steps">
+    <li><strong>Create the scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>, <kbd class="ui">Other Node</kbd>, <code>Area2D</code>, rename it <code>Projectile</code>, save as <code>res://towers/projectile.tscn</code>. Add a child <code>CollisionShape2D</code> named <code>Shape</code> with a <kbd class="ui">New CircleShape2D</kbd> of radius <code>8</code>.</li>
+    <li><strong>Set the layers.</strong> Select <code>Projectile</code>. <kbd class="ui">Layer</kbd>: only button <code>4</code> (<code>player_attacks</code>). <kbd class="ui">Mask</kbd>: only button <code>3</code> (<code>enemies</code>). <kbd class="ui">Monitoring</kbd> on, <kbd class="ui">Monitorable</kbd> off.</li>
+    <li><strong>Attach <code>projectile.gd</code>.</strong> Path <code>res://towers/projectile.gd</code>. Replace the file with:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://towers/projectile.gd">
+extends Area2D
+class_name Projectile
+
+var damage: float = 10.0
+var speed: float = 400.0
+var splash_radius: float = 0.0
+var slow_factor: float = 1.0
+var slow_duration: float = 0.0
+var direction: Vector2 = Vector2.RIGHT
+
+var _hit: bool = false
+var _age: float = 0.0
+
+
+func _ready() -> void:
+    collision_layer = 8
+    collision_mask = 4
+    monitoring = true
+    monitorable = false
+    z_index = 12
+    add_to_group("projectiles")
+    queue_redraw()
+
+
+func _physics_process(delta: float) -> void:
+    if _hit:
+        return
+    _age += delta
+    var remaining: float = speed * delta
+    while remaining > 0.0 and not _hit:
+        var bite: float = minf(8.0, remaining)
+        global_position += direction * bite
+        remaining -= bite
+        _probe()
+    if _hit:
+        return
+    var visible: Rect2 = get_viewport_rect().grow(96.0)
+    if _age > 6.0 or not visible.has_point(global_position):
+        queue_free()
+
+
+func _probe() -> void:
+    var space: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+    var query := PhysicsShapeQueryParameters2D.new()
+    var circle := CircleShape2D.new()
+    circle.radius = 8.0
+    query.shape = circle
+    query.transform = Transform2D(0.0, global_position)
+    query.collision_mask = collision_mask
+    query.collide_with_areas = true
+    query.collide_with_bodies = false
+    var hits: Array = space.intersect_shape(query, 16)
+    if hits.is_empty():
+        return
+    _hit = true
+    var direct: Enemy = _enemy_from(hits[0])
+    if splash_radius > 0.0:
+        _splash(direct)
+    elif direct != null:
+        _hurt(direct)
+    queue_free()
+
+
+func _splash(fallback: Enemy) -> void:
+    var space: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+    var query := PhysicsShapeQueryParameters2D.new()
+    var circle := CircleShape2D.new()
+    circle.radius = splash_radius
+    query.shape = circle
+    query.transform = Transform2D(0.0, global_position)
+    query.collision_mask = collision_mask
+    query.collide_with_areas = true
+    query.collide_with_bodies = false
+    var hits: Array = space.intersect_shape(query, 64)
+    var seen: Array[Enemy] = []
+    for hit in hits:
+        var enemy: Enemy = _enemy_from(hit)
+        if enemy == null or seen.has(enemy):
+            continue
+        seen.append(enemy)
+        _hurt(enemy)
+    if seen.is_empty() and fallback != null:
+        _hurt(fallback)
+
+
+func _enemy_from(hit: Variant) -> Enemy:
+    var info: Dictionary = hit
+    var body: Area2D = info.get("collider") as Area2D
+    if body == null:
+        return null
+    return body.get_parent() as Enemy
+
+
+func _hurt(enemy: Enemy) -> void:
+    if enemy.is_dead():
+        return
+    enemy.take_damage(damage)
+    if slow_factor < 1.0 and slow_duration > 0.0:
+        enemy.apply_slow(slow_factor, slow_duration)
+
+
+func _draw() -> void:
+    var tint: Color = Color.WHITE
+    if slow_factor < 1.0:
+        tint = Color("#5ec8f0")
+    elif splash_radius > 0.0:
+        tint = Color("#e07a3d")
+    draw_circle(Vector2.ZERO, 5.0, tint)
+      </script>
+    </li>
+    <li><strong>Return to the tower script.</strong> Open <code>tower.gd</code>. The preload error on <code>projectile.tscn</code> should be gone. Save both scenes (<kbd>Ctrl</kbd>+<kbd>S</kbd>).</li>
+  </ol>
+  <div class="checkpoint"><p><code>tower.tscn</code> and <code>projectile.tscn</code> both save with no parser errors. On <code>Range</code> and on <code>Projectile</code>, layer 4 is the only ticked layer and layer 3 is the only ticked mask. If the tower script cannot find <code>Projectile</code>, the class name in <code>projectile.gd</code> was not saved before you focused <code>tower.gd</code>: click the projectile script, save, then click the tower script again.</p></div>
+
+  <h2 id="build-3">Block 4: Placement, upgrade, sell, speed</h2>
+  <ol class="steps">
+    <li><strong>Add two containers.</strong> Open <code>main.tscn</code>. Select <code>Main</code>, add a <code>Node2D</code> named <code>Towers</code> and another named <code>Projectiles</code>. Drag <code>Towers</code> in the Scene dock so it sits <em>above</em> <code>Paths</code> (enemies then draw on top of towers). Leave <code>Projectiles</code> just above <code>HUD</code> so shots draw above the march. Both stay at position <code>(0, 0)</code>.</li>
+    <li><strong>Add the best-wave label.</strong> Select <code>HUD</code>, add a <code>Label</code> named <code>BestLabel</code>. Position <code>(760, 12)</code>, size <code>(370, 40)</code>, text <code>Best 0</code>, mouse filter <code>Ignore</code>.</li>
+    <li><strong>Add the build buttons.</strong> Still under <code>HUD</code>, add five <code>Button</code> nodes. Set position, size and text from this table. Mouse filter stays <code>Stop</code> (the default), so these clicks do not also hit the map.</li>
+  </ol>
+  <table>
+    <tr><th>Name</th><th>Position</th><th>Size</th><th>Text</th></tr>
+    <tr><td><code>ArrowButton</code></td><td>16, 588</td><td>128 × 48</td><td>Arrow</td></tr>
+    <tr><td><code>CannonButton</code></td><td>152, 588</td><td>128 × 48</td><td>Cannon</td></tr>
+    <tr><td><code>FrostButton</code></td><td>288, 588</td><td>128 × 48</td><td>Frost</td></tr>
+    <tr><td><code>SniperButton</code></td><td>424, 588</td><td>128 × 48</td><td>Sniper</td></tr>
+    <tr><td><code>SpeedButton</code></td><td>560, 588</td><td>110 × 48</td><td>Speed 1x</td></tr>
+  </table>
+  <ol class="steps">
+    <li><strong>Add the selection controls.</strong> Under <code>HUD</code>, add a <code>Label</code> named <code>InfoLabel</code> at <code>(680, 576)</code>, size <code>(450, 28)</code>, text <code>Build on grass.</code>, mouse filter <code>Ignore</code>. Add three buttons: <code>UpgradeButton</code> at <code>(680, 608)</code> size <code>(140, 36)</code> text <code>Upgrade</code>; <code>SellButton</code> at <code>(828, 608)</code> size <code>(140, 36)</code> text <code>Sell</code>; <code>TargetButton</code> at <code>(976, 608)</code> size <code>(160, 36)</code> text <code>First</code>.</li>
+    <li><strong>Give the title two lines.</strong> Select <code>OverlayTitle</code> and set its size to <code>(1152, 120)</code> so "Game Over" and the best-wave line both fit.</li>
+    <li><strong>Unique names.</strong> Right-click each new node and choose <kbd class="ui">Access as Unique Name</kbd>: <code>BestLabel</code>, <code>ArrowButton</code>, <code>CannonButton</code>, <code>FrostButton</code>, <code>SniperButton</code>, <code>SpeedButton</code>, <code>InfoLabel</code>, <code>UpgradeButton</code>, <code>SellButton</code>, <code>TargetButton</code>.</li>
+    <li><strong>Replace <code>hud.gd</code>.</strong> Open <code>res://ui/hud.gd</code> and replace the whole file. It keeps yesterday's gold, lives, wave and restart behaviour, and adds the build bar.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://ui/hud.gd">
+extends CanvasLayer
+
+signal build_pressed(slot: int)
+signal upgrade_pressed
+signal sell_pressed
+signal target_pressed
+
+@onready var _gold: Label = %GoldLabel
+@onready var _lives: Label = %LivesLabel
+@onready var _wave: Label = %WaveLabel
+@onready var _best: Label = %BestLabel
+@onready var _info: Label = %InfoLabel
+@onready var _overlay: Control = %Overlay
+@onready var _title: Label = %OverlayTitle
+@onready var _restart: Button = %RestartButton
+@onready var _arrow: Button = %ArrowButton
+@onready var _cannon: Button = %CannonButton
+@onready var _frost: Button = %FrostButton
+@onready var _sniper: Button = %SniperButton
+@onready var _speed: Button = %SpeedButton
+@onready var _upgrade: Button = %UpgradeButton
+@onready var _sell: Button = %SellButton
+@onready var _target: Button = %TargetButton
+
+var _build_buttons: Array[Button] = []
+var _tower_data: Array[TowerData] = []
+var _costs: PackedInt32Array = PackedInt32Array()
+var _placing: bool = false
+
+
+func _ready() -> void:
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    _build_buttons = [_arrow, _cannon, _frost, _sniper]
+    _style(_gold)
+    _style(_lives)
+    _style(_wave)
+    _style(_best)
+    _style(_info)
+    _title.add_theme_font_size_override("font_size", 40)
+    _title.add_theme_color_override("font_color", Color.WHITE)
+    _title.add_theme_color_override("font_outline_color", Color.BLACK)
+    _title.add_theme_constant_override("outline_size", 10)
+    _arrow.pressed.connect(_on_slot.bind(0))
+    _cannon.pressed.connect(_on_slot.bind(1))
+    _frost.pressed.connect(_on_slot.bind(2))
+    _sniper.pressed.connect(_on_slot.bind(3))
+    _speed.pressed.connect(_on_speed_pressed)
+    _upgrade.pressed.connect(_emit_upgrade)
+    _sell.pressed.connect(_emit_sell)
+    _target.pressed.connect(_emit_target)
+    _restart.pressed.connect(_on_restart_pressed)
+    Game.gold_changed.connect(_on_gold_changed)
+    Game.lives_changed.connect(_on_lives_changed)
+    Game.wave_changed.connect(_on_wave_changed)
+    Game.best_wave_changed.connect(_on_best_changed)
+    Game.game_over.connect(_on_game_over)
+    Game.victory.connect(_on_victory)
+    _overlay.hide()
+    clear_tower()
+    _on_gold_changed(Game.gold)
+    _on_lives_changed(Game.lives)
+    _on_wave_changed(Game.wave_index)
+    _on_best_changed(Game.best_wave)
+    _refresh_speed()
+
+
+func bind_towers(arrow: TowerData, cannon: TowerData, frost: TowerData, sniper: TowerData) -> void:
+    _tower_data = [arrow, cannon, frost, sniper]
+    _costs = PackedInt32Array()
+    var labels: PackedStringArray = PackedStringArray(["Arrow", "Cannon", "Frost", "Sniper"])
+    for i in _tower_data.size():
+        var data: TowerData = _tower_data[i]
+        var cost: int = 0
+        if data != null and not data.levels.is_empty():
+            cost = data.levels[0].cost
+        _costs.append(cost)
+        _build_buttons[i].text = "%s %d" % [labels[i], cost]
+    refresh_afford(Game.gold)
+
+
+func _style(label: Label) -> void:
+    label.add_theme_font_size_override("font_size", 22)
+    label.add_theme_color_override("font_color", Color.WHITE)
+    label.add_theme_color_override("font_outline_color", Color.BLACK)
+    label.add_theme_constant_override("outline_size", 8)
+    label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+
+func _on_slot(slot: int) -> void:
+    build_pressed.emit(slot)
+
+
+func _emit_upgrade() -> void:
+    upgrade_pressed.emit()
+
+
+func _emit_sell() -> void:
+    sell_pressed.emit()
+
+
+func _emit_target() -> void:
+    target_pressed.emit()
+
+
+func show_pending(data: TowerData) -> void:
+    _placing = data != null
+    for i in _build_buttons.size():
+        var active: bool = false
+        if data != null and i < _tower_data.size():
+            active = _tower_data[i] == data
+        if active:
+            _build_buttons[i].modulate = Color(1, 0.92, 0.45)
+        else:
+            _build_buttons[i].modulate = Color.WHITE
+    if data != null:
+        _info.text = "Placing %s. Right-click cancels." % data.display_name
+    elif not _upgrade.visible:
+        _info.text = "Build on grass."
+
+
+func refresh_afford(gold: int) -> void:
+    for i in _build_buttons.size():
+        var cost: int = 0
+        if i < _costs.size():
+            cost = _costs[i]
+        _build_buttons[i].disabled = cost > gold
+
+
+func show_tower(tower: Tower) -> void:
+    _upgrade.show()
+    _sell.show()
+    _target.show()
+    var cost: int = tower.next_upgrade_cost()
+    if cost < 0:
+        _upgrade.text = "Max level"
+        _upgrade.disabled = true
+    else:
+        _upgrade.text = "Up %d" % cost
+        _upgrade.disabled = Game.gold < cost
+    _sell.text = "Sell %d" % tower.sell_value()
+    _target.text = tower.target_label()
+    _info.text = "%s  L%d" % [tower.data.display_name, tower.level_number()]
+
+
+func clear_tower() -> void:
+    _upgrade.hide()
+    _sell.hide()
+    _target.hide()
+    if not _placing:
+        _info.text = "Build on grass."
+
+
+func _on_gold_changed(gold: int) -> void:
+    _gold.text = "Gold %d" % gold
+
+
+func _on_lives_changed(lives: int) -> void:
+    _lives.text = "Lives %d" % lives
+
+
+func _on_wave_changed(index: int) -> void:
+    _wave.text = "Wave %d" % (index + 1)
+
+
+func _on_best_changed(best_wave: int) -> void:
+    _best.text = "Best %d" % best_wave
+
+
+func _on_speed_pressed() -> void:
+    if Engine.time_scale > 1.5:
+        Engine.time_scale = 1.0
+    else:
+        Engine.time_scale = 2.0
+    _refresh_speed()
+
+
+func _refresh_speed() -> void:
+    if Engine.time_scale > 1.5:
+        _speed.text = "Speed 2x"
+    else:
+        _speed.text = "Speed 1x"
+
+
+func _on_game_over() -> void:
+    _title.text = "Game Over\nBest wave %d" % Game.best_wave
+    _overlay.show()
+
+
+func _on_victory() -> void:
+    _title.text = "Victory\nBest wave %d" % Game.best_wave
+    _overlay.show()
+
+
+func _on_restart_pressed() -> void:
+    Engine.time_scale = 1.0
+    get_tree().paused = false
+    get_tree().reload_current_scene()
+      </script>
+    </li>
+    <li><strong>Replace <code>game.gd</code>.</strong> The Day 8 rules stay. This version also resets time scale, remembers the best cleared wave, and writes <code>user://best_wave.json</code>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://autoload/game.gd">
+extends Node
+
+signal gold_changed(gold: int)
+signal lives_changed(lives: int)
+signal wave_changed(index: int)
+signal best_wave_changed(best_wave: int)
+signal game_over
+signal victory
+
+const STARTING_GOLD: int = 150
+const STARTING_LIVES: int = 20
+const INTEREST_RATE: float = 0.10
+const INTEREST_CAP: int = 50
+const SAVE_PATH: String = "user://best_wave.json"
+
+var gold: int = STARTING_GOLD
+var lives: int = STARTING_LIVES
+var wave_index: int = 0
+var best_wave: int = 0
+var ended: bool = false
+
+
+func _ready() -> void:
+    _load_best_wave()
+
+
+func reset() -> void:
+    gold = STARTING_GOLD
+    lives = STARTING_LIVES
+    wave_index = 0
+    ended = false
+    Engine.time_scale = 1.0
+    get_tree().paused = false
+    gold_changed.emit(gold)
+    lives_changed.emit(lives)
+    wave_changed.emit(wave_index)
+    best_wave_changed.emit(best_wave)
+
+
+func add_gold(amount: int) -> void:
+    if ended or amount == 0:
+        return
+    gold += amount
+    gold_changed.emit(gold)
+
+
+func try_spend(amount: int) -> bool:
+    if ended or amount < 0 or gold < amount:
+        return false
+    gold -= amount
+    gold_changed.emit(gold)
+    return true
+
+
+func lose_lives(amount: int) -> void:
+    if ended:
+        return
+    lives = maxi(lives - amount, 0)
+    lives_changed.emit(lives)
+    if lives <= 0:
+        ended = true
+        get_tree().paused = true
+        game_over.emit()
+
+
+func set_wave(index: int) -> void:
+    wave_index = index
+    wave_changed.emit(index)
+
+
+func grant_wave_bonus(flat_bonus: int) -> int:
+    var interest: int = mini(int(float(gold) * INTEREST_RATE), INTEREST_CAP)
+    add_gold(flat_bonus + interest)
+    return interest
+
+
+func note_wave_cleared(cleared_count: int) -> void:
+    if cleared_count <= best_wave:
+        return
+    best_wave = cleared_count
+    _save_best_wave()
+    best_wave_changed.emit(best_wave)
+
+
+func win() -> void:
+    if ended:
+        return
+    ended = true
+    get_tree().paused = true
+    victory.emit()
+
+
+func _load_best_wave() -> void:
+    if not FileAccess.file_exists(SAVE_PATH):
+        return
+    var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.READ)
+    if file == null:
+        return
+    var parsed: Variant = JSON.parse_string(file.get_as_text())
+    file.close()
+    if parsed is Dictionary:
+        # JSON numbers arrive as floats. 3 in the file is 3.0 here.
+        best_wave = int(parsed.get("best_wave", 0))
+
+
+func _save_best_wave() -> void:
+    var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+    if file == null:
+        push_error("Could not write %s" % SAVE_PATH)
+        return
+    file.store_string(JSON.stringify({"best_wave": best_wave}))
+    file.close()
+      </script>
+    </li>
+    <li><strong>Teach the spawner about the record.</strong> Replace <code>res://main/wave_spawner.gd</code> with the same script as Day 8 plus one call, <code>Game.note_wave_cleared(i + 1)</code>, after a wave pays its bonus. Paste the whole file so the two stay in lockstep:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://main/wave_spawner.gd">
+extends Node
+class_name WaveSpawner
+
+signal wave_started(index: int)
+signal wave_cleared(index: int)
+signal all_waves_cleared
+
+const ENEMY_SCENE: PackedScene = preload("res://enemies/enemy.tscn")
+
+var level: LevelData
+var ground_path: Path2D
+var air_path: Path2D
+
+var _alive: Array[Enemy] = []
+
+
+func start() -> void:
+    _run_level()
+
+
+func _run_level() -> void:
+    if level == null or ground_path == null or air_path == null:
+        push_error("WaveSpawner is missing level or paths.")
+        return
+    for i in level.waves.size():
+        if not is_inside_tree() or Game.ended:
+            return
+        var wave: WaveData = level.waves[i]
+        Game.set_wave(i)
+        wave_started.emit(i)
+        await get_tree().create_timer(wave.prep_seconds, false).timeout
+        for group in wave.groups:
+            if group == null or group.enemy == null:
+                continue
+            if group.delay > 0.0:
+                await get_tree().create_timer(group.delay, false).timeout
+            for n in group.count:
+                if not is_inside_tree() or Game.ended:
+                    return
+                _spawn(group.enemy, wave.health_scale)
+                var last: bool = n == group.count - 1
+                if not last:
+                    await get_tree().create_timer(group.interval, false).timeout
+        await _wait_until_clear()
+        if not is_inside_tree() or Game.ended:
+            return
+        var interest: int = Game.grant_wave_bonus(wave.clear_bonus)
+        Game.note_wave_cleared(i + 1)
+        wave_cleared.emit(i)
+        print("Wave %d cleared. Bonus %d, interest %d, gold %d, lives %d." % [
+            i + 1, wave.clear_bonus, interest, Game.gold, Game.lives,
+        ])
+    if is_inside_tree() and not Game.ended:
+        all_waves_cleared.emit()
+
+
+func _spawn(data: EnemyData, health_scale: float) -> void:
+    var enemy: Enemy = ENEMY_SCENE.instantiate() as Enemy
+    enemy.data = data
+    enemy.health_scale = health_scale
+    enemy.tree_exited.connect(_forget.bind(enemy))
+    enemy.died.connect(_on_enemy_died)
+    enemy.reached_end.connect(_on_enemy_reached_end)
+    var path: Path2D = air_path if data.flying else ground_path
+    path.add_child(enemy)
+    _alive.append(enemy)
+
+
+func _on_enemy_died(enemy: Enemy) -> void:
+    _forget(enemy)
+    Game.add_gold(enemy.data.reward)
+
+
+func _on_enemy_reached_end(enemy: Enemy) -> void:
+    _forget(enemy)
+    Game.lose_lives(enemy.data.damage_to_base)
+
+
+func _forget(enemy: Enemy) -> void:
+    _alive.erase(enemy)
+
+
+func _wait_until_clear() -> void:
+    while is_inside_tree() and _alive.size() > 0 and not Game.ended:
+        await get_tree().process_frame
+      </script>
+    </li>
+    <li><strong>Replace <code>main.gd</code>.</strong> This is the grid. A left click with a tower armed calls <code>local_to_map</code>. A left click with nothing armed selects. Right-click cancels.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://main/main.gd">
+extends Node2D
+
+const TOWER_SCENE: PackedScene = preload("res://towers/tower.tscn")
+
+@export var level: LevelData
+@export var arrow_data: TowerData
+@export var cannon_data: TowerData
+@export var frost_data: TowerData
+@export var sniper_data: TowerData
+
+var _pending: TowerData
+var _selected: Tower
+var _occupied: Dictionary = {}
+
+@onready var _map: TileMapLayer = %Map
+@onready var _spawner: WaveSpawner = $WaveSpawner
+@onready var _towers: Node2D = $Towers
+@onready var _projectiles: Node2D = $Projectiles
+@onready var _hud: CanvasLayer = $HUD
+
+
+func _ready() -> void:
+    _hud.bind_towers(arrow_data, cannon_data, frost_data, sniper_data)
+    _hud.build_pressed.connect(_on_build_pressed)
+    _hud.upgrade_pressed.connect(_on_upgrade_pressed)
+    _hud.sell_pressed.connect(_on_sell_pressed)
+    _hud.target_pressed.connect(_on_target_pressed)
+    Game.gold_changed.connect(_on_gold_changed)
+    Game.reset()
+    if level == null:
+        push_error("Assign level_01.tres to Main's Level field.")
+        return
+    _spawner.level = level
+    _spawner.ground_path = $Paths/GroundPath
+    _spawner.air_path = $Paths/AirPath
+    _spawner.all_waves_cleared.connect(_on_all_waves_cleared)
+    _spawner.start()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+    var mouse: InputEventMouseButton = event as InputEventMouseButton
+    if mouse == null or not mouse.pressed or Game.ended:
+        return
+    if mouse.button_index == MOUSE_BUTTON_RIGHT:
+        _set_pending(null)
+        _select(null)
+        get_viewport().set_input_as_handled()
+        return
+    if mouse.button_index != MOUSE_BUTTON_LEFT:
+        return
+    if _pending != null:
+        _try_place()
+    else:
+        _select_cell(_cell_under_mouse())
+    get_viewport().set_input_as_handled()
+
+
+func _cell_under_mouse() -> Vector2i:
+    var local: Vector2 = _map.to_local(get_global_mouse_position())
+    return _map.local_to_map(local)
+
+
+func _is_buildable(cell: Vector2i) -> bool:
+    var tile: TileData = _map.get_cell_tile_data(cell)
+    if tile == null:
+        return false
+    return bool(tile.get_custom_data("buildable"))
+
+
+func _try_place() -> void:
+    var cell: Vector2i = _cell_under_mouse()
+    if not _is_buildable(cell):
+        print("Not buildable: ", cell)
+        return
+    if _occupied.has(cell):
+        print("Occupied: ", cell)
+        return
+    var cost: int = _pending.levels[0].cost
+    if not Game.try_spend(cost):
+        print("Need %d gold." % cost)
+        return
+    var tower: Tower = TOWER_SCENE.instantiate() as Tower
+    tower.data = _pending
+    tower.setup(_projectiles, cell, cost)
+    tower.global_position = _map.to_global(_map.map_to_local(cell))
+    _towers.add_child(tower)
+    _occupied[cell] = tower
+    _pending = null
+    _hud.show_pending(null)
+    _select(tower)
+
+
+func _select_cell(cell: Vector2i) -> void:
+    if _occupied.has(cell):
+        _select(_occupied[cell] as Tower)
+    else:
+        _select(null)
+
+
+func _select(tower: Tower) -> void:
+    if _selected != null and is_instance_valid(_selected):
+        _selected.set_selected(false)
+    _selected = tower
+    if _selected != null:
+        _selected.set_selected(true)
+        _hud.show_tower(_selected)
+    else:
+        _hud.clear_tower()
+
+
+func _set_pending(data: TowerData) -> void:
+    _pending = data
+    if data != null:
+        _select(null)
+    _hud.show_pending(data)
+
+
+func _on_build_pressed(slot: int) -> void:
+    var data: TowerData = _data_for(slot)
+    if data == null:
+        return
+    if _pending == data:
+        _set_pending(null)
+    else:
+        _set_pending(data)
+
+
+func _data_for(slot: int) -> TowerData:
+    match slot:
+        0:
+            return arrow_data
+        1:
+            return cannon_data
+        2:
+            return frost_data
+        _:
+            return sniper_data
+
+
+func _on_upgrade_pressed() -> void:
+    if _selected == null or not is_instance_valid(_selected):
+        return
+    var cost: int = _selected.next_upgrade_cost()
+    if cost < 0:
+        return
+    if not Game.try_spend(cost):
+        print("Need %d gold to upgrade." % cost)
+        return
+    _selected.upgrade()
+    _hud.show_tower(_selected)
+
+
+func _on_sell_pressed() -> void:
+    if _selected == null or not is_instance_valid(_selected):
+        return
+    var refund: int = _selected.sell_value()
+    _occupied.erase(_selected.cell)
+    _selected.queue_free()
+    _selected = null
+    _hud.clear_tower()
+    Game.add_gold(refund)
+
+
+func _on_target_pressed() -> void:
+    if _selected == null or not is_instance_valid(_selected):
+        return
+    _selected.cycle_target()
+    _hud.show_tower(_selected)
+
+
+func _on_gold_changed(gold: int) -> void:
+    _hud.refresh_afford(gold)
+    if _selected != null and is_instance_valid(_selected):
+        _hud.show_tower(_selected)
+
+
+func _on_all_waves_cleared() -> void:
+    Game.win()
+      </script>
+    </li>
+    <li><strong>Assign the four tower resources.</strong> Select <code>Main</code>. <kbd class="ui">Level</kbd> should still be <code>level_01.tres</code> (that file is still yesterday's three-wave level until Block 5). Drag <code>arrow.tres</code> onto <kbd class="ui">Arrow Data</kbd>, and the matching files onto <kbd class="ui">Cannon Data</kbd>, <kbd class="ui">Frost Data</kbd> and <kbd class="ui">Sniper Data</kbd>. Save the scene.</li>
+  </ol>
+  <div class="checkpoint"><p>Press <kbd>F5</kbd>. The bottom buttons read <code>Arrow 50</code>, <code>Cannon 110</code>, <code>Frost 80</code>, <code>Sniper 140</code>. During the 4 second prep of the old level, click Arrow (it tints), then click the grass cell at column 2, row 3 (just left of the first sand corner). Gold becomes 100, a green square appears, and a faint range ring shows because it is selected. Click <kbd class="ui">Sell 30</kbd>. Gold becomes 130 and the cell is empty. Click the sand path: Output prints <code>Not buildable</code> and no gold is spent. Click <kbd class="ui">Speed 1x</kbd>: the label becomes <code>Speed 2x</code> and the grunt walks faster. Click Restart: the label is <code>Speed 1x</code> again. If the game crashes with "Node not found: Towers", the two new nodes are missing or misspelled. If every map click does nothing, a Control is covering the screen with mouse filter Stop (the hidden Overlay is the usual suspect: it must be invisible).</p></div>
+
+  <h2 id="build-4">Block 5: Eight waves, victory, best wave</h2>
+  <p>Yesterday's level is a leak test. This generator rewrites <code>grunt.tres</code> and <code>runner.tres</code> to the Day 8 table, adds tank, flyer and boss, and replaces <code>level_01.tres</code> with eight waves. <code>delay</code> is still "wait after the previous group finishes spawning".</p>
+  <table>
+    <tr><th>Enemy</th><th>HP</th><th>Speed</th><th>Reward</th><th>Leak</th><th>Radius</th><th>Route</th></tr>
+    <tr><td>Grunt</td><td>40</td><td>60</td><td>5</td><td>1</td><td>14</td><td>Ground</td></tr>
+    <tr><td>Runner</td><td>25</td><td>120</td><td>4</td><td>1</td><td>11</td><td>Ground</td></tr>
+    <tr><td>Tank</td><td>220</td><td>40</td><td>14</td><td>2</td><td>20</td><td>Ground</td></tr>
+    <tr><td>Flyer</td><td>60</td><td>100</td><td>8</td><td>2</td><td>13</td><td>Air</td></tr>
+    <tr><td>Boss</td><td>1200</td><td>30</td><td>100</td><td>10</td><td>28</td><td>Ground</td></tr>
+  </table>
+  <table>
+    <tr><th>Wave</th><th>Prep</th><th>Scale</th><th>Bonus</th><th>Groups</th></tr>
+    <tr><td>1</td><td>6 s</td><td>1.00</td><td>25</td><td>Grunt ×6 / 1.0 s</td></tr>
+    <tr><td>2</td><td>8 s</td><td>1.00</td><td>30</td><td>Grunt ×5 / 0.9 s, then Runner ×4 / 0.8 s after 1.5 s</td></tr>
+    <tr><td>3</td><td>8 s</td><td>1.15</td><td>35</td><td>Grunt ×8 / 0.55 s, then Tank ×2 / 3.0 s after 2 s</td></tr>
+    <tr><td>4</td><td>8 s</td><td>1.00</td><td>40</td><td>Runner ×6 / 0.5 s, then Flyer ×4 / 1.3 s after 2 s</td></tr>
+    <tr><td>5</td><td>10 s</td><td>1.30</td><td>45</td><td>Grunt ×10 / 0.45 s, then Tank ×3 / 2.5 s after 2 s</td></tr>
+    <tr><td>6</td><td>10 s</td><td>1.15</td><td>50</td><td>Runner ×8 / 0.4 s, then Flyer ×6 / 0.9 s after 1.5 s</td></tr>
+    <tr><td>7</td><td>12 s</td><td>1.45</td><td>60</td><td>Grunt ×8 / 0.4 s, then Tank ×4 / 2.0 s after 1 s, then Flyer ×4 / 1.1 s after 2 s</td></tr>
+    <tr><td>8</td><td>12 s</td><td>1.00</td><td>80</td><td>Grunt ×6 / 0.6 s, then Boss ×1 after 4 s</td></tr>
+  </table>
+  <div class="callout note"><span class="callout-title">Balance target</span>
+    <p>The prices assume a player who spends, not one who tanks. A layout the ranges were measured for: Arrow on cell <code>(2, 3)</code> before wave 1 (beside the first corner), a second Arrow on <code>(6, 2)</code> before wave 3, Frost on <code>(8, 6)</code> before the flyers (it reaches both the bottom path and the air diagonal), Cannon on <code>(4, 4)</code> before the tanks bunch up, Sniper on <code>(8, 3)</code> once you hold 140 gold. All five cells are grass. You do not have to copy it. If you buy nothing, wave 1 leaks 6, wave 2 leaks 9, and wave 3 finishes you: best wave stays 2.</p></div>
+  <ol class="steps">
+    <li><strong>Replace <code>make_level.gd</code>.</strong> This overwrites yesterday's three-wave <code>level_01.tres</code>. Open <code>res://tools/make_level.gd</code> and replace the file with:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://tools/make_level.gd">
+@tool
+extends EditorScript
+
+
+func _run() -> void:
+    _enemy("res://data/enemies/grunt.tres", "Grunt", 40.0, 60.0, 5, 1, 14.0, Color("#e85d5d"), false)
+    _enemy("res://data/enemies/runner.tres", "Runner", 25.0, 120.0, 4, 1, 11.0, Color("#f2c94c"), false)
+    _enemy("res://data/enemies/tank.tres", "Tank", 220.0, 40.0, 14, 2, 20.0, Color("#5b7db1"), false)
+    _enemy("res://data/enemies/flyer.tres", "Flyer", 60.0, 100.0, 8, 2, 13.0, Color("#b07ce8"), true)
+    _enemy("res://data/enemies/boss.tres", "Boss", 1200.0, 30.0, 100, 10, 28.0, Color("#ff8a3d"), false)
+    var level := LevelData.new()
+    level.display_name = "South Gate"
+    level.waves.append(_wave(1, 1.0, 6.0, 25, [["res://data/enemies/grunt.tres", 6, 1.0, 0.0]]))
+    level.waves.append(_wave(2, 1.0, 8.0, 30, [
+        ["res://data/enemies/grunt.tres", 5, 0.9, 0.0],
+        ["res://data/enemies/runner.tres", 4, 0.8, 1.5],
+    ]))
+    level.waves.append(_wave(3, 1.15, 8.0, 35, [
+        ["res://data/enemies/grunt.tres", 8, 0.55, 0.0],
+        ["res://data/enemies/tank.tres", 2, 3.0, 2.0],
+    ]))
+    level.waves.append(_wave(4, 1.0, 8.0, 40, [
+        ["res://data/enemies/runner.tres", 6, 0.5, 0.0],
+        ["res://data/enemies/flyer.tres", 4, 1.3, 2.0],
+    ]))
+    level.waves.append(_wave(5, 1.3, 10.0, 45, [
+        ["res://data/enemies/grunt.tres", 10, 0.45, 0.0],
+        ["res://data/enemies/tank.tres", 3, 2.5, 2.0],
+    ]))
+    level.waves.append(_wave(6, 1.15, 10.0, 50, [
+        ["res://data/enemies/runner.tres", 8, 0.4, 0.0],
+        ["res://data/enemies/flyer.tres", 6, 0.9, 1.5],
+    ]))
+    level.waves.append(_wave(7, 1.45, 12.0, 60, [
+        ["res://data/enemies/grunt.tres", 8, 0.4, 0.0],
+        ["res://data/enemies/tank.tres", 4, 2.0, 1.0],
+        ["res://data/enemies/flyer.tres", 4, 1.1, 2.0],
+    ]))
+    level.waves.append(_wave(8, 1.0, 12.0, 80, [
+        ["res://data/enemies/grunt.tres", 6, 0.6, 0.0],
+        ["res://data/enemies/boss.tres", 1, 1.0, 4.0],
+    ]))
+    if _save(level, "res://data/levels/level_01.tres"):
+        EditorInterface.get_resource_filesystem().scan()
+        print("Wrote level_01.tres with 8 waves.")
+
+
+func _enemy(path: String, title: String, hp: float, spd: float, reward: int, leak: int, radius: float, color: Color, flying: bool) -> void:
+    var data := EnemyData.new()
+    data.display_name = title
+    data.max_health = hp
+    data.speed = spd
+    data.reward = reward
+    data.damage_to_base = leak
+    data.radius = radius
+    data.color = color
+    data.flying = flying
+    _save(data, path)
+
+
+func _wave(index: int, scale: float, prep: float, bonus: int, rows: Array) -> WaveData:
+    var wave := WaveData.new()
+    wave.health_scale = scale
+    wave.prep_seconds = prep
+    wave.clear_bonus = bonus
+    for row in rows:
+        var entry: Array = row
+        var group := WaveGroup.new()
+        group.enemy = load(str(entry[0])) as EnemyData
+        group.count = int(entry[1])
+        group.interval = float(entry[2])
+        group.delay = float(entry[3])
+        wave.groups.append(group)
+    var path := "res://data/waves/wave_%02d.tres" % index
+    _save(wave, path)
+    return load(path) as WaveData
+
+
+func _save(resource: Resource, path: String) -> bool:
+    var error: Error = ResourceSaver.save(resource, path)
+    if error != OK:
+        push_error("Could not save %s (error %d)" % [path, error])
+        return false
+    return true
+      </script>
+    </li>
+    <li><strong>Run it.</strong> Save, then <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> with this file open. Output: <code>Wrote level_01.tres with 8 waves.</code> Open <code>level_01.tres</code> and confirm <kbd class="ui">Waves</kbd> has 8 entries. Open <code>data/enemies/flyer.tres</code> and confirm <kbd class="ui">Flying</kbd> is on. If Main's <kbd class="ui">Level</kbd> field went empty, drag <code>level_01.tres</code> back onto it and save the scene.</li>
+    <li><strong>Play the opening.</strong> Press <kbd>F5</kbd>. Place the Arrow on cell <code>(2, 3)</code> before the first grunt arrives. If that tower kills all 6 grunts and none leak, gold is <strong>168</strong> when wave 2 starts: 150 − 50 + 30 reward + 25 bonus + 13 interest (10% of the 130 you held at the clear, truncated). Lives stay 20. <code>Best</code> becomes 1. Upgrade costs 40 and leaves you at 128, with two white pips on the tower.</li>
+    <li><strong>Find the save.</strong> After at least one wave clears, the file is <code>%APPDATA%\Godot\app_userdata\g03-bastion-defense\best_wave.json</code>. Open it in a text editor. You should see <code>"best_wave": 1</code> (or higher). Restart from the overlay and the HUD still shows that best. Deleting the file and running again shows <code>Best 0</code> until the next clear.</li>
+  </ol>
+  <div class="callout tip"><span class="callout-title">A full clear is the win</span>
+    <p>Victory is the overlay after wave 8, and only if lives are still above 0. The boss leaks 10 if it arrives. Flyers ignore <code>GroundPath</code>; a tower must actually cover the diagonal. Use 2× while you learn the spawns, then Restart so the next attempt starts at 1×. A run with zero towers should die during wave 3 with best wave 2.</p></div>
+  <div class="checkpoint"><p>You can place, sell for 60% rounded down, upgrade, cycle First / Last / Closest / Strongest, and watch a shot pop a grunt (the health bar appears, gold ticks up by 5). Flyers are purple and take the straight path. The Victory overlay names your best wave. Game Over does too, and Restart keeps the record. If shots fly through enemies, the projectile mask is not layer 3, or <code>collide_with_areas</code> was removed from the query. If towers never fire, <code>Range</code> is monitoring bodies instead of the enemy areas.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Passing the global mouse into <code>local_to_map</code>.</strong> The cell is wrong by whatever the layer's position is, and it gets worse the moment you move <code>Map</code>. Convert with <code>to_local</code> first. Place with <code>to_global(map_to_local(cell))</code> so the tower sits on the centre, not the corner.</li>
+    <li><strong>The query ignores areas.</strong> <code>PhysicsShapeQueryParameters2D.collide_with_areas</code> defaults to false. Enemy hitboxes are areas on layer 3. A mask of <code>4</code> with bodies-only hits nothing, and every shot flies off the map.</li>
+    <li><strong>Layer buttons versus bit values.</strong> Inspector button 4 is value <code>8</code>. Writing <code>collision_layer = 4</code> puts the shot on the <em>enemies</em> layer. The scripts set <code>8</code> and <code>4</code> on purpose.</li>
+    <li><strong><code>Engine.time_scale</code> survives the reload.</strong> Dying at 2× and restarting without setting it back leaves the next run sped up, and the button label lies until you click it. Both <code>Game.reset</code> and the Restart button set it to <code>1.0</code>.</li>
+    <li><strong>Treating the JSON number as an int.</strong> <code>best_wave</code> would become a float and later comparisons get sloppy. <code>int(parsed.get("best_wave", 0))</code> is the whole fix.</li>
+    <li><strong>Selling without freeing the cell.</strong> <code>_occupied.erase(cell)</code> has to happen or that grass tile is dead for the rest of the run. The refund goes through <code>Game.add_gold</code>, not by editing the label.</li>
+    <li><strong>A full-rect Control on Stop.</strong> <code>Overlay</code> must be hidden during play. Labels must be mouse filter Ignore. Otherwise <code>_unhandled_input</code> never sees the click and Output stays silent.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 20-30 min)</h2>
+  <div class="challenge">
+    <h3>Ghost the cell under the cursor</h3>
+    <p>While a tower is armed, draw a square on the hovered cell: green if it is buildable, empty and affordable, red otherwise. Right-click still cancels.</p>
+    <p>Hint: a child <code>Node2D</code> of <code>Main</code> with <code>z_index</code> above the map can do the drawing. In <code>_process</code>, reuse <code>_cell_under_mouse</code> and <code>_is_buildable</code>. Convert the cell with <code>map_to_local</code> and <code>to_global</code> before you draw, and skip the draw when <code>_pending</code> is null. Do not spend gold from the ghost.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>The mouse position is global. How do you get the tile cell?</p>
+      <ul>
+        <li>Pass <code>get_global_mouse_position()</code> straight into <code>local_to_map</code>.</li>
+        <li><code>local_to_map(map.to_local(get_global_mouse_position()))</code>.</li>
+        <li><code>map_to_local</code> on the mouse position.</li>
+      </ul>
+      <p class="explain"><code>local_to_map</code> wants the layer's local space. <code>to_local</code> does that conversion. <code>map_to_local</code> goes the other way, from a cell back to a pixel centre.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Which collision setup matches this project?</p>
+      <ul>
+        <li>Projectile on layer 3, mask layer 1.</li>
+        <li>Projectile on layer 4 (<code>player_attacks</code>), mask layer 3 (<code>enemies</code>).</li>
+        <li>Projectile on layer 1, and the enemy mask includes layer 4.</li>
+      </ul>
+      <p class="explain">Enemies are monitorable on layer 3 and do not scan. Shots and tower ranges scan layer 3 from layer 4. In bit values that is layer <code>8</code> and mask <code>4</code>.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>You load <code>best_wave.json</code> and the text says <code>{"best_wave": 4}</code>. What is the safe read?</p>
+      <ul>
+        <li>Use the value as an int. JSON preserves integer types.</li>
+        <li><code>int(parsed.get("best_wave", 0))</code>, because JSON numbers become floats.</li>
+        <li>Store the record in a <code>.tres</code> so the type stays an int.</li>
+      </ul>
+      <p class="explain"><code>JSON.parse_string</code> has only one number type. <code>4</code> comes back as <code>4.0</code>. The <code>int()</code> cast is required for counters.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>You set <code>Engine.time_scale = 2.0</code> and then Restart. What is true?</p>
+      <ul>
+        <li>Only the HUD animates faster. Waves ignore it.</li>
+        <li>Deltas and scene-tree timers both speed up, and the scale stays at 2 until something sets it back.</li>
+        <li>Reloading the scene always restores <code>1.0</code> on its own.</li>
+      </ul>
+      <p class="explain">Time scale is an engine global, not a property of the scene. This project sets it back in <code>Game.reset</code> and in the Restart handler. The spawner's timers do not pass <code>ignore_time_scale</code>.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>You build an Arrow (50) and upgrade it once (40), then sell. What comes back?</p>
+      <ul>
+        <li>40 gold, the last upgrade only.</li>
+        <li>90 gold, a full refund.</li>
+        <li>54 gold, because <code>int(90 * 0.6)</code> is 54.</li>
+      </ul>
+      <p class="explain"><code>SELL_RATIO</code> is 0.6 of every gold piece put into that tower, truncated. A fresh arrow refunds 30. The cell is erased so you can build there again.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_tilemaplayer.html" target="_blank" rel="noopener">TileMapLayer</a>: <code>local_to_map</code>, <code>map_to_local</code> and <code>get_cell_tile_data</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_area2d.html" target="_blank" rel="noopener">Area2D</a> and <a href="https://docs.godotengine.org/en/stable/tutorials/physics/using_area_2d.html" target="_blank" rel="noopener">Using Area2D</a>: layers, masks, monitoring.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_physicsdirectspacestate2d.html" target="_blank" rel="noopener">PhysicsDirectSpaceState2D</a>: <code>intersect_shape</code> and the <code>collider</code> dictionary.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_engine.html" target="_blank" rel="noopener">Engine</a>: what <code>time_scale</code> does and does not change.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/io/saving_games.html" target="_blank" rel="noopener">Saving games</a> and <a href="https://docs.godotengine.org/en/stable/tutorials/io/data_paths.html" target="_blank" rel="noopener">Data paths</a>: <code>user://</code> and where the best-wave file lands on disk.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_json.html" target="_blank" rel="noopener">JSON</a> and <a href="https://docs.godotengine.org/en/stable/classes/class_fileaccess.html" target="_blank" rel="noopener">FileAccess</a>: <code>parse_string</code>, <code>stringify</code>, <code>file_exists</code>.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li>Arrow on cell <code>(2, 3)</code> spends 50 and sells back for 30. Path clicks print <code>Not buildable</code>.</li>
+    <li>A grunt dies to a shot, gold rises by 5, and a cleared wave raises <code>Best</code>. The json file matches that number after a restart.</li>
+    <li>Speed toggles 1× and 2×, and Restart returns to 1×.</li>
+    <li>With no towers you get Game Over during wave 3. With a real defense you can reach the Victory overlay after wave 8.</li>
+    <li>Flyer uses <code>AirPath</code>. Cannon splashes. Frost tints a slowed enemy with the blue ring from <code>enemy.gd</code>.</li>
+  </ul>
+  <p>File map for <code>C:\GodotProjects\g03-bastion-defense</code>:</p>
+  <table>
+    <tr><th>Path</th><th>Role</th></tr>
+    <tr><td><code>res://main/main.tscn</code></td><td><code>Main</code> [main.gd]: map, paths, base, spawner, HUD, tower container</td></tr>
+    <tr><td><code>res://main/main.gd</code></td><td>Placement, selection, upgrade, sell</td></tr>
+    <tr><td><code>res://main/wave_spawner.gd</code></td><td><code>WaveSpawner</code></td></tr>
+    <tr><td><code>res://main/base.gd</code></td><td>Base marker at (1044, 468)</td></tr>
+    <tr><td><code>res://autoload/game.gd</code></td><td>Autoload <code>Game</code>: gold, lives, interest, best wave</td></tr>
+    <tr><td><code>res://ui/hud.gd</code></td><td>HUD on the <code>HUD</code> CanvasLayer</td></tr>
+    <tr><td><code>res://enemies/enemy.tscn</code></td><td><code>Enemy</code> (<code>PathFollow2D</code>) and <code>enemy.gd</code></td></tr>
+    <tr><td><code>res://towers/tower.tscn</code></td><td><code>Tower</code> and <code>tower.gd</code></td></tr>
+    <tr><td><code>res://towers/projectile.tscn</code></td><td><code>Projectile</code> and <code>projectile.gd</code></td></tr>
+    <tr><td><code>res://data/enemy_data.gd</code></td><td><code>EnemyData</code>. Files in <code>data/enemies/</code>: grunt, runner, tank, flyer, boss</td></tr>
+    <tr><td><code>res://data/wave_group.gd</code></td><td><code>WaveGroup</code></td></tr>
+    <tr><td><code>res://data/wave_data.gd</code></td><td><code>WaveData</code>. Files <code>data/waves/wave_01.tres</code> … <code>wave_08.tres</code></td></tr>
+    <tr><td><code>res://data/level_data.gd</code></td><td><code>LevelData</code>. <code>data/levels/level_01.tres</code> (South Gate, 8 waves)</td></tr>
+    <tr><td><code>res://data/tower_level.gd</code></td><td><code>TowerLevel</code></td></tr>
+    <tr><td><code>res://data/tower_data.gd</code></td><td><code>TowerData</code>. <code>data/towers/</code>: arrow, cannon, frost, sniper</td></tr>
+    <tr><td><code>res://art/tiles.png</code></td><td>Generated 72 px tilesheet</td></tr>
+    <tr><td><code>res://tools/make_tiles.gd</code></td><td>EditorScript for the tilesheet</td></tr>
+    <tr><td><code>res://tools/paint_map.gd</code></td><td>Optional map painter</td></tr>
+    <tr><td><code>res://tools/make_paths.gd</code></td><td>Optional path builder</td></tr>
+    <tr><td><code>res://tools/make_towers.gd</code></td><td>Writes the four tower resources</td></tr>
+    <tr><td><code>res://tools/make_level.gd</code></td><td>Writes enemies, waves and <code>level_01.tres</code></td></tr>
+    <tr><td><code>user://best_wave.json</code></td><td>Best cleared wave. Not inside <code>res://</code></td></tr>
+  </table>
+  <p><strong>Tomorrow:</strong> Day 10 leaves this project. Bastion Defense is complete: fixed lanes, data-driven waves, a grid of towers, and a saved best wave.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

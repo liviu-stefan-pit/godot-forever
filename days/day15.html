@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 15 - Ship Kit I: template project and core autoloads | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day15" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 15</div>
+    <h1>Ship Kit I: template project and core autoloads</h1>
+    <p class="lead">You build one Godot project, <code>C:\GodotProjects\ship-kit</code>, that later games duplicate. Today you lock the folder layout, the five autoloads, and the Master / Music / SFX buses. Tomorrow you put menus, languages, and export presets on top of this same project.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:25</td><td><strong>Concepts.</strong> Why a template, what an autoload is, where <code>user://</code> lives.</td></tr>
+    <tr><td>0:25 – 1:20</td><td><strong>Project and folders.</strong> Mobile renderer, 1280×720, the contract folder tree, audio buses.</td></tr>
+    <tr><td>1:20 – 1:35</td><td><strong>Break.</strong></td></tr>
+    <tr><td>1:35 – 3:15</td><td><strong>Five autoloads.</strong> Type each script and register it under Globals.</td></tr>
+    <tr><td>3:15 – 3:40</td><td><strong>Smoke test.</strong> A tiny main scene that saves a slot and prints.</td></tr>
+    <tr><td>3:40 – 4:00</td><td><strong>Challenge, quiz, wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>4 h</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Have a runnable project at <code>C:\GodotProjects\ship-kit</code> using the Mobile renderer and a 1280×720 base window.</li>
+    <li>Match the Ship Kit folder layout, including <code>res://default_bus_layout.tres</code> with buses <code>Master</code>, <code>Music</code>, and <code>SFX</code>.</li>
+    <li>Register autoloads named exactly <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, and <code>SceneRouter</code>, in that order.</li>
+    <li>Confirm <kbd>F5</kbd> prints a boot line and writes <code>user://profile.json</code> plus <code>user://saves/run.json</code>.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Godot 4.x stable, standard build (not .NET), opens to the Project Manager. Day 1 set the script editor to spaces, size 4. Keep that.</li>
+    <li>You can create folders under <code>C:\GodotProjects</code>. If that folder does not exist yet, you will create it in the first step.</li>
+    <li>Day 14's sandbox can stay where it is. This is a new project. Do not copy an old game into it.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>One folder, five games</h3>
+  <p>Publishable games in this course are not built from an empty project. You finish this template, then copy the whole folder and rename the copy. Idle clicker, bullet heaven, physics merge, deckbuilder, and deep digger all call the same autoloads. If a method name drifts, every later day breaks. The names below are the contract. Do not rename them, and do not add a required parameter.</p>
+  <h3>Autoloads are process-wide singletons</h3>
+  <p>An autoload is a node Godot creates before your main scene and keeps alive across <code>change_scene_to_file</code>. You reach it by the node name you type in Project Settings, the same way you reach <code>AudioServer</code> or <code>Input</code>. That is convenient and easy to overuse. This kit has five, and only five: a signal bus, settings, saves, a small audio facade, and a scene changer that fades. Game rules stay in <code>res://game/</code>, not in these scripts.</p>
+  <div class="callout tip"><span class="callout-title">Coming from another engine?</span>
+    <p>An autoload is close to a Unity runtime singleton that is <code>DontDestroyOnLoad</code>, or an Unreal game-instance subsystem. The difference is the editor registers it. You do not <code>new</code> it yourself.</p></div>
+  <h3>res:// versus user://</h3>
+  <p><code>res://</code> is the project, packed into the export. <code>user://</code> is per-user data outside the pack: settings, remapped controls, and saves. On Windows the game writes under <code>%APPDATA%\Godot\app_userdata\&lt;project name&gt;\</code>. The project name you set today is <code>ship-kit</code>, so that folder name follows the project name. Deleting <code>res://</code> files does not delete saves. Deleting the app-userdata folder does.</p>
+  <h3>What each autoload is for</h3>
+  <table>
+    <tr><th>Autoload</th><th>Script</th><th>Job</th></tr>
+    <tr><td><code>Events</code></td><td><code>autoload/events.gd</code></td><td>Signals only. Scenes do not grab each other to say "score changed".</td></tr>
+    <tr><td><code>Settings</code></td><td><code>autoload/settings.gd</code></td><td><code>user://settings.cfg</code> via <code>ConfigFile</code>. Volumes are linear 0.0–1.0. Also persists the Input Map.</td></tr>
+    <tr><td><code>SaveManager</code></td><td><code>autoload/save_manager.gd</code></td><td>JSON slots in <code>user://saves/</code>, plus a small profile with a 1 second autosave. Flushes when the app pauses or closes.</td></tr>
+    <tr><td><code>Audio</code></td><td><code>autoload/audio.gd</code></td><td>Pooled SFX players on bus <code>SFX</code>. Two music players crossfade on bus <code>Music</code>.</td></tr>
+    <tr><td><code>SceneRouter</code></td><td><code>autoload/scene_router.gd</code></td><td><code>CanvasLayer</code> at layer 100. Fades, then <code>change_scene_to_file</code>.</td></tr>
+  </table>
+  <div class="callout docs"><span class="callout-title">JSON numbers</span>
+    <p><code>JSON.stringify</code> writes numbers, and <code>JSON.parse_string</code> reads every one of them back as a float. A saved <code>12</code> comes back as <code>12.0</code>. Any counter you treat as an <code>int</code> must be cast with <code>int(...)</code> at the load site. Idle-clicker values that can exceed 2^53 must be stored as strings, not ints. The slot envelope itself casts its <code>format</code> field. Your game dictionary is returned as parsed.</p></div>
+
+  <h2 id="build-1">Block 2: Create the project and the folders</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Make the projects folder.</strong> In File Explorer, open <code>C:\</code>. If you do not already have <code>C:\GodotProjects</code>, create that folder. You will put every course project here, side by side.</li>
+    <li><strong>Open the Project Manager.</strong> Launch Godot. You want the window titled Project Manager, not an already-open editor. If an editor is open, close it with the window X until the Project Manager is back.</li>
+    <li><strong>Start a new project.</strong> Click <kbd class="ui">Create</kbd> (top-left of the Project Manager). Set <kbd class="ui">Project Name</kbd> to <code>ship-kit</code>. Click <kbd class="ui">Browse</kbd> next to Project Path and choose <code>C:\GodotProjects</code>. Godot appends <code>\ship-kit</code>. The path must read <code>C:\GodotProjects\ship-kit</code>.</li>
+    <li><strong>Pick the Mobile renderer.</strong> In the renderer list, click <kbd class="ui">Mobile</kbd>. Leave the version on the stable 4.x you installed. Click <kbd class="ui">Create &amp; Edit</kbd>. The editor opens on an empty scene. Mobile is the renderer for every Part 2 phone game: it is the 2D path these projects ship with, and it matches typical Android GPUs better than Forward+.</li>
+  </ol>
+  <div class="callout version"><span class="callout-title">Version note</span>
+    <p>The renderer choice is made at creation. If you already created the project with Forward+, open <kbd class="menu">Project &gt; Project Settings</kbd>, search <code>rendering method</code>, set <kbd class="ui">Rendering Method</kbd> to <code>mobile</code>, click <kbd class="ui">Close</kbd>, and restart the editor when it asks. Do this before you add content.</p></div>
+  <ol class="steps">
+    <li><strong>Set the design size.</strong> Menu bar: <kbd class="menu">Project &gt; Project Settings</kbd>. In the left tree open <kbd class="ui">Display</kbd>, then <kbd class="ui">Window</kbd>. Under <kbd class="ui">Size</kbd> set <kbd class="ui">Viewport Width</kbd> to <code>1280</code> and <kbd class="ui">Viewport Height</kbd> to <code>720</code>. Leave <kbd class="ui">Window Width Override</kbd> and <kbd class="ui">Window Height Override</kbd> at <code>0</code> so the window matches that base. This 1280×720 project is the template. When you copy it for a portrait game you change these two numbers; you do not rebuild the autoloads.</li>
+    <li><strong>Name the application.</strong> In the same dialog, left tree: <kbd class="ui">Application</kbd> &gt; <kbd class="ui">Config</kbd>. Set <kbd class="ui">Name</kbd> to <code>ship-kit</code> if it is not already. That string is the <code>user://</code> folder name. Click <kbd class="ui">Close</kbd>.</li>
+    <li><strong>Create the top-level folders.</strong> In the <kbd class="ui">FileSystem</kbd> dock (bottom-left), right-click <code>res://</code> and choose <kbd class="ui">New Folder...</kbd>. Type <code>autoload</code> and confirm. Repeat for <code>ui</code>, <code>i18n</code>, <code>licenses</code>, <code>game</code>, <code>data</code>, and <code>assets</code>. Each folder appears under <code>res://</code>.</li>
+    <li><strong>Create the nested folders.</strong> Right-click <code>res://ui</code> &gt; <kbd class="ui">New Folder...</kbd> &gt; <code>theme</code>. Right-click <code>res://assets</code> and create <code>art</code>, then <code>audio</code>, then <code>fonts</code>.</li>
+  </ol>
+  <pre class="plain">res://
+├── autoload/          events.gd  settings.gd  save_manager.gd  audio.gd  scene_router.gd
+├── ui/                menus arrive on Day 16; theme/ is for game_theme.tres
+├── i18n/              translations.csv arrives on Day 16
+├── licenses/          GODOT_LICENSE.txt  GODOT_COPYRIGHT.txt  THIRD_PARTY.txt
+├── game/              game.tscn and everything specific to one game
+├── data/              Resource scripts and .tres data
+├── assets/art/
+├── assets/audio/
+├── assets/fonts/
+└── default_bus_layout.tres</pre>
+  <div class="checkpoint"><p>FileSystem shows those folders under <code>res://</code>. <code>icon.svg</code> and <code>project.godot</code> are still there; Godot created them. The 2D viewport's blue frame is 1280 by 720. If the frame is a different size, recheck Viewport Width and Viewport Height.</p></div>
+
+  <h2 id="build-2">Buses: Master, Music, SFX</h2>
+  <p>Every exported game loads <code>res://default_bus_layout.tres</code> at startup. <code>Settings</code> looks up buses by name. A typo here means volume sliders silently fail tomorrow.</p>
+  <ol class="steps">
+    <li><strong>Open the Audio panel.</strong> Along the bottom panel, click the <kbd class="ui">Audio</kbd> tab. You should see one bus column named <code>Master</code>. Master is the speakers. Do not rename it and do not delete it.</li>
+    <li><strong>Add Music.</strong> Click the <kbd class="ui">Add Bus</kbd> button (the plus at the right of the bus row). A column appears. Double-click its name and type <code>Music</code>, then press <kbd>Enter</kbd>. Under that name, the output dropdown must say <code>Master</code>. If it says something else, open it and choose <code>Master</code>.</li>
+    <li><strong>Add SFX.</strong> Click <kbd class="ui">Add Bus</kbd> again. Rename the new column to <code>SFX</code> in all capitals. Set its output to <code>Master</code> the same way. You now have three columns, left to right: <code>Master</code>, <code>Music</code>, <code>SFX</code>.</li>
+    <li><strong>Save the layout.</strong> Click anywhere on the 2D viewport, then press <kbd>Ctrl</kbd>+<kbd>S</kbd> if Godot asks about unsaved changes. In FileSystem, <code>res://default_bus_layout.tres</code> exists. Godot rewrites that file when you edit buses. If you do not see it, click the FileSystem refresh, or switch away from the Audio tab and back.</li>
+  </ol>
+  <div class="callout warn"><span class="callout-title">Names are case-sensitive</span>
+    <p>The scripts use <code>&amp;"Music"</code> and <code>&amp;"SFX"</code>. <code>Sfx</code>, <code>sfx</code>, and <code>Sound</code> are different buses. <code>AudioServer.get_bus_index</code> returns <code>-1</code> for a missing name, and <code>Settings</code> pushes an error instead of guessing.</p></div>
+  <div class="checkpoint"><p>The Audio tab shows exactly three buses: <code>Master</code>, <code>Music</code>, <code>SFX</code>. Music and SFX both send to Master. <code>default_bus_layout.tres</code> is in FileSystem.</p></div>
+
+  <h2 id="build-3">Autoload 1 and 2: Events and Settings</h2>
+  <p>Create each script from the FileSystem, then register it. The node name in the Autoload list is what you type in GDScript. Godot's suggested name is often the filename in lowercase. You must replace it.</p>
+  <ol class="steps">
+    <li><strong>Create <code>events.gd</code>.</strong> In FileSystem, right-click <code>res://autoload</code> and choose <kbd class="ui">Create New</kbd> &gt; <kbd class="ui">Script...</kbd>. Language <kbd class="ui">GDScript</kbd>. Inherits <code>Node</code>. Path <code>res://autoload/events.gd</code>. Template <kbd class="ui">Empty</kbd>. Click <kbd class="ui">Create</kbd>. The script editor opens. Press <kbd>Ctrl</kbd>+<kbd>A</kbd>, delete everything, and paste this whole file.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://autoload/events.gd">
+extends Node
+
+## Global signal bus. Connect with Events.score_changed.connect(_on_score_changed).
+## Emit with Events.score_changed.emit(score). Do not put game logic here.
+
+@warning_ignore("unused_signal")
+signal game_started
+
+@warning_ignore("unused_signal")
+signal game_paused(is_paused: bool)
+
+@warning_ignore("unused_signal")
+signal game_over(score: int)
+
+@warning_ignore("unused_signal")
+signal score_changed(score: int)
+
+@warning_ignore("unused_signal")
+signal achievement_unlocked(id: StringName)
+
+@warning_ignore("unused_signal")
+signal settings_changed
+
+@warning_ignore("unused_signal")
+signal toast_requested(text: String)
+      </script>
+    </li>
+    <li><strong>Register Events.</strong> Menu bar: <kbd class="menu">Project &gt; Project Settings</kbd>. At the top of that dialog, click the <kbd class="ui">Globals</kbd> tab. <kbd class="ui">Autoload</kbd> is the section on the left (not Global Groups). At the bottom, click the folder icon beside <kbd class="ui">Path</kbd>. Choose <code>res://autoload/events.gd</code> and confirm. The <kbd class="ui">Node Name</kbd> field will say <code>events</code>. Change it to <code>Events</code> with a capital E. Leave the enable checkbox on. Click <kbd class="ui">Add</kbd>. A row appears: name <code>Events</code>, path <code>res://autoload/events.gd</code>. The singleton checkbox on that row stays on, so scripts can write <code>Events</code> without <code>get_node</code>.</li>
+    <li><strong>Create <code>settings.gd</code>.</strong> Same FileSystem flow: right-click <code>res://autoload</code> &gt; <kbd class="ui">Create New</kbd> &gt; <kbd class="ui">Script...</kbd>, inherits <code>Node</code>, path <code>res://autoload/settings.gd</code>, template Empty. Replace the whole file.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://autoload/settings.gd">
+extends Node
+
+## user://settings.cfg (volumes, fullscreen, locale, extra keys).
+## user://input_map.cfg (every InputMap action, via var_to_str).
+## Volumes are linear 0.0-1.0 on buses Master, Music, and SFX.
+
+const SETTINGS_PATH: String = "user://settings.cfg"
+const INPUT_PATH: String = "user://input_map.cfg"
+const BUSES: Array[StringName] = [&"Master", &"Music", &"SFX"]
+
+var _config: ConfigFile = ConfigFile.new()
+
+
+func _ready() -> void:
+    if _config.load(SETTINGS_PATH) != OK:
+        _config = ConfigFile.new()
+    _apply_audio()
+    _apply_fullscreen()
+    _apply_locale()
+    load_input_map()
+
+
+func get_volume(bus: StringName) -> float:
+    var idx: int = AudioServer.get_bus_index(bus)
+    if idx < 0:
+        push_error("Settings.get_volume: missing bus %s" % String(bus))
+        return 0.0
+    return clampf(AudioServer.get_bus_volume_linear(idx), 0.0, 1.0)
+
+
+func set_volume(bus: StringName, linear: float) -> void:
+    var idx: int = AudioServer.get_bus_index(bus)
+    if idx < 0:
+        push_error("Settings.set_volume: missing bus %s" % String(bus))
+        return
+    var clamped: float = clampf(linear, 0.0, 1.0)
+    AudioServer.set_bus_volume_linear(idx, clamped)
+    _config.set_value("audio", String(bus), clamped)
+    save_settings()
+    Events.settings_changed.emit()
+
+
+func is_fullscreen() -> bool:
+    var mode: DisplayServer.WindowMode = DisplayServer.window_get_mode()
+    return mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+
+
+func set_fullscreen(on: bool) -> void:
+    var mode: DisplayServer.WindowMode = DisplayServer.WINDOW_MODE_WINDOWED
+    if on:
+        mode = DisplayServer.WINDOW_MODE_FULLSCREEN
+    DisplayServer.window_set_mode(mode)
+    _config.set_value("video", "fullscreen", on)
+    save_settings()
+    Events.settings_changed.emit()
+
+
+func get_locale() -> String:
+    return TranslationServer.get_locale()
+
+
+func set_locale(locale: String) -> void:
+    TranslationServer.set_locale(locale)
+    _config.set_value("general", "locale", locale)
+    save_settings()
+    Events.settings_changed.emit()
+
+
+func get_value(section: String, key: String, default: Variant = null) -> Variant:
+    return _config.get_value(section, key, default)
+
+
+func set_value(section: String, key: String, value: Variant) -> void:
+    _config.set_value(section, key, value)
+    save_settings()
+    Events.settings_changed.emit()
+
+
+func save_settings() -> void:
+    var err: Error = _config.save(SETTINGS_PATH)
+    if err != OK:
+        push_error("Settings.save_settings failed: %s" % error_string(err))
+
+
+func save_input_map() -> void:
+    var cfg := ConfigFile.new()
+    for action: StringName in InputMap.get_actions():
+        var encoded := PackedStringArray()
+        for event: InputEvent in InputMap.action_get_events(action):
+            encoded.append(var_to_str(event))
+        cfg.set_value("input", String(action), encoded)
+    var err: Error = cfg.save(INPUT_PATH)
+    if err != OK:
+        push_error("Settings.save_input_map failed: %s" % error_string(err))
+
+
+func load_input_map() -> void:
+    var cfg := ConfigFile.new()
+    if cfg.load(INPUT_PATH) != OK:
+        return
+    if not cfg.has_section("input"):
+        return
+    for action_key: String in cfg.get_section_keys("input"):
+        var action := StringName(action_key)
+        if not InputMap.has_action(action):
+            continue
+        var raw: Variant = cfg.get_value("input", action_key, PackedStringArray())
+        var lines := PackedStringArray()
+        if raw is PackedStringArray:
+            lines = raw
+        elif raw is Array:
+            for item: Variant in raw:
+                lines.append(str(item))
+        else:
+            continue
+        InputMap.action_erase_events(action)
+        for line: String in lines:
+            var parsed: Variant = str_to_var(line)
+            if parsed is InputEvent:
+                InputMap.action_add_event(action, parsed)
+
+
+func _apply_audio() -> void:
+    for bus: StringName in BUSES:
+        var stored: float = float(_config.get_value("audio", String(bus), 1.0))
+        var idx: int = AudioServer.get_bus_index(bus)
+        if idx < 0:
+            push_error("Settings: bus %s is missing. Check default_bus_layout.tres" % String(bus))
+            continue
+        AudioServer.set_bus_volume_linear(idx, clampf(stored, 0.0, 1.0))
+
+
+func _apply_fullscreen() -> void:
+    var on: bool = bool(_config.get_value("video", "fullscreen", false))
+    if on:
+        DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+
+
+func _apply_locale() -> void:
+    var saved: String = str(_config.get_value("general", "locale", ""))
+    if saved.is_empty():
+        saved = OS.get_locale_language()
+    TranslationServer.set_locale(saved)
+      </script>
+    </li>
+    <li><strong>Register Settings.</strong> Back on <kbd class="menu">Project &gt; Project Settings &gt; Globals &gt; Autoload</kbd>. Path: <code>res://autoload/settings.gd</code>. Node Name: <code>Settings</code> (capital S). Click <kbd class="ui">Add</kbd>. It must be the second row, under <code>Events</code>.</li>
+  </ol>
+  <div class="callout note"><span class="callout-title">Why linear volume</span>
+    <p>Sliders in this kit store 0.0–1.0. <code>AudioServer.set_bus_volume_linear</code> turns that into decibels. Do not pass a decibel value into <code>set_volume</code>. <code>Audio.play_sfx</code> is the method that takes <code>volume_db</code>, and that is a per-sound offset on top of the bus.</p></div>
+
+  <h2 id="build-4">Autoload 3: SaveManager</h2>
+  <ol class="steps">
+    <li><strong>Create <code>save_manager.gd</code>.</strong> Right-click <code>res://autoload</code> &gt; <kbd class="ui">Create New</kbd> &gt; <kbd class="ui">Script...</kbd>, inherits <code>Node</code>, path <code>res://autoload/save_manager.gd</code>. Replace the whole file.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://autoload/save_manager.gd">
+extends Node
+
+## Slots: user://saves/<slot>.json
+## Envelope: {"format": FORMAT_VERSION, "saved_at": unix, "data": {...}}
+## Profile: user://profile.json under key "values", written 1 second after set_value,
+## and immediately from flush() on close, pause, and focus-out.
+## JSON turns ints into floats. Cast with int() at the call site.
+
+const FORMAT_VERSION: int = 1
+const SAVES_DIR: String = "user://saves"
+const PROFILE_PATH: String = "user://profile.json"
+
+var _profile: Dictionary = {}
+var _profile_timer: Timer
+
+
+func _ready() -> void:
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    get_tree().set_auto_accept_quit(false)
+    DirAccess.make_dir_recursive_absolute(SAVES_DIR)
+    _profile_timer = Timer.new()
+    _profile_timer.one_shot = true
+    _profile_timer.wait_time = 1.0
+    _profile_timer.timeout.connect(_write_profile)
+    add_child(_profile_timer)
+    _load_profile()
+
+
+func _notification(what: int) -> void:
+    if what == NOTIFICATION_WM_CLOSE_REQUEST:
+        flush()
+        get_tree().quit()
+    elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_GO_BACK_REQUEST:
+        flush()
+
+
+func has_slot(slot: StringName) -> bool:
+    var slot_name := _safe_slot(slot)
+    if slot_name.is_empty():
+        return false
+    return FileAccess.file_exists(_slot_path(slot_name))
+
+
+func save_slot(slot: StringName, data: Dictionary) -> bool:
+    var slot_name := _safe_slot(slot)
+    if slot_name.is_empty():
+        push_error("SaveManager.save_slot: rejected slot name")
+        return false
+    DirAccess.make_dir_recursive_absolute(SAVES_DIR)
+    var envelope := {
+        "format": FORMAT_VERSION,
+        "saved_at": int(Time.get_unix_time_from_system()),
+        "data": data,
+    }
+    return _write_atomic(_slot_path(slot_name), JSON.stringify(envelope, "\t"))
+
+
+func load_slot(slot: StringName, default: Dictionary = {}) -> Dictionary:
+    var slot_name := _safe_slot(slot)
+    if slot_name.is_empty() or not has_slot(slot):
+        return default.duplicate()
+    var file := FileAccess.open(_slot_path(slot_name), FileAccess.READ)
+    if file == null:
+        return default.duplicate()
+    var parsed: Variant = JSON.parse_string(file.get_as_text())
+    file.close()
+    if not (parsed is Dictionary):
+        push_error("SaveManager.load_slot: invalid JSON for %s" % slot_name)
+        return default.duplicate()
+    var version: int = int(parsed.get("format", 0))
+    if version != FORMAT_VERSION:
+        push_warning("SaveManager.load_slot: format %d, kit expects %d" % [version, FORMAT_VERSION])
+        return default.duplicate()
+    var data: Variant = parsed.get("data", null)
+    if data is Dictionary:
+        return (data as Dictionary).duplicate()
+    return default.duplicate()
+
+
+func delete_slot(slot: StringName) -> void:
+    var slot_name := _safe_slot(slot)
+    if slot_name.is_empty():
+        return
+    var path := _slot_path(slot_name)
+    if FileAccess.file_exists(path):
+        DirAccess.remove_absolute(path)
+
+
+func get_value(key: String, default: Variant = null) -> Variant:
+    return _profile.get(key, default)
+
+
+func set_value(key: String, value: Variant) -> void:
+    _profile[key] = value
+    _profile_timer.start()
+
+
+func flush() -> void:
+    if _profile_timer != null:
+        _profile_timer.stop()
+    _write_profile()
+
+
+func _load_profile() -> void:
+    if not FileAccess.file_exists(PROFILE_PATH):
+        _profile = {}
+        return
+    var file := FileAccess.open(PROFILE_PATH, FileAccess.READ)
+    if file == null:
+        _profile = {}
+        return
+    var parsed: Variant = JSON.parse_string(file.get_as_text())
+    file.close()
+    if parsed is Dictionary and parsed.get("values") is Dictionary:
+        _profile = parsed["values"]
+    else:
+        _profile = {}
+
+
+func _write_profile() -> void:
+    var envelope := {
+        "format": FORMAT_VERSION,
+        "values": _profile,
+    }
+    _write_atomic(PROFILE_PATH, JSON.stringify(envelope, "\t"))
+
+
+func _slot_path(slot_name: String) -> String:
+    return "%s/%s.json" % [SAVES_DIR, slot_name]
+
+
+func _safe_slot(slot: StringName) -> String:
+    var slot_name := String(slot)
+    if slot_name.is_empty():
+        return ""
+    if slot_name.contains("/") or slot_name.contains("\\") or slot_name.contains(".."):
+        return ""
+    return slot_name
+
+
+func _write_atomic(path: String, contents: String) -> bool:
+    var tmp := path + ".tmp"
+    var file := FileAccess.open(tmp, FileAccess.WRITE)
+    if file == null:
+        push_error("SaveManager: cannot write %s (%s)" % [tmp, error_string(FileAccess.get_open_error())])
+        return false
+    file.store_string(contents)
+    file.close()
+    if FileAccess.file_exists(path):
+        var removed: Error = DirAccess.remove_absolute(path)
+        if removed != OK:
+            push_error("SaveManager: cannot replace %s (%s)" % [path, error_string(removed)])
+            return false
+    var renamed: Error = DirAccess.rename_absolute(tmp, path)
+    if renamed != OK:
+        push_error("SaveManager: rename failed %s (%s)" % [path, error_string(renamed)])
+        return false
+    return true
+      </script>
+    </li>
+    <li><strong>Register SaveManager.</strong> <kbd class="menu">Project &gt; Project Settings &gt; Globals &gt; Autoload</kbd>. Path <code>res://autoload/save_manager.gd</code>. Node Name <code>SaveManager</code> (capital S, capital M, one word). Click <kbd class="ui">Add</kbd>. It is the third row.</li>
+  </ol>
+  <div class="callout note"><span class="callout-title">Why flush on pause</span>
+    <p>Android can kill a paused app without a close notification. <code>NOTIFICATION_APPLICATION_PAUSED</code> and <code>NOTIFICATION_APPLICATION_FOCUS_OUT</code> are the last reliable moments to write. <code>quit_game</code> on <code>SceneRouter</code> also calls <code>SaveManager.flush()</code> before <code>get_tree().quit()</code>. Desktop close is handled here too, because this script turns off auto-accept quit and quits only after the file write returns.</p></div>
+
+  <h2 id="build-5">Autoloads 4 and 5: Audio and SceneRouter</h2>
+  <ol class="steps">
+    <li><strong>Create <code>audio.gd</code>.</strong> New script on <code>res://autoload</code>, inherits <code>Node</code>, path <code>res://autoload/audio.gd</code>. Replace the whole file.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://autoload/audio.gd">
+extends Node
+
+## play_sfx uses a pool on bus SFX so overlapping sounds do not cut each other off.
+## play_music crossfades between two players on bus Music.
+
+const SFX_POOL_SIZE: int = 8
+const SFX_BUS: StringName = &"SFX"
+const MUSIC_BUS: StringName = &"Music"
+const SILENT_DB: float = -80.0
+
+var _sfx_players: Array[AudioStreamPlayer] = []
+var _sfx_cursor: int = 0
+var _music_a: AudioStreamPlayer
+var _music_b: AudioStreamPlayer
+var _active: AudioStreamPlayer
+var _music_tween: Tween
+
+
+func _ready() -> void:
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    for _i: int in SFX_POOL_SIZE:
+        var player := AudioStreamPlayer.new()
+        player.bus = SFX_BUS
+        add_child(player)
+        _sfx_players.append(player)
+    _music_a = _make_music_player("MusicA")
+    _music_b = _make_music_player("MusicB")
+    _active = _music_a
+
+
+func play_sfx(stream: AudioStream, volume_db: float = 0.0, pitch_scale: float = 1.0) -> void:
+    if stream == null:
+        return
+    var player: AudioStreamPlayer = _sfx_players[_sfx_cursor]
+    _sfx_cursor = (_sfx_cursor + 1) % SFX_POOL_SIZE
+    player.stream = stream
+    player.volume_db = volume_db
+    player.pitch_scale = pitch_scale
+    player.play()
+
+
+func play_sfx_varied(stream: AudioStream, pitch_spread: float = 0.1, volume_db: float = 0.0) -> void:
+    var pitch: float = clampf(1.0 + randf_range(-pitch_spread, pitch_spread), 0.01, 4.0)
+    play_sfx(stream, volume_db, pitch)
+
+
+func play_music(stream: AudioStream, fade_time: float = 0.8) -> void:
+    if stream == null:
+        stop_music(fade_time)
+        return
+    if _active.playing and _active.stream == stream:
+        return
+    var incoming: AudioStreamPlayer = _music_b if _active == _music_a else _music_a
+    incoming.stream = stream
+    incoming.volume_db = SILENT_DB
+    incoming.play()
+    _fade_to(incoming, fade_time)
+
+
+func stop_music(fade_time: float = 0.8) -> void:
+    _fade_to(null, fade_time)
+
+
+func _make_music_player(node_name: String) -> AudioStreamPlayer:
+    var player := AudioStreamPlayer.new()
+    player.name = node_name
+    player.bus = MUSIC_BUS
+    player.volume_db = SILENT_DB
+    add_child(player)
+    return player
+
+
+func _fade_to(incoming: AudioStreamPlayer, fade_time: float) -> void:
+    if _music_tween != null:
+        _music_tween.kill()
+    var outgoing: AudioStreamPlayer = _active
+    if fade_time <= 0.0:
+        if incoming != null:
+            incoming.volume_db = 0.0
+            _active = incoming
+        _finish_fade(outgoing, incoming)
+        return
+    _music_tween = create_tween()
+    _music_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+    if incoming != null:
+        _music_tween.tween_property(incoming, "volume_db", 0.0, fade_time)
+        _active = incoming
+    if outgoing != null and outgoing != incoming and outgoing.playing:
+        _music_tween.parallel().tween_property(outgoing, "volume_db", SILENT_DB, fade_time)
+    _music_tween.chain().tween_callback(_finish_fade.bind(outgoing, incoming))
+
+
+func _finish_fade(outgoing: AudioStreamPlayer, incoming: AudioStreamPlayer) -> void:
+    if outgoing != null and outgoing != incoming:
+        outgoing.stop()
+        outgoing.volume_db = SILENT_DB
+    if incoming == null and outgoing != null:
+        outgoing.stop()
+        outgoing.volume_db = SILENT_DB
+      </script>
+    </li>
+    <li><strong>Register Audio.</strong> Autoload path <code>res://autoload/audio.gd</code>, Node Name <code>Audio</code>. Click <kbd class="ui">Add</kbd>. Fourth row.</li>
+    <li><strong>Create <code>scene_router.gd</code>.</strong> New script, and this time set Inherits to <code>CanvasLayer</code> (search that name in the Inherits field). Path <code>res://autoload/scene_router.gd</code>. Then replace the whole file anyway, so the <code>extends</code> line is the one below.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://autoload/scene_router.gd">
+extends CanvasLayer
+
+const MAIN_MENU_SCENE: String = "res://ui/main_menu.tscn"
+const GAME_SCENE: String = "res://game/game.tscn"
+
+signal transition_finished
+
+var _fade: ColorRect
+var _busy: bool = false
+
+
+func _ready() -> void:
+    layer = 100
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    _fade = ColorRect.new()
+    _fade.name = "Fade"
+    _fade.color = Color(0, 0, 0, 0)
+    _fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    _fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    add_child(_fade)
+
+
+func go_to(scene_path: String, fade_time: float = 0.25) -> void:
+    if _busy:
+        return
+    _busy = true
+    if get_tree().paused:
+        get_tree().paused = false
+        Events.game_paused.emit(false)
+    _fade.mouse_filter = Control.MOUSE_FILTER_STOP
+    if fade_time > 0.0:
+        var out_tween := create_tween()
+        out_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+        out_tween.tween_property(_fade, "color:a", 1.0, fade_time)
+        await out_tween.finished
+    else:
+        _set_fade_alpha(1.0)
+    var err: Error = get_tree().change_scene_to_file(scene_path)
+    if err != OK:
+        push_error("SceneRouter.go_to failed (%s): %s" % [error_string(err), scene_path])
+        _set_fade_alpha(0.0)
+        _fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        _busy = false
+        transition_finished.emit()
+        return
+    await get_tree().scene_changed
+    if fade_time > 0.0:
+        var in_tween := create_tween()
+        in_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+        in_tween.tween_property(_fade, "color:a", 0.0, fade_time)
+        await in_tween.finished
+    else:
+        _set_fade_alpha(0.0)
+    _fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    _busy = false
+    transition_finished.emit()
+
+
+func reload_current(fade_time: float = 0.25) -> void:
+    var current: Node = get_tree().current_scene
+    if current == null or current.scene_file_path.is_empty():
+        push_error("SceneRouter.reload_current: current scene has no file path")
+        return
+    go_to(current.scene_file_path, fade_time)
+
+
+func quit_game() -> void:
+    SaveManager.flush()
+    get_tree().quit()
+
+
+func _set_fade_alpha(alpha: float) -> void:
+    var next: Color = _fade.color
+    next.a = alpha
+    _fade.color = next
+      </script>
+    </li>
+    <li><strong>Register SceneRouter.</strong> Path <code>res://autoload/scene_router.gd</code>. Node Name <code>SceneRouter</code> (capital S, capital R). Click <kbd class="ui">Add</kbd>. It is the fifth and last row.</li>
+    <li><strong>Check order and singletons.</strong> The Autoload list must read, top to bottom: <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, <code>SceneRouter</code>. Each row's enable box and singleton box are on. If a row is in the wrong place, select it and use the up or down arrow on the right of the list until the order matches. Click <kbd class="ui">Close</kbd>.</li>
+  </ol>
+  <div class="checkpoint"><p>Reopen <kbd class="menu">Project &gt; Project Settings &gt; Globals &gt; Autoload</kbd>. Five rows, those exact names, those exact paths. The <kbd class="ui">Output</kbd> panel has no red parse errors. If the debugger says <code>Identifier "Events" not declared</code>, the node name is not <code>Events</code> or the singleton box is off.</p></div>
+  <div class="callout warn"><span class="callout-title">Color is a value</span>
+    <p><code>Color</code> is copied when you read it. <code>_fade.color.a = 1.0</code> changes the copy and leaves the rect alone. The script writes a whole <code>Color</code> back in <code>_set_fade_alpha</code>. The tween path <code>color:a</code> is fine: <code>tween_property</code> sets that component itself.</p></div>
+
+  <h2 id="build-6">Smoke test so F5 does something</h2>
+  <p>Day 16 replaces this scene with menus. Today it only proves the autoloads loaded and the save files exist. <code>SceneRouter</code> already points at <code>res://game/game.tscn</code> and <code>res://ui/main_menu.tscn</code>. The menu file does not exist until tomorrow. That is fine, as long as you do not call <code>go_to</code> yet.</p>
+  <ol class="steps">
+    <li><strong>Root node.</strong> In the <kbd class="ui">Scene</kbd> dock (top-left), click <kbd class="ui">Other Node</kbd> if you see it, or the <kbd class="ui">+</kbd> button. Search <code>Control</code>, select it, click <kbd class="ui">Create</kbd>. Press <kbd>F2</kbd> and rename the root to <code>Game</code>.</li>
+    <li><strong>Make it fill the window.</strong> With <code>Game</code> selected, in the viewport toolbar (the bar directly above the blue rectangle) open the anchor preset menu and choose <kbd class="ui">Full Rect</kbd>. In the Inspector, <kbd class="ui">Layout</kbd> anchors should all be 0 on the minimum side and 1 on the maximum side.</li>
+    <li><strong>Add a label.</strong> Select <code>Game</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>Label</code>, click <kbd class="ui">Create</kbd>. Rename it <code>Status</code>. In the Inspector set <kbd class="ui">Text</kbd> to <code>Ship Kit</code>. Turn on <kbd class="ui">Autowrap</kbd> &gt; <kbd class="ui">Autowrap Mode</kbd> = <kbd class="ui">Word (Smart)</kbd> if the property is visible, so a long line can wrap later. Drag the label so it sits near the top-left of the blue frame, or set anchors to Full Rect as well and leave the text at the top.</li>
+    <li><strong>Save the scene.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd>. In the save dialog, open the <code>game</code> folder, file name <code>game.tscn</code>, click <kbd class="ui">Save</kbd>. FileSystem shows <code>res://game/game.tscn</code>.</li>
+    <li><strong>Attach the smoke-test script.</strong> Right-click <code>Game</code> in the Scene dock &gt; <kbd class="ui">Attach Script</kbd>. Path <code>res://game/game.gd</code>. Inherits <code>Control</code>. Template Empty. Click <kbd class="ui">Create</kbd>. Replace the whole file.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/game.gd">
+extends Control
+
+@onready var status: Label = $Status
+
+
+func _ready() -> void:
+    var boots: int = int(SaveManager.get_value("boot_count", 0))
+    boots += 1
+    SaveManager.set_value("boot_count", boots)
+    SaveManager.flush()
+    var saved: bool = SaveManager.save_slot(&"run", {"score": 0, "boot": boots})
+    var loaded: Dictionary = SaveManager.load_slot(&"run", {})
+    var loaded_boot: int = int(loaded.get("boot", -1))
+    var master: float = Settings.get_volume(&"Master")
+    var line := "Ship Kit ready. boot_count=%d slot_boot=%d save_ok=%s master=%0.2f" % [boots, loaded_boot, saved, master]
+    status.text = line
+    print(line)
+      </script>
+    </li>
+    <li><strong>Set the main scene with F5.</strong> Press <kbd>F5</kbd> (Run Project, top-right play button). Godot asks for a main scene because you have not picked one. Choose <code>res://game/game.tscn</code> and confirm. The game window opens.</li>
+  </ol>
+  <pre class="scene-tree">Game (Control)                  [game.gd]
+└── Status (Label)</pre>
+  <div class="checkpoint"><p>The game window shows a line starting with <code>Ship Kit ready. boot_count=1</code>. The same line is in the <kbd class="ui">Output</kbd> panel. <code>slot_boot=1</code> and <code>save_ok=true</code> and <code>master=1.00</code>. Press <kbd>F8</kbd> to stop. Press <kbd>F5</kbd> again: <code>boot_count=2</code>. If you see <code>missing bus</code>, the Audio tab names are wrong. If the window is blank and Output has a parse error, the script was not fully replaced. If you see <code>Node not found: Status</code>, the label is not a direct child named <code>Status</code>.</p></div>
+  <ol class="steps">
+    <li><strong>Find the files on disk.</strong> Press <kbd>Win</kbd>+<kbd>R</kbd>, paste <code>%APPDATA%\Godot\app_userdata\ship-kit</code>, and press Enter. You should see <code>profile.json</code> and a <code>saves</code> folder containing <code>run.json</code>. Open <code>run.json</code> in Notepad. It has <code>format</code>, <code>saved_at</code>, and <code>data</code>. Close the game if it is still running before you edit those files by hand. You do not need to edit them.</li>
+  </ol>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Node Name left as <code>events</code>.</strong> GDScript then has no global <code>Events</code>. The Autoload row name is the API. Capitalization is part of the name.</li>
+    <li><strong>Singleton checkbox off.</strong> The node still exists in the tree, but other scripts cannot say <code>SaveManager.flush()</code>. Turn the checkbox back on.</li>
+    <li><strong>Wrong order.</strong> <code>Settings._ready</code> does not call the other kit scripts, but later UI will. Keep Events first so any emit during startup has a bus. Keep SceneRouter last.</li>
+    <li><strong><code>scene_router.gd</code> extends <code>Node</code>.</strong> <code>layer</code> belongs to <code>CanvasLayer</code>. The file in this lesson starts with <code>extends CanvasLayer</code>. A parse error on <code>layer</code> means the extends line was not replaced.</li>
+    <li><strong>Bus renamed after a player pointed at it.</strong> Stream players remember the bus name. Renaming <code>SFX</code> sends those players back to <code>Master</code>. Fix the name; do not hunt for a hidden volume.</li>
+    <li><strong>Treating a loaded score as an int without <code>int()</code>.</strong> <code>loaded["boot"] == 1</code> can fail a typed <code>int</code> check because the value is <code>float</code>. The smoke test casts. Do the same in every game.</li>
+    <li><strong>Saving into <code>res://</code>.</strong> Exports are read-only. Only <code>user://</code> is writable on a player's machine. The kit paths are already <code>user://</code>. Do not "simplify" them.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 20-30 min)</h2>
+  <div class="challenge">
+    <h3>Toggle fullscreen from the smoke test</h3>
+    <p>In <code>game.gd</code>, add an <code>_unhandled_input</code> that calls <code>Settings.set_fullscreen</code> with the opposite of <code>Settings.is_fullscreen()</code> when a key you choose is pressed. Run with <kbd>F5</kbd>, press the key, and confirm two things: the window fills the monitor, and <code>user://settings.cfg</code> contains <code>fullscreen=true</code> under <code>[video]</code>. Press the key again and the window returns.</p>
+    <p>Hint: <code>Settings.set_fullscreen</code> already writes the config and emits <code>Events.settings_changed</code>. You do not add a second save call. Stop the game before you look at the cfg file, or the next boot will apply fullscreen immediately. That is the point of <code>_apply_fullscreen</code>.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="2">
+      <p>What is the autoload order in Project Settings?</p>
+      <ul>
+        <li><code>Audio</code>, <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>SceneRouter</code></li>
+        <li><code>SaveManager</code>, <code>Settings</code>, <code>Events</code>, <code>Audio</code>, <code>SceneRouter</code></li>
+        <li><code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, <code>SceneRouter</code></li>
+        <li><code>SceneRouter</code>, <code>Events</code>, <code>Audio</code>, <code>Settings</code>, <code>SaveManager</code></li>
+      </ul>
+      <p class="explain">That order is the contract. The node names use that capitalization, not the filenames.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>What does <code>Settings.get_volume(&amp;"Music")</code> return?</p>
+      <ul>
+        <li>A linear loudness from 0.0 to 1.0</li>
+        <li>Decibels, usually between -80 and 0</li>
+        <li>The bus index</li>
+        <li>An <code>AudioStreamPlayer</code></li>
+      </ul>
+      <p class="explain">The slider value and the config file stay linear. <code>AudioServer.set_bus_volume_linear</code> converts to dB. <code>play_sfx</code>'s <code>volume_db</code> argument is a separate per-sound offset.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>A slot file written by <code>SaveManager.save_slot</code> contains which top-level keys?</p>
+      <ul>
+        <li><code>version</code>, <code>payload</code></li>
+        <li><code>format</code>, <code>saved_at</code>, <code>data</code></li>
+        <li><code>slot</code>, <code>json</code></li>
+        <li>The dictionary you passed, with no envelope</li>
+      </ul>
+      <p class="explain"><code>format</code> is <code>FORMAT_VERSION</code> (1). <code>saved_at</code> is a unix time. <code>data</code> is your dictionary. On load, cast integers inside <code>data</code> yourself.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>How does <code>SceneRouter.go_to</code> change the running scene?</p>
+      <ul>
+        <li>It frees the current scene with <code>queue_free</code> and instances a hard-coded path</li>
+        <li>It calls <code>get_tree().reload_current_scene</code> only</li>
+        <li>It changes <code>SceneTree.current_scene</code> by assigning a string</li>
+        <li>It fades, calls <code>change_scene_to_file</code>, waits for <code>scene_changed</code>, then fades in</li>
+      </ul>
+      <p class="explain">The fade is a <code>ColorRect</code> on a <code>CanvasLayer</code> at layer 100. The scene call is <code>change_scene_to_file</code>, which is deferred, so the script awaits <code>scene_changed</code> before fading back in.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>Which bus does <code>Audio.play_sfx</code> send players to?</p>
+      <ul>
+        <li><code>Master</code></li>
+        <li><code>Music</code></li>
+        <li><code>SFX</code></li>
+        <li>Whichever bus was selected on the last <code>AudioStreamPlayer</code> you placed in the editor</li>
+      </ul>
+      <p class="explain">The pool sets <code>bus</code> to <code>SFX</code>. Music uses two players on <code>Music</code>. Both of those buses send to <code>Master</code>, so the Master slider still affects them.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/singletons_autoload.html" target="_blank" rel="noopener">Singletons (Autoload)</a>: how the Globals tab registers a node that outlives the current scene.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/best_practices/autoloads_versus_regular_nodes.html" target="_blank" rel="noopener">Autoloads versus regular nodes</a>: why game rules should not all move into these five scripts.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/audio/audio_buses.html" target="_blank" rel="noopener">Audio buses</a>: Master, sends, and <code>default_bus_layout.tres</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/io/saving_games.html" target="_blank" rel="noopener">Saving games</a>: <code>user://</code>, <code>FileAccess</code>, and <code>ConfigFile</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/io/data_paths.html" target="_blank" rel="noopener">File paths and data paths</a>: where <code>user://</code> lands on Windows.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_audioserver.html" target="_blank" rel="noopener">AudioServer</a>: <code>get_bus_index</code>, <code>set_bus_volume_linear</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_json.html" target="_blank" rel="noopener">JSON</a>: <code>stringify</code> and <code>parse_string</code>. Numbers come back as floats.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/inputs/handling_quit_requests.html" target="_blank" rel="noopener">Handling quit requests</a>: close, pause, and the Android back button.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li><code>C:\GodotProjects\ship-kit</code> opens, Mobile renderer, viewport 1280×720.</li>
+    <li>Folders <code>autoload</code>, <code>ui/theme</code>, <code>i18n</code>, <code>licenses</code>, <code>game</code>, <code>data</code>, <code>assets/art</code>, <code>assets/audio</code>, <code>assets/fonts</code> exist.</li>
+    <li>Audio buses are <code>Master</code>, <code>Music</code>, <code>SFX</code>, and <code>default_bus_layout.tres</code> is saved.</li>
+    <li>Autoloads, in order: <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, <code>SceneRouter</code>.</li>
+    <li><kbd>F5</kbd> prints <code>Ship Kit ready</code> and a second run increments <code>boot_count</code>.</li>
+    <li>I have not renamed methods. Later games call <code>SaveManager.save_slot</code>, <code>Settings.set_volume</code>, <code>Audio.play_sfx</code>, <code>SceneRouter.go_to</code>, and <code>Events.game_paused</code> with these signatures. The lookup page is <a href="../publishing/ship-kit.html">Ship Kit API</a>.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> main menu, pause, settings, credits, CSV translations, safe area, a Windows export, and a signed Android App Bundle, still inside this project.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

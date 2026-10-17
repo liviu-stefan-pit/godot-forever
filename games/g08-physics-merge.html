@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game 8 - Physics Merge: Fruit Jar | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="game" data-id="g08" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Publishable game 8 · 2D portrait · Physics merge</div>
+    <h1>Physics Merge: Fruit Jar</h1>
+    <p class="lead">A Suika-style jar. Drop a fruit, two of the same tier become the next tier exactly once, and a fruit that sits above the line loses. The course calls it Physics Merge. The phone shows Fruit Jar.</p>
+    <div class="chips"><span class="chip blue">Days 22–23</span><span class="chip green">RigidBody2D · seeded RNG · MERGE_</span></div>
+  </header>
+
+  <h2 id="design">Game design</h2>
+  <p>Portrait playfield, 720×1280. The player aims a ghost along y = 150 and drops it. Mouse press drops; a finger drops on release so the drag can aim. The next tier (0–4 only) shows as a small circle. Two touching fruits of the same tier become one fruit of the next tier. Planet (tier 10) does not merge. The run ends when any settled fruit keeps its center above y = 250 for 2 seconds. Retry and Menu use <code>SceneRouter</code>.</p>
+  <p><strong>Modes.</strong> Endless calls <code>randomize()</code>. Daily sets <code>RandomNumberGenerator.seed</code> to <code>int(unix_time / 86400)</code> (UTC day). The queue matches across restarts. The physics stack does not, so the daily best is local to this install.</p>
+  <h3>Playfield and body</h3>
+  <p>Inner walls at x = 48 and x = 672 (gap 624). Floor surface y = 1168 (rectangle center (360, 1208), size (624, 80)). Side walls are 48 px thick, centered at x = 24 and x = 696. Project gravity 1600, vector (0, 1), solver iterations 16. Each fruit: gravity scale 1, linear damp 0.8 and angular damp 2.0 in Replace mode, lock rotation off, CCD cast-shape, contact monitor on, max contacts 6, layer pickups (layer 6, value 32), mask world+pickups (value 33). Shared material: friction 0.40, bounce 0.12, absorbent off. Walls: layer world, mask pickups.</p>
+  <p>Drop grace 0.75 s. Merge-spawn grace 0.4 s. Drop lock 0.35 s. Combo window 1.5 s. Combo starts at 1 and adds 1 per extra merge inside the window. Score added is <code>(tier * tier * 2) * combo</code> for the tier that appears.</p>
+  <p>Radius table is <code>round(18 * 1.22 ^ tier)</code> stored as integers, not recomputed. Mass is <code>0.35 * 1.25 ^ tier</code> rounded to two decimals and stored. Pitch is <code>1 + 0.07 * tier</code>. Camera shake is 0.18 s, ±8 px, only when the new tier is 7 or higher, and it uses <code>randf_range</code>, not the drop RNG.</p>
+  <table>
+    <thead><tr><th>Tier</th><th>Name key</th><th>Radius</th><th>Mass</th><th>Score</th></tr></thead>
+    <tbody>
+      <tr><td>0 Grape</td><td>MERGE_FRUIT_0</td><td>18</td><td>0.35</td><td>—</td></tr>
+      <tr><td>1 Cherry</td><td>MERGE_FRUIT_1</td><td>22</td><td>0.44</td><td>2</td></tr>
+      <tr><td>2 Plum</td><td>MERGE_FRUIT_2</td><td>27</td><td>0.55</td><td>8</td></tr>
+      <tr><td>3 Orange</td><td>MERGE_FRUIT_3</td><td>33</td><td>0.68</td><td>18</td></tr>
+      <tr><td>4 Lemon</td><td>MERGE_FRUIT_4</td><td>40</td><td>0.85</td><td>32</td></tr>
+      <tr><td>5 Apple</td><td>MERGE_FRUIT_5</td><td>49</td><td>1.07</td><td>50</td></tr>
+      <tr><td>6 Peach</td><td>MERGE_FRUIT_6</td><td>59</td><td>1.34</td><td>72</td></tr>
+      <tr><td>7 Melon</td><td>MERGE_FRUIT_7</td><td>72</td><td>1.67</td><td>98</td></tr>
+      <tr><td>8 Coconut</td><td>MERGE_FRUIT_8</td><td>88</td><td>2.09</td><td>128</td></tr>
+      <tr><td>9 Watermelon</td><td>MERGE_FRUIT_9</td><td>108</td><td>2.61</td><td>162</td></tr>
+      <tr><td>10 Planet</td><td>MERGE_FRUIT_10</td><td>131</td><td>3.26</td><td>200</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="scope">Scope: store-ready</h2>
+  <p>Package <code>com.yourname.physicsmerge</code>. Application name Fruit Jar, version 0.1.0. Export steps: <a href="../days/day16.html">Day 16</a>. Closed-test upload is the same console flow as <a href="../days/day18.html">Day 18</a>, with this package id.</p>
+  <ul class="checklist">
+    <li>Portrait 720×1280, <code>canvas_items</code> + <code>expand</code>, orientation Portrait, renderer Mobile, gravity 1600</li>
+    <li>Ship Kit menu, pause, settings, credits. No new autoload. Game path <code>res://game/game.tscn</code></li>
+    <li>Eleven tiers at the radii and masses above. Drops only roll 0–4</li>
+    <li>Ghost stays inside x = 48+radius and x = 672−radius. One pair spawns one fruit</li>
+    <li>Combo 1.5 s and score <code>tier² * 2 * combo</code>. <code>Events.score_changed</code> and <code>Events.game_over</code> get the int score</li>
+    <li>Danger line y = 250, 2.0 s, grace 0.75 s on drop and 0.4 s on merge</li>
+    <li>Endless <code>best_score</code> and daily <code>daily_best</code> / <code>daily_day</code> through <code>SaveManager</code>, with <code>flush()</code></li>
+    <li>Particles, pitch ladder, camera shake only for tier ≥ 7, shake not using the drop RNG</li>
+    <li><code>MERGE_</code> keys in English, Spanish, and German, including fruit names</li>
+    <li>Windows release exe outside the editor</li>
+    <li>Android debug build keeps a save after force-stop</li>
+    <li>Signed release AAB, package <code>com.yourname.physicsmerge</code>, release keystore, Export With Debug off</li>
+  </ul>
+
+  <h2 id="architecture">Architecture</h2>
+  <pre class="scene-tree">Game (Node2D) [game.gd]
+├── Camera (Camera2D)
+├── Jar (Node2D)
+│   ├── Background (Polygon2D)
+│   ├── Walls (StaticBody2D)
+│   │   ├── Left / Right / Floor (CollisionShape2D)
+│   ├── Fruits (Node2D)
+│   ├── Ghost (Polygon2D)
+│   └── Danger (Line2D)
+├── HUD (CanvasLayer, layer 1)
+│   ├── HudRoot (Control, mouse Ignore)
+│   │   ├── ScoreLabel / ComboLabel / NextCaption
+│   │   ├── ModePanel (CenterContainer)
+│   │   └── GameOver (CenterContainer)
+│   └── NextSwatch (Polygon2D)
+└── PauseMenu (instance, layer 20)
+
+Fruit (RigidBody2D) [fruit.gd]
+├── Visual (Polygon2D)
+└── CollisionShape2D</pre>
+  <table>
+    <thead><tr><th>Piece</th><th>Responsibility</th></tr></thead>
+    <tbody>
+      <tr><td><code>Fruit</code></td><td>Shape, mass, material, the single-merge rule, <code>merge_requested</code></td></tr>
+      <tr><td><code>FruitTable</code></td><td>Radii, masses, colors, <code>MERGE_FRUIT_</code> names, <code>score_for</code></td></tr>
+      <tr><td><code>game.gd</code></td><td>Aim, drop lock, combo, danger, modes, juice, best scores</td></tr>
+      <tr><td><code>SaveManager</code></td><td><code>best_score</code>, <code>daily_best</code>, <code>daily_day</code>. No run slot; the jar is not resumed mid-drop</td></tr>
+      <tr><td><code>Audio</code></td><td><code>play_sfx</code> with the pitch ladder. Blip is generated, 16-bit, 22050 Hz, 0.08 s</td></tr>
+      <tr><td><code>Events</code></td><td><code>game_started</code>, <code>score_changed</code>, <code>game_over</code></td></tr>
+      <tr><td><code>SceneRouter</code></td><td><code>reload_current</code> and <code>go_to(MAIN_MENU_SCENE)</code></td></tr>
+    </tbody>
+  </table>
+  <p>The lower <code>get_instance_id()</code> emits the merge. Both bodies set <code>merging</code> immediately. Layers clear with <code>set_deferred</code>. The child fruit is <code>call_deferred</code>. Each fruit gets <code>CircleShape2D.new()</code> so radii are not one shared subresource.</p>
+
+  <h2 id="assets">Assets and credits</h2>
+  <p>No sprite pack. Fruits are <code>Polygon2D</code> circles from <code>FruitTable.circle</code>. The pop sound is synthesized. Optional: a food pack from <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a> (CC0). Pick round images by eye; filenames differ between versions. Credit line if you add them: "Fruit sprites: Kenney (www.kenney.nl), CC0". Godot license files stay in <code>res://licenses/</code> from the kit.</p>
+
+  <h2 id="days">Where you build it</h2>
+  <ul>
+    <li><a href="../days/day22.html">Day 22</a>: copy the kit, jar, material, fruit body, drop, merge, combo, danger line.</li>
+    <li><a href="../days/day23.html">Day 23</a>: particles, pitch, shake, daily seed, <code>MERGE_</code> strings, release exports.</li>
+  </ul>
+
+  <h2 id="stretch">Stretch goals</h2>
+  <ul>
+    <li>Desktop aim-on-press and drop-on-release, matching touch, without removing the 0.35 s lock.</li>
+    <li>Three upcoming swatches, still drawn only from <code>_rng</code> inside begin and drop.</li>
+    <li>Kenney fruit sprites on <code>Visual</code>, scaled on the polygon or a <code>Sprite2D</code> child, never on the <code>RigidBody2D</code>.</li>
+    <li>A soft cap on living fruits (for example 80) that refuses the drop and explains it, instead of letting the solver stall.</li>
+    <li>Do not add a cross-player daily leaderboard unless you replace the physics outcome with a deterministic playback. The seed alone is not that.</li>
+  </ul>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

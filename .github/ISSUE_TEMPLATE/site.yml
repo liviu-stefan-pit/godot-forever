@@ -1,0 +1,25 @@
+name: Site bug
+description: The dashboard, navigation, progress saving, or a page fails to load.
+title: "[site] "
+labels: ["site"]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: URL or file
+      placeholder: /days/day01.html
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      placeholder: Firefox 130, Chrome 129
+    validations:
+      required: false

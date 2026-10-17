@@ -1,0 +1,32 @@
+name: Lesson correction
+description: A step, code sample, or explanation in the course is wrong or out of date.
+title: "[lesson] "
+labels: ["lesson"]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page
+      description: For example days/day01.html or games/g01-arcade-dodger.html
+      placeholder: days/day01.html
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What the page should say or do
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What it says or does now
+    validations:
+      required: true
+  - type: input
+    id: godot
+    attributes:
+      label: Godot version you tried
+      placeholder: "4.x stable"
+    validations:
+      required: false

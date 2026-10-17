@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 23 - Physics Merge II: juice, daily seed, release | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day23" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 23 · Game 8: Physics Merge</div>
+    <h1>Physics Merge II: polish, daily seed, release build</h1>
+    <p class="lead">Merges throw particles and a pitched blip, a date-seeded queue makes today's drops repeatable, and the jar leaves the editor as a Windows release plus a signed Android App Bundle.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Block 1: Concepts.</strong> What a seed can promise, and what physics will not.</td></tr>
+    <tr><td>0:20 – 1:05</td><td><strong>Block 2: Juice.</strong> Particles, pitch ladder, camera shake that does not touch the daily RNG.</td></tr>
+    <tr><td>1:05 – 1:45</td><td><strong>Block 3: Modes.</strong> Endless versus daily, and the mode panel.</td></tr>
+    <tr><td>1:45 – 2:00</td><td><strong>Break.</strong></td></tr>
+    <tr><td>2:00 – 2:30</td><td><strong>Block 4: MERGE_ strings.</strong> English, Spanish, German.</td></tr>
+    <tr><td>2:30 – 3:10</td><td><strong>Block 5: Release exports.</strong> Windows, debug install, signed AAB. Keystore clicks stay on Day 16.</td></tr>
+    <tr><td>3:10 – 3:30</td><td><strong>Quiz and wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>3 h 30 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Play a merge blip at pitch <code>1.0 + tier * 0.07</code> and burst <code>CPUParticles2D</code> at the merge point.</li>
+    <li>Shake the camera for 0.18 seconds on tier 7 and above, using <code>randf_range</code>, not the gameplay RNG.</li>
+    <li>Start a daily run whose <code>RandomNumberGenerator.seed</code> is <code>int(unix_time / 86400)</code> and whose first two tiers match a restart.</li>
+    <li>Show HUD text from <code>MERGE_</code> keys in English, Spanish, and German.</li>
+    <li>Export a Windows release and a signed Android AAB with package <code>com.yourname.physicsmerge</code>.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 22's jar runs from <code>C:\GodotProjects\physics-merge</code>. A same-tier pair still prints one <code>merged into</code> line. <code>DANGER_SECONDS</code> is <code>2.0</code>.</li>
+    <li>Bring-up: if the folder is missing, do Day 22's copy and scene before this page. Do not add autoloads.</li>
+    <li>Day 16's export presets came along with the kit copy. If <kbd class="menu">Project &gt; Export</kbd> is empty, do Day 16's preset section in this project first.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>A seed fixes the queue, not the stack</h3>
+  <p><code>RandomNumberGenerator.seed</code> restarts that object's sequence. Daily mode sets it to the UTC day index <code>int(Time.get_unix_time_from_system() / 86400)</code>, then draws tiers with <code>randi_range(0, 4)</code>. Restarting daily on the same UTC day draws the same first fruit and the same "next" fruit. Endless calls <code>randomize()</code> instead, which picks a time-based seed.</p>
+  <p>The stack will not match a friend's phone, and it may not match your own phone after an engine update. Godot's 2D solver is not a lockstep simulation. Do not advertise a global daily leaderboard. The daily best stored here is this device's best for this UTC day, under <code>daily_best</code> plus <code>daily_day</code>. Endless keeps using <code>best_score</code>.</p>
+  <h3>Juice must not consume the gameplay RNG</h3>
+  <p>Shake offsets use the global <code>randf_range</code>. Particles use their own randomness. If either one called <code>_rng.randi_range</code>, the next fruit would depend on how many merges you had, and the "same first two tiers" test would fail as soon as you merged. Pitch is <code>1.0 + tier * 0.07</code> on the fruit that appears: cherry (tier 1) is 1.07, melon (tier 7) is 1.49, planet (tier 10) is 1.70. Melon and above also set <code>_shake_left = 0.18</code>.</p>
+
+  <h2 id="build-1">Block 2 and 3: Camera, mode panel, full scripts</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped. Add the nodes before you paste <code>game.gd</code>, or unique-name lookups fail at launch.</p>
+  <ol class="steps">
+    <li><strong>Open</strong> <code>C:\GodotProjects\physics-merge</code> and <code>res://game/game.tscn</code>.</li>
+    <li><strong>Add a camera.</strong> Select <code>Game</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add <code>Camera2D</code>, rename it <code>Camera</code>. Leave Enabled on. Position is assigned in code from the visible size, so a wide monitor does not show the jar's corner in the middle of the screen.</li>
+    <li><strong>Add the mode panel.</strong> Under <code>HudRoot</code>, add a <code>CenterContainer</code> named <code>ModePanel</code>. Anchors Preset <kbd class="ui">Full Rect</kbd>. Mouse Filter <kbd class="ui">Stop</kbd>. Leave the eye open so it covers the jar until a mode is chosen. Inside it, add <code>PanelContainer</code> <code>ModeCard</code> (minimum size 420×260), then <code>VBoxContainer</code> <code>ModeBox</code>, then a <code>Label</code> <code>ModeTitle</code>, a <code>Button</code> <code>EndlessButton</code>, and a <code>Button</code> <code>DailyButton</code>. Right-click <code>ModePanel</code>, <code>EndlessButton</code>, and <code>DailyButton</code> → <kbd class="ui">Access as Unique Name</kbd>. The script uses <code>%ModePanel</code>.</li>
+    <li><strong>Point static labels at keys.</strong> Set these Text properties exactly, and leave their auto-translate mode inherited so the CSV supplies the words:
+      <ul>
+        <li><code>ModeTitle</code> → <code>MERGE_MODE</code></li>
+        <li><code>EndlessButton</code> → <code>MERGE_ENDLESS</code></li>
+        <li><code>DailyButton</code> → <code>MERGE_DAILY</code></li>
+        <li><code>NextCaption</code> → <code>MERGE_NEXT</code></li>
+        <li><code>OverTitle</code> → <code>MERGE_GAME_OVER</code></li>
+        <li><code>RetryButton</code> → <code>MERGE_RETRY</code></li>
+        <li><code>MenuButton</code> → <code>MERGE_MENU</code></li>
+      </ul>
+    </li>
+    <li><strong>Replace <code>res://game/fruit_table.gd</code></strong> entirely. The arrays are unchanged. <code>display_name</code> now goes through <code>TranslationServer.translate</code>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/fruit_table.gd">
+extends RefCounted
+class_name FruitTable
+
+const MAX_TIER := 10
+const RADII: PackedFloat32Array = [18, 22, 27, 33, 40, 49, 59, 72, 88, 108, 131]
+const MASSES: PackedFloat32Array = [0.35, 0.44, 0.55, 0.68, 0.85, 1.07, 1.34, 1.67, 2.09, 2.61, 3.26]
+
+static func radius_of(tier: int) -> float:
+    return RADII[clampi(tier, 0, MAX_TIER)]
+
+static func mass_of(tier: int) -> float:
+    return MASSES[clampi(tier, 0, MAX_TIER)]
+
+static func name_key(tier: int) -> String:
+    return "MERGE_FRUIT_%d" % clampi(tier, 0, MAX_TIER)
+
+static func display_name(tier: int) -> String:
+    return String(TranslationServer.translate(StringName(name_key(tier))))
+
+static func score_for(tier: int) -> int:
+    return tier * tier * 2
+
+static func circle(radius: float, n: int = 20) -> PackedVector2Array:
+    var pts := PackedVector2Array()
+    pts.resize(n)
+    for i in n:
+        var angle := TAU * float(i) / float(n)
+        pts[i] = Vector2(cos(angle), sin(angle)) * radius
+    return pts
+
+static func color_of(tier: int) -> Color:
+    match tier:
+        0:
+            return Color.html("#6b4c9a")
+        1:
+            return Color.html("#c23b42")
+        2:
+            return Color.html("#7a3e8a")
+        3:
+            return Color.html("#e07a2f")
+        4:
+            return Color.html("#e2c044")
+        5:
+            return Color.html("#d64545")
+        6:
+            return Color.html("#f0a0b0")
+        7:
+            return Color.html("#7dba4a")
+        8:
+            return Color.html("#8a5a3a")
+        9:
+            return Color.html("#2f8f4e")
+        _:
+            return Color.html("#f2d15a")
+      </script>
+    </li>
+    <li><strong>Append translation rows</strong> to the end of <code>res://i18n/translations.csv</code>. Do not edit the header or the kit's <code>UI_</code> rows. Save, select the file, click <kbd class="ui">Reimport</kbd>.
+      <script type="text/x-code" data-lang="csv" data-file="res://i18n/translations.csv">
+MERGE_MODE,Choose a jar,Elige un tarro,Wähle ein Glas,,,,
+MERGE_ENDLESS,Endless,Sin fin,Endlos,,,,
+MERGE_DAILY,Daily,Diario,Täglich,,,,
+MERGE_NEXT,Next,Siguiente,Nächste,,,,
+MERGE_GAME_OVER,Game over,Fin de la partida,Spiel vorbei,,,,
+MERGE_RETRY,Retry,Reintentar,Nochmal,,,,
+MERGE_MENU,Menu,Menú,Menü,,,,
+MERGE_SCORE,Score %d,Puntos %d,Punkte %d,,,,
+MERGE_BEST,Best %d,Mejor %d,Bestwert %d,,,,
+MERGE_COMBO,Combo x%d,Combo x%d,Combo x%d,,,,
+MERGE_DAILY_LINE,Daily seed %d,Semilla diaria %d,Tages-Seed %d,,,,
+MERGE_FRUIT_0,Grape,Uva,Traube,,,,
+MERGE_FRUIT_1,Cherry,Cereza,Kirsche,,,,
+MERGE_FRUIT_2,Plum,Ciruela,Pflaume,,,,
+MERGE_FRUIT_3,Orange,Naranja,Orange,,,,
+MERGE_FRUIT_4,Lemon,Limón,Zitrone,,,,
+MERGE_FRUIT_5,Apple,Manzana,Apfel,,,,
+MERGE_FRUIT_6,Peach,Melocotón,Pfirsich,,,,
+MERGE_FRUIT_7,Melon,Melón,Melone,,,,
+MERGE_FRUIT_8,Coconut,Coco,Kokosnuss,,,,
+MERGE_FRUIT_9,Watermelon,Sandía,Wassermelone,,,,
+MERGE_FRUIT_10,Planet,Planeta,Planet,,,,
+      </script>
+    </li>
+    <li><strong>Replace <code>res://game/game.gd</code></strong> entirely. Yesterday's drop, merge, combo, and danger rules are still here. New pieces: the mode gate, the daily seed, particles, pitch, and camera shake.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/game.gd">
+extends Node2D
+
+const FRUIT_SCENE: PackedScene = preload("res://game/fruit.tscn")
+const JAR_SIZE := Vector2(720, 1280)
+const LEFT_X := 48.0
+const RIGHT_X := 672.0
+const DROP_Y := 150.0
+const DANGER_Y := 250.0
+const DANGER_SECONDS := 2.0
+const COMBO_WINDOW := 1.5
+const DROP_TIER_MAX := 4
+const SHAKE_SECONDS := 0.18
+const SHAKE_TIER := 7
+
+@onready var _jar: Node2D = $Jar
+@onready var _fruits: Node2D = %Fruits
+@onready var _camera: Camera2D = $Camera
+
+var _rng := RandomNumberGenerator.new()
+var _blip: AudioStreamWAV
+var _current_tier: int = 0
+var _next_tier: int = 0
+var _score: int = 0
+var _best: int = 0
+var _combo: int = 0
+var _combo_left: float = 0.0
+var _over: bool = false
+var _drop_lock: bool = false
+var _started: bool = false
+var _daily: bool = false
+var _daily_day: int = -1
+var _shake_left: float = 0.0
+
+func _ready() -> void:
+    _blip = _make_blip(440.0)
+    _layout_jar()
+    %GameOver.visible = false
+    %ModePanel.visible = true
+    %Ghost.visible = false
+    %RetryButton.pressed.connect(_on_retry)
+    %MenuButton.pressed.connect(_on_menu)
+    %EndlessButton.pressed.connect(_on_endless)
+    %DailyButton.pressed.connect(_on_daily)
+    _refresh_hud()
+
+func _process(delta: float) -> void:
+    if _combo_left > 0.0:
+        _combo_left = maxf(_combo_left - delta, 0.0)
+        if _combo_left == 0.0:
+            _combo = 0
+            _refresh_hud()
+    if _shake_left > 0.0:
+        _shake_left = maxf(_shake_left - delta, 0.0)
+        _camera.offset = Vector2(randf_range(-8.0, 8.0), randf_range(-5.0, 5.0))
+    else:
+        _camera.offset = Vector2.ZERO
+
+func _physics_process(delta: float) -> void:
+    if _over or not _started:
+        return
+    var line_y := _jar.global_position.y + DANGER_Y
+    var hot := false
+    for node in _fruits.get_children():
+        var fruit := node as Fruit
+        if fruit == null or fruit.merging:
+            continue
+        if fruit.grace > 0.0:
+            fruit.grace = maxf(fruit.grace - delta, 0.0)
+            continue
+        if fruit.global_position.y < line_y:
+            fruit.danger_time += delta
+            hot = true
+            if fruit.danger_time >= DANGER_SECONDS:
+                _lose()
+                return
+        else:
+            fruit.danger_time = 0.0
+    %Danger.modulate = Color(1, 0.35, 0.35, 1) if hot else Color(1, 1, 1, 0.45)
+
+func _unhandled_input(event: InputEvent) -> void:
+    if _over or not _started:
+        return
+    var screen := Vector2(-1, -1)
+    var drop := false
+    if event is InputEventMouseMotion:
+        screen = event.position
+    elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+        screen = event.position
+        drop = true
+    elif event is InputEventScreenDrag:
+        screen = event.position
+    elif event is InputEventScreenTouch:
+        screen = event.position
+        drop = not event.pressed
+    else:
+        return
+    if screen.x < 0.0:
+        return
+    _aim(screen)
+    if drop:
+        _drop()
+
+func _on_endless() -> void:
+    _daily = false
+    _rng.randomize()
+    _best = int(SaveManager.get_value("best_score", 0))
+    _begin()
+
+func _on_daily() -> void:
+    _daily = true
+    _daily_day = int(Time.get_unix_time_from_system() / 86400.0)
+    _rng.seed = _daily_day
+    var saved_day := int(SaveManager.get_value("daily_day", -1))
+    if saved_day == _daily_day:
+        _best = int(SaveManager.get_value("daily_best", 0))
+    else:
+        _best = 0
+    print("daily seed ", _daily_day)
+    _begin()
+
+func _begin() -> void:
+    _started = true
+    _score = 0
+    _combo = 0
+    _combo_left = 0.0
+    _over = false
+    %ModePanel.visible = false
+    %GameOver.visible = false
+    %Ghost.visible = true
+    _current_tier = _roll()
+    _next_tier = _roll()
+    %Ghost.position = Vector2(360, DROP_Y)
+    _refresh_ghost()
+    Events.game_started.emit()
+    _refresh_hud()
+    print("Fruit Jar start. daily=", _daily, " first tiers: ", _current_tier, " then ", _next_tier)
+
+func _layout_jar() -> void:
+    var visible := get_viewport().get_visible_rect().size
+    _jar.position = (visible - JAR_SIZE) * 0.5
+    _camera.position = visible * 0.5
+    var background := $Jar/Background as Polygon2D
+    background.color = Color.html("#241a33")
+    background.polygon = PackedVector2Array([
+        Vector2(0, 0), Vector2(720, 0), Vector2(720, 1280), Vector2(0, 1280),
+    ])
+    %Danger.points = PackedVector2Array([
+        Vector2(LEFT_X, DANGER_Y), Vector2(RIGHT_X, DANGER_Y),
+    ])
+    %Danger.width = 6.0
+    %Danger.default_color = Color(0.9, 0.25, 0.3, 0.95)
+
+func _aim(screen: Vector2) -> void:
+    var local_x := screen.x - _jar.global_position.x
+    var radius := FruitTable.radius_of(_current_tier)
+    local_x = clampf(local_x, LEFT_X + radius, RIGHT_X - radius)
+    %Ghost.position = Vector2(local_x, DROP_Y)
+
+func _drop() -> void:
+    if _over or _drop_lock or not _started:
+        return
+    _spawn(_current_tier, %Ghost.position, false)
+    _current_tier = _next_tier
+    _next_tier = _roll()
+    _refresh_ghost()
+    _drop_lock = true
+    await get_tree().create_timer(0.35).timeout
+    _drop_lock = false
+
+func _roll() -> int:
+    return _rng.randi_range(0, DROP_TIER_MAX)
+
+func _spawn(tier: int, local_pos: Vector2, from_merge: bool) -> void:
+    var fruit := FRUIT_SCENE.instantiate() as Fruit
+    fruit.setup(tier)
+    fruit.merge_requested.connect(_on_merge_requested)
+    if from_merge:
+        fruit.grace = 0.4
+    _fruits.add_child(fruit)
+    fruit.position = local_pos
+    if from_merge:
+        var visual := fruit.get_node("Visual") as Polygon2D
+        visual.scale = Vector2(0.45, 0.45)
+        var tween := create_tween()
+        tween.tween_property(visual, "scale", Vector2.ONE, 0.12)
+
+func _on_merge_requested(at: Vector2, next_tier: int) -> void:
+    if _over:
+        return
+    if _combo_left > 0.0:
+        _combo += 1
+    else:
+        _combo = 1
+    _combo_left = COMBO_WINDOW
+    var gained := FruitTable.score_for(next_tier) * _combo
+    _score += gained
+    Events.score_changed.emit(_score)
+    _play_merge_fx(at, next_tier)
+    _spawn.call_deferred(next_tier, _fruits.to_local(at), true)
+    _refresh_hud()
+    print("merged into ", FruitTable.display_name(next_tier), " +", gained, " combo ", _combo)
+
+func _play_merge_fx(at: Vector2, tier: int) -> void:
+    var pitch := 1.0 + float(tier) * 0.07
+    Audio.play_sfx(_blip, -6.0, pitch)
+    var burst := CPUParticles2D.new()
+    burst.one_shot = true
+    burst.explosiveness = 0.92
+    burst.amount = 18
+    burst.lifetime = 0.45
+    burst.spread = 180.0
+    burst.gravity = Vector2(0, 400)
+    burst.direction = Vector2(0, -1)
+    burst.initial_velocity_min = 40.0
+    burst.initial_velocity_max = 180.0
+    burst.scale_amount_min = 2.0
+    burst.scale_amount_max = 5.0
+    burst.color = FruitTable.color_of(tier)
+    burst.emitting = false
+    add_child(burst)
+    burst.global_position = at
+    burst.restart()
+    burst.finished.connect(burst.queue_free)
+    if tier >= SHAKE_TIER:
+        _shake_left = SHAKE_SECONDS
+
+func _lose() -> void:
+    if _over:
+        return
+    _over = true
+    _best = maxi(_best, _score)
+    if _daily:
+        SaveManager.set_value("daily_best", _best)
+        SaveManager.set_value("daily_day", _daily_day)
+    else:
+        SaveManager.set_value("best_score", _best)
+    SaveManager.flush()
+    Events.game_over.emit(_score)
+    %Ghost.visible = false
+    %OverScore.text = (tr("MERGE_SCORE") % _score) + "\n" + (tr("MERGE_BEST") % _best)
+    if _daily:
+        %OverScore.text += "\n" + (tr("MERGE_DAILY_LINE") % _daily_day)
+    %GameOver.visible = true
+    print("game over ", _score, " best ", _best, " daily=", _daily)
+
+func _on_retry() -> void:
+    SceneRouter.reload_current()
+
+func _on_menu() -> void:
+    SceneRouter.go_to(SceneRouter.MAIN_MENU_SCENE)
+
+func _refresh_ghost() -> void:
+    var radius := FruitTable.radius_of(_current_tier)
+    %Ghost.polygon = FruitTable.circle(radius, 20)
+    %Ghost.color = FruitTable.color_of(_current_tier)
+    %Ghost.modulate = Color(1, 1, 1, 0.45)
+    %NextSwatch.polygon = FruitTable.circle(FruitTable.radius_of(_next_tier), 16)
+    %NextSwatch.color = FruitTable.color_of(_next_tier)
+    %NextSwatch.position = Vector2(640, 110)
+
+func _refresh_hud() -> void:
+    %ScoreLabel.text = (tr("MERGE_SCORE") % _score) + "   " + (tr("MERGE_BEST") % maxi(_best, _score))
+    if _combo > 1:
+        %ComboLabel.text = tr("MERGE_COMBO") % _combo
+    else:
+        %ComboLabel.text = ""
+
+func _make_blip(freq: float) -> AudioStreamWAV:
+    var stream := AudioStreamWAV.new()
+    stream.format = AudioStreamWAV.FORMAT_16_BITS
+    stream.mix_rate = 22050
+    stream.stereo = false
+    var count := 1764
+    var bytes := PackedByteArray()
+    bytes.resize(count * 2)
+    for i in count:
+        var t := float(i) / 22050.0
+        var env := clampf(1.0 - (t / 0.08), 0.0, 1.0)
+        var sample := int(clampf(sin(TAU * freq * t) * env, -1.0, 1.0) * 32767.0)
+        bytes.encode_s16(i * 2, sample)
+    stream.data = bytes
+    return stream
+      </script>
+    </li>
+    <li><strong>Save the scene</strong> (<kbd>Ctrl</kbd>+<kbd>S</kbd>). Confirm <code>ModePanel</code> and <code>Camera</code> are children of the right parents: Camera under Game, ModePanel under HudRoot.</li>
+  </ol>
+  <div class="callout warn"><span class="callout-title">Do not shake the jar node</span>
+    <p>Fruits are <code>RigidBody2D</code> children of <code>Jar</code>. Moving <code>Jar</code> every frame teleports the bodies and the solver explodes. The offset is on <code>Camera2D</code> only, for 0.18 seconds, at most 8 pixels.</p></div>
+  <div class="checkpoint"><p>Press <kbd>F6</kbd>. The panel reads Choose a jar, Endless, and Daily (or the Spanish/German words if the locale is already switched). Click Endless. Output prints <code>Fruit Jar start. daily=false first tiers:</code> and two numbers in 0..4. Drop until two match. You get one blip, a particle burst, and a single merge line. Merge up to a melon or higher (tier 7+): the view jitters briefly and the pitch is clearly higher than a cherry merge. If the view is stuck on a corner of the jar, <code>Camera</code> is not the node named <code>Camera</code> under <code>Game</code>, or <code>_layout_jar</code> did not run.</p></div>
+
+  <h2 id="build-2">Block 3 continued: prove the daily seed</h2>
+  <ol class="steps">
+    <li><strong>Start daily.</strong> Press <kbd>F6</kbd>, choose Daily. Output prints <code>daily seed</code> and a number (the UTC day index, around twenty thousand in 2026) and <code>first tiers: A then B</code>. Write A and B down.</li>
+    <li><strong>Restart daily.</strong> Press <kbd>F8</kbd>, then <kbd>F6</kbd>, choose Daily again. The seed number matches, and the first two tiers match. Play differently (merge or don't). The first two printed tiers still match, because they are drawn before any shake or particle.</li>
+    <li><strong>Contrast endless.</strong> Start Endless twice. The first-tier pair is allowed to differ. If it is identical every time, <code>_on_endless</code> is setting <code>_rng.seed</code> instead of calling <code>randomize()</code>.</li>
+    <li><strong>Locale.</strong> Stop the game. From the kit settings screen set locale <code>es</code>, or temporarily put <code>Settings.set_locale("es")</code> as the first line of <code>_ready</code>, test, then delete that line. The mode button reads Diario. After a merge, Output's fruit name is Uva, Cereza, or another Spanish word, not <code>MERGE_FRUIT_0</code>. If you see the raw key, reimport the CSV.</li>
+  </ol>
+  <div class="checkpoint"><p>Two daily starts share a seed and the same first two tiers. Endless is not locked to that pair. A merge log line is translated. If the second daily start differs, something else drew from <code>_rng</code> before <code>_begin</code> (shake must keep using <code>randf_range</code>).</p></div>
+  <div class="callout docs"><span class="callout-title">Scores are local</span>
+    <p>Same seed, different physics. Store <code>daily_best</code> for this install only. A leaderboard would compare luck of the solver, not the player's sequence.</p></div>
+
+  <h2 id="build-3">Block 5: Release builds</h2>
+  <p>Day 16 is the keystore, SDK, and USB install. This block only sets the names for Fruit Jar and checks the three artifacts. Link: <a href="../days/day16.html">Day 16</a>.</p>
+  <ol class="steps">
+    <li><strong>Package id.</strong> <kbd class="menu">Project &gt; Export</kbd>, select the Android preset. Set <kbd class="ui">Package &gt; Unique Name</kbd> to <code>com.yourname.physicsmerge</code> with your name in lowercase. Save the preset if prompted.</li>
+    <li><strong>Debug install.</strong> Follow Day 16's debug deploy (one-click or a debug APK). On the device, choose Daily, drop one fruit, force-stop the app, open it again. The menu still appears. Daily best, if you finished a run, is still there after you pick Daily on the same UTC day. Endless best is a different key and must not change when you only play daily.</li>
+    <li><strong>Windows release.</strong> Export dialog, Windows Desktop preset, uncheck <kbd class="ui">Export With Debug</kbd>, <kbd class="ui">Export Project</kbd> to <code>C:\GodotProjects\physics-merge-build\windows\FruitJar.exe</code>. Run that exe from Explorer. Choose a mode. Fruits fall and merge with no editor attached.</li>
+    <li><strong>Signed AAB.</strong> Android preset, release keystore from Day 16 (not the debug keystore), AAB rather than APK, Export With Debug off. Write <code>C:\GodotProjects\physics-merge-build\android\fruit-jar.aab</code>. Uploading it to a Play closed test is the same console path as Idle Clicker on <a href="../days/day18.html">Day 18</a>, with this package id. Do not reuse <code>com.yourname.idleclicker</code>.</li>
+  </ol>
+  <div class="callout external"><span class="callout-title">External resource: Play Console</span>
+    <p>Track names move. Verify on <a href="https://play.google.com/console" target="_blank" rel="noopener">play.google.com/console</a> under Test and release, then Closed testing. Upload <code>fruit-jar.aab</code> only after the release signature and a higher version code check out. Day 16 has the version-code note.</p></div>
+  <div class="checkpoint"><p><code>FruitJar.exe</code> runs outside Godot. The phone build kept a save across a force-stop. The AAB's package id is <code>com.yourname.physicsmerge</code>. Tick the matching rows on the <a href="../games/g08-physics-merge.html">game page</a>.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Seeding and then calling <code>randomize()</code></strong> throws the daily sequence away. Endless is the only caller of <code>randomize()</code>.</li>
+    <li><strong>Using <code>_rng</code> for shake or particles</strong> changes the next drop whenever a melon merges. The restart test fails even though the seed line matches.</li>
+    <li><strong>Moving <code>Jar</code> to shake</strong> flings every sleeping fruit. Offset the camera.</li>
+    <li><strong>One best-score key for both modes</strong> lets a daily run overwrite the endless record. Daily writes <code>daily_best</code> and <code>daily_day</code> only.</li>
+    <li><strong>A stale <code>daily_day</code></strong> must zero the displayed best. The check is <code>saved_day == _daily_day</code> before reading <code>daily_best</code>.</li>
+    <li><strong>Pasting <code>game.gd</code> before <code>ModePanel</code> exists</strong> errors on <code>%EndlessButton</code> before you can click anything.</li>
+    <li><strong>Seeing <code>MERGE_FRUIT_3</code> in Output</strong> means the CSV was not reimported or the locale has no <code>es</code>/<code>de</code>/<code>en</code> line. English is filled, so a default locale should still say Orange.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 20–30 min)</h2>
+  <div class="challenge">
+    <h3>Preview the next three, not the next one</h3>
+    <p>Keep a <code>Array[int]</code> of three upcoming tiers, filled from <code>_rng</code> only inside <code>_begin</code> and <code>_drop</code>. Show three small swatches. The daily restart must still print the same first tier, because you did not draw from <code>_rng</code> anywhere else. Hint: the current drop is index 0; after a drop, <code>remove_at(0)</code> and append one new roll.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="2">
+      <p>Two phones start Daily on the same UTC day. What matches?</p>
+      <ul>
+        <li>The entire stack, score, and every bounce.</li>
+        <li>Nothing. Seeds do not work on Android.</li>
+        <li>The drop queue from <code>RandomNumberGenerator</code>. Not the physics result.</li>
+        <li>The score, because gravity is 1600 everywhere.</li>
+      </ul>
+      <p class="explain">The seed fixes <code>randi_range</code> on that generator. The solver is not lockstep, so a shared leaderboard would not be fair.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>What integer is assigned to <code>_rng.seed</code> in daily mode?</p>
+      <ul>
+        <li><code>int(Time.get_unix_time_from_system() / 86400)</code></li>
+        <li>The player's best score.</li>
+        <li>Always 0, which means "random".</li>
+        <li><code>Time.get_ticks_msec()</code></li>
+      </ul>
+      <p class="explain">86400 seconds is one UTC day. The same index lasts until the next UTC midnight. <code>randomize()</code> is endless mode only.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>A melon (tier 7) is created by a merge. What pitch does <code>Audio.play_sfx</code> use?</p>
+      <ul>
+        <li>0.07</li>
+        <li>1.49</li>
+        <li>7.0</li>
+        <li>1.0, because pitch is only for the daily mode</li>
+      </ul>
+      <p class="explain"><code>1.0 + 7 * 0.07 = 1.49</code>. Planet is 1.70. The tier argument is the fruit that just appeared, not the two that vanished.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>Which calls are allowed to consume <code>_rng</code>?</p>
+      <ul>
+        <li>Camera shake and the particle burst.</li>
+        <li>Any <code>randf_range</code> in the project, because they share state.</li>
+        <li>The danger-line timer.</li>
+        <li><code>_roll</code> only, which daily and endless both use for the next tier.</li>
+      </ul>
+      <p class="explain">Shake uses global <code>randf_range</code>. Particles keep their own randomness. Drawing a tier anywhere else desyncs the daily preview.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>The Android release file for this game uses which package id?</p>
+      <ul>
+        <li><code>com.yourname.idleclicker</code></li>
+        <li><code>com.godot.fruitjar</code></li>
+        <li><code>com.yourname.physicsmerge</code></li>
+        <li>Whatever the Ship Kit preset still says, unchanged</li>
+      </ul>
+      <p class="explain">Each publishable game has its own id. Idle Clicker's id would collide on the device and on Play. The keystore steps stay on Day 16.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_randomnumbergenerator.html" target="_blank" rel="noopener">RandomNumberGenerator</a>: <code>seed</code> versus <code>randomize</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_time.html" target="_blank" rel="noopener">Time</a>: unix time is UTC.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_cpuparticles2d.html" target="_blank" rel="noopener">CPUParticles2D</a>: <code>one_shot</code> and <code>restart</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/audio/audio_streams.html" target="_blank" rel="noopener">Audio streams</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/i18n/localization_using_spreadsheets.html" target="_blank" rel="noopener">Localization using spreadsheets</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_camera2d.html" target="_blank" rel="noopener">Camera2D</a>: <code>offset</code> is the shake, not the jar.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_android.html" target="_blank" rel="noopener">Exporting for Android</a>, beside Day 16.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li>Endless and Daily both reach a jar. Two Daily starts on the same UTC day share the seed and the first two tiers.</li>
+    <li>A merge bursts particles, plays pitch <code>1 + 0.07 * tier</code>, and shakes the camera only for tier 7 and above.</li>
+    <li>HUD and fruit names use <code>MERGE_</code> keys. Spanish shows Diario and Uva, not the raw key.</li>
+    <li>Windows exe runs from Explorer. A device build keeps the save. The AAB package is <code>com.yourname.physicsmerge</code>.</li>
+    <li>No new autoload. Danger time is still 2.0 seconds. Radii and masses are still the Day 22 table.</li>
+  </ul>
+  <p><strong>Tomorrow</strong> (Day 24) starts the deckbuilder in a new copy of the Ship Kit. Fruit Jar stays in <code>C:\GodotProjects\physics-merge</code>.</p>
+
+  <h3>File map</h3>
+  <table>
+    <thead><tr><th>Path</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td><code>res://game/game.tscn</code></td><td>Jar, HUD, mode panel, camera, pause menu. This path is <code>SceneRouter.GAME_SCENE</code>.</td></tr>
+      <tr><td><code>res://game/game.gd</code></td><td>Drop, combo, danger, daily seed, juice, <code>SaveManager</code> bests.</td></tr>
+      <tr><td><code>res://game/fruit.tscn</code></td><td><code>RigidBody2D</code> plus <code>Visual</code> and a placeholder circle.</td></tr>
+      <tr><td><code>res://game/fruit.gd</code></td><td><code>Fruit</code>. One-merge rule, damp, CCD, material.</td></tr>
+      <tr><td><code>res://game/fruit_table.gd</code></td><td><code>FruitTable</code>. Radii, masses, <code>MERGE_FRUIT_</code> names, score.</td></tr>
+      <tr><td><code>res://data/fruit_material.tres</code></td><td>Friction 0.4, bounce 0.12.</td></tr>
+      <tr><td><code>res://i18n/translations.csv</code></td><td>Rows prefixed <code>MERGE_</code>.</td></tr>
+    </tbody>
+  </table>
+  <p>Checklist: <a href="../games/g08-physics-merge.html">Physics Merge</a>. Export clicks: <a href="../days/day16.html">Day 16</a>.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

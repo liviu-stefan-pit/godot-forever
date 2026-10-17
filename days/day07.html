@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 7 - Platformer III: rooms, light, save | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day07" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 1 · Day 7 · Game 2: Cave Runner</div>
+    <h1>Platformer III: rooms, light, save</h1>
+    <p class="lead">Cave Runner becomes a two-room game. The camera limits change with the room, the cave scrolls in layers, a lantern and a few occluders make the tiles read as a dark space, and a <code>GameState</code> autoload remembers coins, hearts, abilities and the last checkpoint in a JSON file. Esc pauses. The goal in room 2 ends the run.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Block 1: Concepts.</strong> Room flow, parallax, 2D lights, why JSON numbers come back as floats.</td></tr>
+    <tr><td>0:20 – 1:10</td><td><strong>Block 2: Game scene, camera limits, parallax.</strong> Player leaves room 1 and lives under <code>game.tscn</code>.</td></tr>
+    <tr><td>1:10 – 1:45</td><td><strong>Block 3: Lights.</strong> CanvasModulate, PointLight2D, one LightOccluder2D polygon.</td></tr>
+    <tr><td>1:45 – 2:00</td><td><strong>Break.</strong> Stand up, drink water, look away from the screen.</td></tr>
+    <tr><td>2:00 – 2:40</td><td><strong>Block 4: GameState.</strong> Autoload, int casts, replace the player and HUD scripts, first real run of <code>game.tscn</code>.</td></tr>
+    <tr><td>2:40 – 3:25</td><td><strong>Block 5: Room 2.</strong> Paint, exit, checkpoint, goal, fade.</td></tr>
+    <tr><td>3:25 – 3:50</td><td><strong>Block 6: Pause and the win screen.</strong></td></tr>
+    <tr><td>3:50 – 4:00</td><td><strong>Block 7: Quiz and wrap-up.</strong> Match the game-page checklist. Challenge is optional.</td></tr>
+    <tr class="total"><td>Total</td><td>4 h 00 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Drive <code>Camera2D</code> limits and smoothing from a small room script, with different numbers in room 1 and room 2.</li>
+    <li>Scroll <code>bg_far.png</code> and <code>bg_mid.png</code> with two <code>Parallax2D</code> nodes.</li>
+    <li>Darken the canvas with <code>CanvasModulate</code>, light the player with a <code>PointLight2D</code>, and cast a shadow from a <code>LightOccluder2D</code> polygon.</li>
+    <li>Move between <code>room_01.tscn</code> and <code>room_02.tscn</code> without losing the player, and respawn at a checkpoint.</li>
+    <li>Persist coins, health, abilities, collected pickup ids and the checkpoint through <code>user://cave_runner.json</code>, casting loaded counters with <code>int()</code>, and finish on a pause menu and a win screen.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 6 runs: room 1, state machine, six animations, slime patrol, coins, two orbs, hearts HUD. Debug flags <kbd class="ui">Start With Dash</kbd> and <kbd class="ui">Start With Double Jump</kbd> are off.</li>
+    <li>Names that must not change: project <code>C:\GodotProjects\g02-cave-runner</code>, viewport 1152x648, stretch <code>canvas_items</code> / aspect <code>keep</code>, TileSet <code>res://tiles/cave_tileset.tres</code>, room root <code>Room01</code>, layers <code>Background</code>, <code>Decor</code>, <code>Ground</code>, <code>Hazards</code>, player nodes <code>Sprite2D</code>, <code>CollisionShape2D</code>, <code>Camera2D</code>, <code>AnimationPlayer</code>, <code>Hurtbox</code>, group <code>player</code>.</li>
+    <li>Art already on disk from Day 5: <code>bg_far.png</code> and <code>bg_mid.png</code> (1152x720), <code>light.png</code> (256x256), <code>checkpoint_sheet.png</code> (two frames of 32x48), <code>orb.png</code>.</li>
+    <li><strong>Bring-up if you skipped Day 6:</strong> do Day 6. Today replaces <code>player.gd</code>, <code>coin.gd</code>, <code>ability_orb.gd</code> and <code>hearts_hud.gd</code> and expects those scenes to exist.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+
+  <h3>The player outlives the room</h3>
+  <p>On Day 5 the player node lives inside <code>room_01.tscn</code>. If you free that scene to load room 2, the player, the camera and the hearts go with it. Today the main scene is <code>game.tscn</code>. It owns the player, the HUD, the pause menu and the win screen. Rooms are children you swap. An autoload would be the wrong place for the player (it would outlive even the main menu in a later project); a parent scene is the right place. The autoload is only the small bag of facts that must survive the swap: coins, hearts, abilities, checkpoint.</p>
+
+  <h3>Parallax2D</h3>
+  <p><code>scroll_scale</code> is a multiplier on camera motion. <code>(1, 1)</code> sticks to the world. <code>(0.2, 0.2)</code> crawls, so the layer reads as far away. <code>repeat_size</code> is the distance before the children wrap. The pictures are 1152x720, the same width as the viewport, so a repeat of <code>(1152, 720)</code> tiles them. Put the sprite's top-left on the origin (<kbd class="ui">Centered</kbd> off, position <code>0, 0</code>). Do not use the older parallax nodes; <code>Parallax2D</code> replaces them.</p>
+
+  <h3>2D lights need a dark base</h3>
+  <p>A <code>PointLight2D</code> adds light on top of an already-lit canvas. Without a <code>CanvasModulate</code>, the cave stays fully bright and the lantern only washes it out. The modulate color is the ambient color in pixels no light reaches. <code>LightOccluder2D</code> holds an <code>OccluderPolygon2D</code>. Shadows show up only after the light's <kbd class="ui">Shadow &gt; Enabled</kbd> is on, and only inside that light's texture.</p>
+
+  <h3>JSON numbers are floats</h3>
+  <p><code>JSON.stringify</code> writes numbers. <code>JSON.parse_string</code> gives every one of them back as a float, even <code>3</code>. Assigning that float to an <code>int</code> variable is a type error. Cast with <code>int()</code> on the way in. <code>Vector2</code> is not a JSON type: store <code>[x, y]</code> and rebuild it. Bools and strings survive as themselves.</p>
+
+  <h2 id="build-1">Block 2: The game scene and parallax</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Create folders.</strong> In the <kbd class="ui">FileSystem</kbd> dock, right-click <code>res://</code> &gt; <kbd class="ui">New Folder...</kbd> and create <code>game</code>, then <code>world</code>, then <code>autoload</code>.</li>
+    <li><strong>New main scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>. Other Node &gt; <code>Node</code> (plain Node, not Node2D). Rename it <code>Game</code>. Save as <code>res://game/game.tscn</code>.</li>
+    <li><strong>World and the player.</strong> Add a child <code>Node2D</code> named <code>World</code>. Select <code>World</code>, click the chain icon in the Scene dock, instance <code>res://player/player.tscn</code>. The instance is named <code>Player</code>. It keeps the group <code>player</code> from the scene file. Set <kbd class="ui">Position</kbd> to <code>112</code>, <code>556</code> for now; code moves it when a room loads.</li>
+    <li><strong>Far parallax.</strong> Select <code>Game</code> (not World). Add a child <code>Parallax2D</code>, rename <code>ParallaxFar</code>. Drag it above <code>World</code> in the Scene dock so it draws first. Inspector: <kbd class="ui">Scroll Scale</kbd> <code>0.2</code>, <code>0.2</code>. <kbd class="ui">Repeat Size</kbd> <code>1152</code>, <code>720</code>. Leave <kbd class="ui">Follow Viewport</kbd> on and <kbd class="ui">Ignore Camera Scroll</kbd> off. Add a child <code>Sprite2D</code> named <code>FarSprite</code>. Texture <code>assets/art/bg_far.png</code>. Turn <kbd class="ui">Offset &gt; Centered</kbd> off. <kbd class="ui">Position</kbd> <code>0</code>, <code>0</code>. Why off: the repeat region starts at the parent's origin and extends right and down. A centred sprite would cover only half of it.</li>
+    <li><strong>Mid parallax.</strong> Duplicate <code>ParallaxFar</code> (<kbd>Ctrl</kbd>+<kbd>D</kbd>), rename the copy <code>ParallaxMid</code>, and put it between <code>ParallaxFar</code> and <code>World</code>. Set <kbd class="ui">Scroll Scale</kbd> to <code>0.45</code>, <code>0.45</code>. On its sprite, replace the texture with <code>assets/art/bg_mid.png</code> and rename the sprite <code>MidSprite</code>. Centered stays off.</li>
+    <li><strong>Room script.</strong> <kbd class="menu">File &gt; New Script</kbd> is not in this build's menu the way a text editor expects. Instead: select <code>Room01</code> in <code>room_01.tscn</code> (open that scene), right-click &gt; <kbd class="ui">Attach Script</kbd>, path <code>res://world/cave_room.gd</code>. Replace the file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://world/cave_room.gd">
+extends Node2D
+class_name CaveRoom
+
+@export_file("*.tscn") var scene_path: String = ""
+@export var limit_left: int = 0
+@export var limit_top: int = 0
+@export var limit_right: int = 1536
+@export var limit_bottom: int = 672
+@export var smoothing_speed: float = 8.0
+
+
+func _ready() -> void:
+    var found: Node = get_tree().get_first_node_in_group(&"player")
+    if found is Player:
+        (found as Player).apply_room_camera(limit_left, limit_top, limit_right, limit_bottom, smoothing_speed)
+
+
+func current_scene_path() -> String:
+    if scene_path != "":
+        return scene_path
+    return scene_file_path
+      </script>
+    </li>
+    <li><strong>Fill room 1's exports.</strong> Select <code>Room01</code>. In the Inspector set <kbd class="ui">Scene Path</kbd> to <code>res://rooms/room_01.tscn</code> (click the folder icon, or paste the path). <kbd class="ui">Limit Left</kbd> <code>0</code>, <kbd class="ui">Limit Top</kbd> <code>0</code>, <kbd class="ui">Limit Right</kbd> <code>1536</code>, <kbd class="ui">Limit Bottom</kbd> <code>672</code>, <kbd class="ui">Smoothing Speed</kbd> <code>8</code>. These match the camera you typed by hand on Day 5. Room 2 will use different numbers. Save.</li>
+    <li><strong>Take the player and the HUD out of the room.</strong> Still in <code>room_01.tscn</code>, select the instanced <code>Player</code> node and press <kbd>Delete</kbd>. Select <code>HeartsHud</code> and press <kbd>Delete</kbd>. The four tile layers, slimes, coins and orbs stay. Save. The room no longer runs on its own; that is intended.</li>
+    <li><strong>HUD on the game.</strong> Open <code>game.tscn</code>. Instance <code>res://ui/hearts_hud.tscn</code> as a child of <code>Game</code>. You will replace its script in Block 5 so it listens to <code>GameState</code> instead of the player. Until that script is saved, do not press F5.</li>
+    <li><strong>Fade layer.</strong> Add a child <code>CanvasLayer</code> of <code>Game</code> named <code>FadeLayer</code>. Set its <kbd class="ui">Layer</kbd> to <code>40</code>. Add a child <code>ColorRect</code> named <code>Fade</code>. With <code>Fade</code> selected, choose the anchor preset <kbd class="ui">Full Rect</kbd> in the viewport toolbar. Inspector <kbd class="ui">Color</kbd> is black with alpha <code>1</code> (hex <code>000000FF</code>) so the first frame is covered. <kbd class="ui">Mouse &gt; Filter</kbd> is <code>Stop</code> for now; the game script sets it back to <code>Ignore</code> after the fade-in, otherwise the rect would eat every click.</li>
+    <li><strong>Point main scene at the game.</strong> <kbd class="menu">Project &gt; Project Settings</kbd> &gt; <kbd class="ui">Application &gt; Run</kbd>. Set <kbd class="ui">Main Scene</kbd> to <code>res://game/game.tscn</code>. Close the dialog.</li>
+  </ol>
+
+  <pre class="scene-tree">Game (Node)                         [game.gd]
+├── ParallaxFar (Parallax2D)        scroll_scale (0.2, 0.2), repeat (1152, 720)
+│   └── FarSprite (Sprite2D)        bg_far.png, centered off
+├── ParallaxMid (Parallax2D)        scroll_scale (0.45, 0.45), repeat (1152, 720)
+│   └── MidSprite (Sprite2D)        bg_mid.png, centered off
+├── World (Node2D)
+│   ├── Player                      instance of player.tscn
+│   └── (room instance, added by code)
+├── CanvasModulate                  Block 3
+├── FadeLayer (CanvasLayer)        layer 40
+│   └── Fade (ColorRect)
+├── HeartsHud                       instance
+├── PauseMenu                       Block 6
+└── WinScreen                       Block 6</pre>
+
+  <div class="callout version"><span class="callout-title">Version note</span>
+    <p><code>Parallax2D</code> has been the 2D parallax node since Godot 4.3, which this project already requires for <code>TileMapLayer</code>. If the Create dialog offers <code>ParallaxBackground</code> or <code>ParallaxLayer</code>, do not add them.</p></div>
+
+  <h2 id="build-2">Block 3: Lantern, darkness, occluder</h2>
+  <ol class="steps">
+    <li><strong>Darken the canvas.</strong> Open <code>game.tscn</code>. Add a child <code>CanvasModulate</code> to <code>Game</code> (one is enough; a second would fight it). Set <kbd class="ui">Color</kbd> to hex <code>2E2942</code>. This tints every canvas item on the default canvas. The HUD sits on its own <code>CanvasLayer</code>, so the hearts stay bright. Pixels a light never reaches stay this color.</li>
+    <li><strong>Add the lantern.</strong> Open <code>player.tscn</code>. Select <code>Player</code>, add a child <code>PointLight2D</code>, rename it <code>Lantern</code>. Drag <code>assets/art/light.png</code> onto <kbd class="ui">Texture</kbd>. Set <kbd class="ui">Texture Scale</kbd> to <code>2.2</code> (script name <code>texture_scale</code>). <kbd class="ui">Color</kbd> hex <code>FFB56A</code>. <kbd class="ui">Energy</kbd> <code>1.4</code>. <kbd class="ui">Blend Mode</kbd> stays <code>Add</code>. Under <kbd class="ui">CanvasItem</kbd>, set <kbd class="ui">Texture Filter</kbd> to <code>Linear</code> so the gradient is smooth even though the project default is Nearest.</li>
+    <li><strong>Enable shadows on the lantern.</strong> Still on <code>Lantern</code>, unfold <kbd class="ui">Shadow</kbd> and tick <kbd class="ui">Enabled</kbd> (<code>shadow_enabled</code>). Set <kbd class="ui">Filter</kbd> to <code>None</code> (hard edges, cheapest, and the docs recommend it for pixel art). Leave <kbd class="ui">Item Cull Mask</kbd> at bit 1. Save the player scene.</li>
+    <li><strong>Occlude the big block.</strong> Open <code>room_01.tscn</code>. Select <code>Room01</code>, add a child <code>LightOccluder2D</code>, rename it <code>BlockOccluder</code>. Set <kbd class="ui">Position</kbd> to <code>640</code>, <code>288</code> (top-left of the block painted on columns 20-27, rows 9-10). In the Inspector click <kbd class="ui">Occluder</kbd> &gt; <kbd class="ui">New OccluderPolygon2D</kbd>. Click the new resource to expand it. Leave <kbd class="ui">Closed</kbd> on. Expand <kbd class="ui">Polygon</kbd>, set the array size to <code>4</code>, and type the local points: <code>(0, 0)</code>, <code>(256, 0)</code>, <code>(256, 64)</code>, <code>(0, 64)</code>. The polygon is 8 tiles by 2 tiles, matching the block. <kbd class="ui">Occluder Light Mask</kbd> stays at bit 1, the same bit as the lantern's shadow cull mask.</li>
+    <li><strong>Occlude a stretch of floor.</strong> Duplicate <code>BlockOccluder</code>, rename the copy <code>FloorOccluder</code>, position <code>0</code>, <code>576</code> (top of the floor, row 18). Edit its polygon (this duplicate shares the resource until you make it unique: click the <kbd class="ui">Occluder</kbd> dropdown &gt; <kbd class="ui">Make Unique</kbd>, then edit). Four points: <code>(0, 0)</code>, <code>(1152, 0)</code>, <code>(1152, 96)</code>, <code>(0, 96)</code>. That covers the floor up to the pit and stops before columns 36-39, so the pit is not a solid shadow slab. Save.</li>
+  </ol>
+
+  <div class="checkpoint"><p>You cannot F5 yet: <code>game.gd</code> does not exist, so the room is never instanced and <code>apply_room_camera</code> is not on the player. In the editor, with <code>room_01.tscn</code> open, <code>BlockOccluder</code> shows a rectangle over the big block and <code>FloorOccluder</code> shows a band on the left floor. <em>If the polygon is a tiny dot at the origin,</em> the points were typed on the node position instead of in the Polygon array, or Make Unique was skipped and both occluders share one rectangle.</p></div>
+
+  <div class="callout docs"><span class="callout-title">Tiles can occlude too</span>
+    <p>A TileSet occlusion layer plus a polygon on each rock tile (same <kbd>F</kbd> shortcut as collision, under the atlas <kbd class="ui">Rendering</kbd> section) generates occluders for every cell. That is the right tool for a large cave. This day uses two <code>LightOccluder2D</code> nodes so you draw a polygon by hand once. The class reference and the tileset tutorial linked below cover the tile version.</p></div>
+
+  <h2 id="build-3">Block 4: GameState, then the first real run</h2>
+  <p>Nothing is runnable until the loader and the autoload exist. Do this block before painting room 2.</p>
+  <ol class="steps">
+    <li><strong>Write the autoload.</strong> In the FileSystem dock right-click <code>autoload</code> &gt; <kbd class="ui">Create New</kbd> &gt; <kbd class="ui">Script</kbd>. Name it <code>game_state.gd</code>. If that menu entry is missing, open <code>player.gd</code>, then <kbd class="menu">File &gt; Save As</kbd> is the wrong tool: instead use the <kbd class="ui">Script</kbd> workspace, click the <kbd class="ui">File</kbd> menu there &gt; <kbd class="ui">New Script</kbd>, path <code>res://autoload/game_state.gd</code>, template <kbd class="ui">Empty</kbd>, <kbd class="ui">Create</kbd>. Replace the whole file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://autoload/game_state.gd">
+extends Node
+
+signal coins_changed(total: int)
+signal health_changed(current: int, maximum: int)
+signal abilities_changed
+signal room_requested(room_path: String, spawn: Vector2)
+signal run_won
+
+const SAVE_PATH: String = "user://cave_runner.json"
+const MAX_HEALTH: int = 3
+const START_ROOM: String = "res://rooms/room_01.tscn"
+const START_POS: Vector2 = Vector2(112, 556)
+
+var coins: int = 0
+var health: int = MAX_HEALTH
+var has_dash: bool = false
+var has_double_jump: bool = false
+var collected: Array[String] = []
+var checkpoint_room: String = START_ROOM
+var checkpoint_position: Vector2 = START_POS
+
+
+func _ready() -> void:
+    load_game()
+
+
+func add_coins(amount: int) -> void:
+    coins += amount
+    coins_changed.emit(coins)
+    save_game()
+
+
+func set_health(value: int) -> void:
+    health = clampi(value, 0, MAX_HEALTH)
+    health_changed.emit(health, MAX_HEALTH)
+    save_game()
+
+
+func grant_ability(id: StringName) -> void:
+    if id == &"dash":
+        has_dash = true
+        print("Ability: dash")
+    elif id == &"double_jump":
+        has_double_jump = true
+        print("Ability: double jump")
+    else:
+        push_warning("Unknown ability: %s" % String(id))
+        return
+    abilities_changed.emit()
+    save_game()
+
+
+func mark_collected(id: String) -> void:
+    if id == "" or collected.has(id):
+        return
+    collected.append(id)
+    save_game()
+
+
+func is_collected(id: String) -> bool:
+    return collected.has(id)
+
+
+func collect_coin(id: String, amount: int) -> void:
+    if id != "" and collected.has(id):
+        return
+    if id != "":
+        collected.append(id)
+    add_coins(amount)
+
+
+func set_checkpoint(room_path: String, pos: Vector2) -> void:
+    checkpoint_room = room_path
+    checkpoint_position = pos
+    save_game()
+    print("Checkpoint saved in %s" % room_path)
+
+
+func request_room(room_path: String, spawn: Vector2) -> void:
+    room_requested.emit(room_path, spawn)
+
+
+func win() -> void:
+    save_game()
+    run_won.emit()
+
+
+func reset_run() -> void:
+    coins = 0
+    health = MAX_HEALTH
+    has_dash = false
+    has_double_jump = false
+    collected.clear()
+    checkpoint_room = START_ROOM
+    checkpoint_position = START_POS
+    save_game()
+    coins_changed.emit(coins)
+    health_changed.emit(health, MAX_HEALTH)
+    abilities_changed.emit()
+
+
+func save_game() -> void:
+    var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+    if file == null:
+        push_error("Save failed: %s" % error_string(FileAccess.get_open_error()))
+        return
+    file.store_string(JSON.stringify(to_dictionary()))
+
+
+func load_game() -> void:
+    if not FileAccess.file_exists(SAVE_PATH):
+        coins_changed.emit(coins)
+        health_changed.emit(health, MAX_HEALTH)
+        return
+    var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+    if file == null:
+        push_error("Open failed: %s" % error_string(FileAccess.get_open_error()))
+        return
+    var parsed: Variant = JSON.parse_string(file.get_as_text())
+    if typeof(parsed) != TYPE_DICTIONARY:
+        push_error("Save was not a dictionary")
+        return
+    var data: Dictionary = parsed
+    # JSON turns every number into a float. Counters must be cast.
+    coins = int(data.get("coins", 0))
+    health = int(data.get("health", MAX_HEALTH))
+    has_dash = bool(data.get("has_dash", false))
+    has_double_jump = bool(data.get("has_double_jump", false))
+    checkpoint_room = str(data.get("checkpoint_room", START_ROOM))
+    var pos: Variant = data.get("checkpoint_position", [START_POS.x, START_POS.y])
+    if pos is Array and (pos as Array).size() == 2:
+        var coords: Array = pos
+        checkpoint_position = Vector2(float(coords[0]), float(coords[1]))
+    collected.clear()
+    var raw_list: Variant = data.get("collected", [])
+    if raw_list is Array:
+        for entry: Variant in raw_list:
+            collected.append(str(entry))
+    coins_changed.emit(coins)
+    health_changed.emit(health, MAX_HEALTH)
+    abilities_changed.emit()
+
+
+func to_dictionary() -> Dictionary:
+    return {
+        "coins": coins,
+        "health": health,
+        "has_dash": has_dash,
+        "has_double_jump": has_double_jump,
+        "checkpoint_room": checkpoint_room,
+        "checkpoint_position": [checkpoint_position.x, checkpoint_position.y],
+        "collected": collected,
+    }
+      </script>
+    </li>
+    <li><strong>Register the autoload.</strong> <kbd class="menu">Project &gt; Project Settings</kbd> &gt; <kbd class="ui">Globals</kbd> &gt; <kbd class="ui">Autoload</kbd>. Click the folder icon, choose <code>res://autoload/game_state.gd</code>. Set <kbd class="ui">Node Name</kbd> to <code>GameState</code> (the scripts call that name). Tick <kbd class="ui">Global Variable</kbd> if it is not already. Click <kbd class="ui">Add</kbd>. The row appears in the list. Close the dialog. Why an autoload: it is created before the main scene and it is not freed when the room changes.</li>
+    <li><strong>Replace the player script</strong> with the Day 7 version. Movement, the enum and the animations are unchanged. Health, coins and the two ability flags now live on <code>GameState</code>. The debug exports are gone. Open <code>res://player/player.gd</code>, select all, paste:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://player/player.gd">
+extends CharacterBody2D
+class_name Player
+
+signal died
+
+enum State { IDLE, RUN, JUMP, FALL, DASH, HURT }
+
+@export_group("Run")
+@export var max_speed: float = 280.0
+@export var ground_acceleration: float = 2200.0
+@export var ground_friction: float = 2600.0
+@export var air_acceleration: float = 1500.0
+@export var air_friction: float = 500.0
+
+@export_group("Jump")
+@export var jump_height: float = 112.0
+@export var time_to_apex: float = 0.4
+@export var fall_gravity_multiplier: float = 1.6
+@export var jump_cut_multiplier: float = 0.4
+@export var max_fall_speed: float = 900.0
+@export var coyote_time: float = 0.1
+@export var jump_buffer_time: float = 0.12
+
+@export_group("Dash")
+@export var dash_speed: float = 620.0
+@export var dash_time: float = 0.16
+@export var dash_cooldown_time: float = 0.45
+
+@export_group("Health")
+@export var hurt_time: float = 0.28
+@export var invuln_time: float = 0.85
+@export var knockback_speed: float = 260.0
+@export var knockback_up: float = -220.0
+
+var state: State = State.IDLE
+var facing: float = 1.0
+
+var _gravity: float = 0.0
+var _jump_velocity: float = 0.0
+var _coyote_timer: float = 0.0
+var _jump_buffer_timer: float = 0.0
+var _air_jumps_left: int = 0
+var _dash_left: float = 0.0
+var _dash_cooldown: float = 0.0
+var _hurt_timer: float = 0.0
+var _invuln_timer: float = 0.0
+var _death_reported: bool = false
+
+@onready var sprite: Sprite2D = $Sprite2D
+@onready var camera: Camera2D = $Camera2D
+@onready var anim_player: AnimationPlayer = $AnimationPlayer
+
+
+func _ready() -> void:
+    _gravity = 2.0 * jump_height / (time_to_apex * time_to_apex)
+    _jump_velocity = -2.0 * jump_height / time_to_apex
+
+
+func _process(_delta: float) -> void:
+    var alpha: float = 1.0
+    if _invuln_timer > 0.0 and int(Time.get_ticks_msec() / 80) % 2 == 0:
+        alpha = 0.35
+    sprite.modulate = Color(1, 1, 1, alpha)
+
+
+func _physics_process(delta: float) -> void:
+    var input_x: float = Input.get_axis("move_left", "move_right")
+    _tick_timers(delta)
+    match state:
+        State.IDLE, State.RUN:
+            _ground_locomotion(input_x, delta)
+        State.JUMP, State.FALL:
+            _air_locomotion(input_x, delta)
+        State.DASH:
+            _dash_locomotion()
+        State.HURT:
+            _hurt_locomotion(delta)
+    move_and_slide()
+    _check_hazards()
+    _play_animation()
+
+
+func apply_room_camera(left: int, top: int, right: int, bottom: int, smoothing_speed: float) -> void:
+    camera.limit_left = left
+    camera.limit_top = top
+    camera.limit_right = right
+    camera.limit_bottom = bottom
+    camera.limit_smoothed = true
+    camera.position_smoothing_enabled = true
+    camera.position_smoothing_speed = smoothing_speed
+    camera.reset_smoothing()
+
+
+func revive() -> void:
+    _death_reported = false
+    state = State.IDLE
+    velocity = Vector2.ZERO
+    _hurt_timer = 0.0
+    _dash_left = 0.0
+    _invuln_timer = invuln_time
+    camera.reset_smoothing()
+
+
+func grant_ability(id: StringName) -> void:
+    GameState.grant_ability(id)
+    if id == &"double_jump" and not is_on_floor():
+        _air_jumps_left = maxi(_air_jumps_left, 1)
+
+
+func add_coins(amount: int) -> void:
+    GameState.add_coins(amount)
+
+
+func take_damage(amount: int, from_global: Vector2) -> void:
+    if amount <= 0 or GameState.health <= 0 or _invuln_timer > 0.0 or _death_reported:
+        return
+    GameState.set_health(GameState.health - amount)
+    var away: float = signf(global_position.x - from_global.x)
+    if away == 0.0:
+        away = -facing
+    facing = away
+    velocity = Vector2(away * knockback_speed, knockback_up)
+    state = State.HURT
+    _hurt_timer = hurt_time
+    _invuln_timer = invuln_time
+    if GameState.health <= 0:
+        _death_reported = true
+        died.emit()
+
+
+func _tick_timers(delta: float) -> void:
+    if is_on_floor():
+        _coyote_timer = coyote_time
+    else:
+        _coyote_timer = maxf(_coyote_timer - delta, 0.0)
+    if Input.is_action_just_pressed("jump"):
+        _jump_buffer_timer = jump_buffer_time
+    else:
+        _jump_buffer_timer = maxf(_jump_buffer_timer - delta, 0.0)
+    _dash_cooldown = maxf(_dash_cooldown - delta, 0.0)
+    _invuln_timer = maxf(_invuln_timer - delta, 0.0)
+    if state == State.DASH:
+        _dash_left = maxf(_dash_left - delta, 0.0)
+
+
+func _ground_locomotion(input_x: float, delta: float) -> void:
+    if not is_on_floor():
+        state = State.FALL
+        _air_locomotion(input_x, delta)
+        return
+    _air_jumps_left = 1 if GameState.has_double_jump else 0
+    if input_x != 0.0:
+        facing = signf(input_x)
+    if _try_dash():
+        return
+    _handle_horizontal(input_x, delta)
+    if _try_buffered_jump():
+        state = State.JUMP
+    elif absf(velocity.x) > 20.0:
+        state = State.RUN
+    else:
+        state = State.IDLE
+
+
+func _air_locomotion(input_x: float, delta: float) -> void:
+    if is_on_floor():
+        _ground_locomotion(input_x, delta)
+        return
+    if input_x != 0.0:
+        facing = signf(input_x)
+    if _try_dash():
+        return
+    _apply_gravity(delta)
+    _handle_jump_cut()
+    if Input.is_action_just_pressed("jump") and GameState.has_double_jump and _air_jumps_left > 0:
+        velocity.y = _jump_velocity
+        _air_jumps_left -= 1
+        state = State.JUMP
+    elif velocity.y >= 0.0:
+        state = State.FALL
+    else:
+        state = State.JUMP
+    _handle_horizontal(input_x, delta)
+
+
+func _dash_locomotion() -> void:
+    velocity = Vector2(facing * dash_speed, 0.0)
+    if _dash_left <= 0.0:
+        state = State.IDLE if is_on_floor() else State.FALL
+
+
+func _hurt_locomotion(delta: float) -> void:
+    _apply_gravity(delta)
+    velocity.x = move_toward(velocity.x, 0.0, 700.0 * delta)
+    if GameState.health <= 0:
+        return
+    _hurt_timer -= delta
+    if _hurt_timer <= 0.0:
+        state = State.IDLE if is_on_floor() else State.FALL
+
+
+func _try_dash() -> bool:
+    if not GameState.has_dash or _dash_cooldown > 0.0:
+        return false
+    if not Input.is_action_just_pressed("dash"):
+        return false
+    var dir: float = Input.get_axis("move_left", "move_right")
+    if dir == 0.0:
+        dir = facing
+    facing = dir
+    velocity = Vector2(dir * dash_speed, 0.0)
+    _dash_left = dash_time
+    _dash_cooldown = dash_cooldown_time
+    state = State.DASH
+    return true
+
+
+func _try_buffered_jump() -> bool:
+    if _jump_buffer_timer <= 0.0 or _coyote_timer <= 0.0:
+        return false
+    velocity.y = _jump_velocity
+    _jump_buffer_timer = 0.0
+    _coyote_timer = 0.0
+    return true
+
+
+func _handle_jump_cut() -> void:
+    if Input.is_action_just_released("jump") and velocity.y < 0.0:
+        velocity.y *= jump_cut_multiplier
+
+
+func _apply_gravity(delta: float) -> void:
+    if is_on_floor() and velocity.y >= 0.0:
+        return
+    var gravity_now: float = _gravity
+    if velocity.y > 0.0:
+        gravity_now *= fall_gravity_multiplier
+    velocity.y = minf(velocity.y + gravity_now * delta, max_fall_speed)
+
+
+func _handle_horizontal(input_x: float, delta: float) -> void:
+    var accel: float = ground_acceleration if is_on_floor() else air_acceleration
+    var friction: float = ground_friction if is_on_floor() else air_friction
+    if input_x != 0.0:
+        velocity.x = move_toward(velocity.x, input_x * max_speed, accel * delta)
+    else:
+        velocity.x = move_toward(velocity.x, 0.0, friction * delta)
+
+
+func _check_hazards() -> void:
+    for i: int in get_slide_collision_count():
+        var collision := get_slide_collision(i)
+        var collider: Object = collision.get_collider()
+        if collider is not TileMapLayer:
+            continue
+        var layer := collider as TileMapLayer
+        var coords: Vector2i = layer.get_coords_for_body_rid(collision.get_collider_rid())
+        var data: TileData = layer.get_cell_tile_data(coords)
+        if data == null:
+            continue
+        var raw: Variant = data.get_custom_data("damage")
+        if typeof(raw) != TYPE_INT and typeof(raw) != TYPE_FLOAT:
+            continue
+        var damage: int = int(raw)
+        if damage > 0:
+            take_damage(damage, collision.get_position())
+            return
+
+
+func _play_animation() -> void:
+    sprite.flip_h = facing < 0.0
+    var anim: StringName = &"idle"
+    match state:
+        State.RUN:
+            anim = &"run"
+        State.JUMP:
+            anim = &"jump"
+        State.FALL:
+            anim = &"fall"
+        State.DASH:
+            anim = &"dash"
+        State.HURT:
+            anim = &"hurt"
+        _:
+            anim = &"idle"
+    if anim_player.current_animation != anim:
+        anim_player.play(anim)
+      </script>
+    </li>
+    <li><strong>Point pickups and the HUD at GameState.</strong> Replace these three files entirely.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://pickups/coin.gd">
+extends Area2D
+
+@export var value: int = 1
+@export var pickup_id: StringName = &""
+
+@onready var sprite: Sprite2D = $Sprite2D
+
+
+func _ready() -> void:
+    if String(pickup_id) != "" and GameState.is_collected(String(pickup_id)):
+        queue_free()
+        return
+    body_entered.connect(_on_body_entered)
+
+
+func _process(_delta: float) -> void:
+    sprite.frame = int(Time.get_ticks_msec() / 120) % 4
+
+
+func _on_body_entered(body: Node2D) -> void:
+    if body is Player:
+        GameState.collect_coin(String(pickup_id), value)
+        queue_free()
+      </script>
+      <script type="text/x-code" data-lang="gdscript" data-file="res://pickups/ability_orb.gd">
+extends Area2D
+
+@export var ability_id: StringName = &"dash"
+@export var pickup_id: StringName = &""
+
+
+func _ready() -> void:
+    if String(pickup_id) != "" and GameState.is_collected(String(pickup_id)):
+        queue_free()
+        return
+    body_entered.connect(_on_body_entered)
+
+
+func _on_body_entered(body: Node2D) -> void:
+    if body is Player:
+        (body as Player).grant_ability(ability_id)
+        if String(pickup_id) != "":
+            GameState.mark_collected(String(pickup_id))
+        queue_free()
+      </script>
+      <script type="text/x-code" data-lang="gdscript" data-file="res://ui/hearts_hud.gd">
+extends CanvasLayer
+
+@onready var heart_1: TextureRect = %Heart1
+@onready var heart_2: TextureRect = %Heart2
+@onready var heart_3: TextureRect = %Heart3
+@onready var coin_label: Label = %CoinLabel
+
+var _full: Texture2D = preload("res://assets/art/heart_full.png")
+var _empty: Texture2D = preload("res://assets/art/heart_empty.png")
+
+
+func _ready() -> void:
+    GameState.health_changed.connect(_on_health_changed)
+    GameState.coins_changed.connect(_on_coins_changed)
+    _on_health_changed(GameState.health, GameState.MAX_HEALTH)
+    _on_coins_changed(GameState.coins)
+
+
+func _on_health_changed(current: int, maximum: int) -> void:
+    var hearts: Array[TextureRect] = [heart_1, heart_2, heart_3]
+    for i: int in hearts.size():
+        var filled: bool = i < current
+        hearts[i].texture = _full if filled else _empty
+        hearts[i].visible = i < maximum
+
+
+func _on_coins_changed(total: int) -> void:
+    coin_label.text = "Coins: %d" % total
+      </script>
+    </li>
+    <li><strong>Write the game script.</strong> On <code>game.tscn</code> select <code>Game</code>, <kbd class="ui">Attach Script</kbd>, path <code>res://game/game.gd</code>. Replace it:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/game.gd">
+extends Node
+
+@onready var world: Node2D = $World
+@onready var player: Player = $World/Player
+@onready var fade: ColorRect = $FadeLayer/Fade
+
+var _room: Node = null
+var _busy: bool = false
+
+
+func _ready() -> void:
+    player.died.connect(_on_player_died)
+    GameState.room_requested.connect(_on_room_requested)
+    load_room(GameState.checkpoint_room, GameState.checkpoint_position)
+
+
+func _on_player_died() -> void:
+    GameState.set_health(GameState.MAX_HEALTH)
+    call_deferred("_start_room", GameState.checkpoint_room, GameState.checkpoint_position)
+
+
+func _on_room_requested(room_path: String, spawn: Vector2) -> void:
+    call_deferred("_start_room", room_path, spawn)
+
+
+func _start_room(room_path: String, spawn: Vector2) -> void:
+    load_room(room_path, spawn)
+
+
+func load_room(room_path: String, spawn: Vector2) -> void:
+    if _busy:
+        return
+    _busy = true
+    player.set_physics_process(false)
+    fade.mouse_filter = Control.MOUSE_FILTER_STOP
+    var out := create_tween()
+    out.tween_property(fade, "color:a", 1.0, 0.12)
+    await out.finished
+    if _room != null:
+        _room.queue_free()
+        _room = null
+    var loaded: Resource = load(room_path)
+    if loaded is not PackedScene:
+        push_error("Not a scene: %s" % room_path)
+        _busy = false
+        player.set_physics_process(true)
+        return
+    var packed := loaded as PackedScene
+    _room = packed.instantiate()
+    world.add_child(_room)
+    player.global_position = spawn
+    player.velocity = Vector2.ZERO
+    player.revive()
+    player.set_physics_process(true)
+    var back := create_tween()
+    back.tween_property(fade, "color:a", 0.0, 0.18)
+    await back.finished
+    fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    _busy = false
+      </script>
+      <code>call_deferred</code> on the room change matters: the exit area that asked for the change is inside the room you are about to free. Deferring lets that callback finish first.</li>
+    <li><strong>Run.</strong> Save everything. Press <kbd>F5</kbd>. The window opens black, then fades into room 1. The cave is dark, the lantern follows you, and walking past the big block throws a hard shadow. Hearts read 3. Shift does nothing until the cyan orb.</li>
+  </ol>
+
+  <div class="checkpoint"><p>Output prints nothing on a clean start (no save yet). Collect a coin: the label increments, and a file appears. In the script editor's File menu you do not need to hunt the folder by hand: add a temporary <code>print(OS.get_user_data_dir())</code> at the end of <code>load_game</code>, run once, and read the path in Output. On Windows it is under <code>%APPDATA%\Godot\app_userdata\g02-cave-runner\cave_runner.json</code>. Open it in Notepad. <code>coins</code> is a number. Quit with the window X, press F5 again: the coin is still counted and that coin node is gone. <em>If the screen stays black,</em> <code>Fade</code> alpha never tweens; check the node path <code>$FadeLayer/Fade</code>. <em>If you fall forever,</em> room 1 was not instanced: <code>GameState.checkpoint_room</code> is wrong, or <code>Room01</code> was not saved. <em>If the error is "Identifier GameState not found",</em> the autoload Node Name is not exactly <code>GameState</code>.</p></div>
+
+  <div class="callout warn"><span class="callout-title">Ints in, floats out</span>
+    <p>Edit the JSON and set <code>"coins": 4</code>. On the next launch the label shows 4, not 4.0, because <code>load_game</code> does <code>coins = int(...)</code>. Delete that cast and the script fails to assign a float to an int. Positions stay floats on purpose; only counters are cast.</p></div>
+
+  <h2 id="build-4">Block 5: Room 2, exit, checkpoint, goal</h2>
+  <p>Room 2 is 40 by 16 tiles (1280 x 512). The viewport is 1152 x 648, so the camera has a little horizontal room and must stop vertically above the bottom of the window. That is the point of a second set of limits.</p>
+  <ol class="steps">
+    <li><strong>Create the scene.</strong> New scene, root <code>Node2D</code> renamed <code>Room02</code>. Save as <code>res://rooms/room_02.tscn</code>. Right-click <code>Room02</code> &gt; <kbd class="ui">Attach Script</kbd> and pick the existing <code>res://world/cave_room.gd</code> (the dialog's path field can point at a script that already exists; do not create a second copy). Inspector: <kbd class="ui">Scene Path</kbd> <code>res://rooms/room_02.tscn</code>, limits Left <code>0</code>, Top <code>0</code>, Right <code>1280</code>, Bottom <code>512</code>, <kbd class="ui">Smoothing Speed</kbd> <code>12</code>.</li>
+    <li><strong>Four tile layers.</strong> Add a <code>TileMapLayer</code> named <code>Ground</code>. Drag <code>tiles/cave_tileset.tres</code> onto its <kbd class="ui">Tile Set</kbd> field. Duplicate it three times. Rename and reorder so the Scene dock reads <code>Background</code>, <code>Decor</code>, <code>Ground</code>, <code>Hazards</code>. On <code>Hazards</code> set <kbd class="ui">Physics Quadrant Size</kbd> to <code>1</code>.</li>
+    <li><strong>Paint.</strong> Same tools as Day 5. Background: tiles (6,0) and (7,0) selected together, Rectangle tool, random on, drag columns 0-39 and rows 0-15. Ground, Terrains tab, Connect, Rock, Rectangle: ceiling row 0 columns 0-39; floor rows 13-15 columns 0-39; left wall column 0 rows 0-15; right wall column 39 rows 0-15; low platform columns 8-14 on row 10; high platform columns 18-26 on row 8. Hazards, tile (5,0): columns 15-17 on row 12 (a spike strip on the floor between the platforms). Decor, pencil, dice off: one torch tile (6,1) at column 4 row 12 and one at column 22 row 7. Save.</li>
+    <li><strong>A floor occluder so the lantern still casts something.</strong> Add <code>LightOccluder2D</code> named <code>FloorOccluder</code> at position <code>0</code>, <code>416</code> (top of row 13). New <code>OccluderPolygon2D</code>, four points <code>(0, 0)</code>, <code>(1280, 0)</code>, <code>(1280, 96)</code>, <code>(0, 96)</code>.</li>
+    <li><strong>Checkpoint scene.</strong> New scene, root <code>Area2D</code> named <code>Checkpoint</code>. Layer only bit 7 (<code>triggers</code>), mask only bit 2 (<code>player</code>). Child <code>Sprite2D</code>, texture <code>checkpoint_sheet.png</code>, <kbd class="ui">Hframes</kbd> <code>2</code>, <kbd class="ui">Vframes</kbd> <code>1</code>, <kbd class="ui">Frame</kbd> <code>0</code>. Child <code>CollisionShape2D</code>, rectangle <code>20</code> x <code>40</code>. Script <code>res://pickups/checkpoint.gd</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://pickups/checkpoint.gd">
+extends Area2D
+
+@export var spawn_offset: Vector2 = Vector2(0, 16)
+
+var _lit: bool = false
+
+@onready var sprite: Sprite2D = $Sprite2D
+
+
+func _ready() -> void:
+    body_entered.connect(_on_body_entered)
+    var room: CaveRoom = _find_room()
+    if room == null:
+        return
+    var same_room: bool = GameState.checkpoint_room == room.current_scene_path()
+    var close: bool = global_position.distance_to(GameState.checkpoint_position) < 64.0
+    if same_room and close:
+        _light()
+
+
+func _on_body_entered(body: Node2D) -> void:
+    if _lit or body is not Player:
+        return
+    var room: CaveRoom = _find_room()
+    if room == null:
+        return
+    _light()
+    GameState.set_checkpoint(room.current_scene_path(), global_position + spawn_offset)
+
+
+func _light() -> void:
+    _lit = true
+    sprite.frame = 1
+
+
+func _find_room() -> CaveRoom:
+    var node: Node = get_parent()
+    while node != null:
+        if node is CaveRoom:
+            return node as CaveRoom
+        node = node.get_parent()
+    return null
+      </script>
+      Save as <code>res://pickups/checkpoint.tscn</code>.</li>
+    <li><strong>Place checkpoints.</strong> In <code>room_01.tscn</code> instance the checkpoint at position <code>112</code>, <code>540</code>. With the default offset <code>(0, 16)</code> the saved spawn is <code>(112, 556)</code>, the same spot Day 5 used. In <code>room_02.tscn</code> instance one at <code>128</code>, <code>380</code>. Floor surface there is y = 416, player half-height is 20, so spawn y = 396 stands on the floor. Offset <code>(0, 16)</code> does that.</li>
+    <li><strong>Exit scene.</strong> New scene, root <code>Area2D</code> named <code>Exit</code>. Layer <code>triggers</code>, mask <code>player</code>. Child <code>CollisionShape2D</code>, rectangle size <code>64</code> x <code>96</code>. Script <code>res://world/room_exit.gd</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://world/room_exit.gd">
+extends Area2D
+
+@export_file("*.tscn") var next_room: String = ""
+@export var next_spawn: Vector2 = Vector2.ZERO
+
+
+func _ready() -> void:
+    body_entered.connect(_on_body_entered)
+
+
+func _on_body_entered(body: Node2D) -> void:
+    if body is Player and next_room != "":
+        set_deferred("monitoring", false)
+        GameState.request_room(next_room, next_spawn)
+      </script>
+      Save as <code>res://world/room_exit.tscn</code>. Instance it in <code>room_01.tscn</code> at position <code>1472</code>, <code>528</code> (the opening in the right wall, rows 15-17). On that instance set <kbd class="ui">Next Room</kbd> to <code>res://rooms/room_02.tscn</code> and <kbd class="ui">Next Spawn</kbd> to <code>128</code>, <code>396</code>.</li>
+    <li><strong>Goal scene.</strong> New scene, root <code>Area2D</code> named <code>Goal</code>. Layer <code>triggers</code>, mask <code>player</code>. Child <code>Sprite2D</code>, texture <code>orb.png</code>, <kbd class="ui">Modulate</kbd> hex <code>8DFF9A</code>, <kbd class="ui">Scale</kbd> <code>1.4</code>, <code>1.4</code>. Child <code>CollisionShape2D</code>, rectangle <code>36</code> x <code>48</code>. Script <code>res://world/goal.gd</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://world/goal.gd">
+extends Area2D
+
+
+func _ready() -> void:
+    body_entered.connect(_on_body_entered)
+
+
+func _on_body_entered(body: Node2D) -> void:
+    if body is Player:
+        set_deferred("monitoring", false)
+        GameState.win()
+      </script>
+      Save as <code>res://world/goal.tscn</code>. Instance it in room 2 at <code>688</code>, <code>220</code> (standing on the high platform, whose top is y = 256).</li>
+    <li><strong>A slime and three coins in room 2.</strong> Instance <code>slime.tscn</code> at <code>220</code>, <code>402</code>. Instance coins at <code>200, 392</code> id <code>coin_r2_floor</code>, <code>352, 292</code> id <code>coin_r2_low</code> (above the low platform), and <code>640, 220</code> id <code>coin_r2_high</code>. New ids, so room 1's coins are a different set.</li>
+    <li><strong>Walk the transition.</strong> Save. <kbd>F5</kbd>. Room 1's banner starts green: the default checkpoint is already that spot, <code>(112, 556)</code>. Room 2's banner starts grey until you touch it. Walk into room 2, touch its checkpoint (Output prints <code>Checkpoint saved</code>), then come back only by dying if you want to test the respawn. The exit itself is one-way.</li>
+  </ol>
+
+  <div class="checkpoint"><p>The fade plays and room 2 appears. The camera stops at x = 1280 and y = 512: you do not see the empty band under this shorter room, and the follow feels a little tighter (smoothing speed 12 versus 8). Coins and a dash you already picked up are still yours. Die to the spikes: you reload room 2 at its checkpoint if you touched it, otherwise room 1 at <code>(112, 556)</code>. Quit and relaunch: the checkpoint and the abilities are still in the JSON. <em>If the exit does nothing,</em> <kbd class="ui">Next Room</kbd> is empty or the area's mask is not <code>player</code>. <em>If both rooms' checkpoints save an empty path,</em> <kbd class="ui">Scene Path</kbd> on the room root is blank and <code>scene_file_path</code> was empty; fill the export.</p></div>
+
+  <h2 id="build-5">Block 6: Pause and win</h2>
+  <ol class="steps">
+    <li><strong>Pause scene.</strong> New scene, root <code>CanvasLayer</code> named <code>PauseMenu</code>. Inspector: <kbd class="ui">Layer</kbd> <code>50</code>. Open the <kbd class="ui">Node</kbd> section (not the Node tab) and set <kbd class="ui">Process &gt; Mode</kbd> to <code>Always</code>. Why: a paused tree does not deliver <code>_unhandled_input</code> or button clicks to nodes left on Inherit. The pause menu has to keep running so Esc and Resume work. The docs name this property Process Mode.</li>
+    <li><strong>Dimmer.</strong> Child <code>ColorRect</code> named <code>Dim</code>. Anchor preset <kbd class="ui">Full Rect</kbd>. Color hex <code>00000080</code> (black, half alpha). <kbd class="ui">Mouse &gt; Filter</kbd> <code>Stop</code>, so clicks do not fall through to the game.</li>
+    <li><strong>Buttons.</strong> Add a <code>CenterContainer</code>, also Full Rect. Under it a <code>PanelContainer</code>, under that a <code>VBoxContainer</code> named <code>Box</code>. Under <code>Box</code>: a <code>Label</code> with text <code>Paused</code>, a <code>Button</code> named <code>ResumeButton</code> with text <code>Resume</code>, a <code>Button</code> named <code>QuitButton</code> with text <code>Quit</code>. Right-click each button &gt; <kbd class="ui">Access as Unique Name</kbd>. Set the VBox <kbd class="ui">Theme Overrides &gt; Constants &gt; Separation</kbd> to <code>8</code>.</li>
+    <li><strong>Pause script.</strong> Attach <code>res://ui/pause_menu.gd</code> to <code>PauseMenu</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://ui/pause_menu.gd">
+extends CanvasLayer
+
+@onready var resume_button: Button = %ResumeButton
+@onready var quit_button: Button = %QuitButton
+
+
+func _ready() -> void:
+    visible = false
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    resume_button.pressed.connect(_on_resume_pressed)
+    quit_button.pressed.connect(_on_quit_pressed)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+    if not event.is_action_pressed("pause"):
+        return
+    var win: Node = get_tree().get_first_node_in_group(&"win_screen")
+    if win is CanvasItem and (win as CanvasItem).visible:
+        get_viewport().set_input_as_handled()
+        return
+    _set_paused(not get_tree().paused)
+    get_viewport().set_input_as_handled()
+
+
+func _set_paused(paused_now: bool) -> void:
+    get_tree().paused = paused_now
+    visible = paused_now
+
+
+func _on_resume_pressed() -> void:
+    _set_paused(false)
+
+
+func _on_quit_pressed() -> void:
+    GameState.save_game()
+    get_tree().quit()
+      </script>
+      The script sets Process Mode again because that is the same property as the Inspector dropdown; an instance cannot quietly lose it. Save as <code>res://ui/pause_menu.tscn</code>. In the editor, hide the root is optional: <code>_ready</code> sets <code>visible = false</code>.</li>
+    <li><strong>Win scene.</strong> Duplicate the pause scene (<kbd class="menu">Scene &gt; Save Scene As</kbd> on a duplicate is easy to get wrong). Instead: new scene, same CanvasLayer setup, name the root <code>WinScreen</code>, layer <code>60</code>, Process Mode <code>Always</code>. Node tab &gt; Groups &gt; add <code>win_screen</code>. Same dimmer and centered panel. Label text <code>You escaped the cave</code>. A second label named <code>CoinTotal</code>, text <code>Coins: 0</code>, unique name. A button named <code>RestartButton</code>, text <code>Restart</code>, unique name. Delete any Resume/Quit buttons if you duplicated them. Script <code>res://ui/win_screen.gd</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://ui/win_screen.gd">
+extends CanvasLayer
+
+@onready var coin_total: Label = %CoinTotal
+@onready var restart_button: Button = %RestartButton
+
+
+func _ready() -> void:
+    visible = false
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    GameState.run_won.connect(_on_run_won)
+    restart_button.pressed.connect(_on_restart_pressed)
+
+
+func _on_run_won() -> void:
+    coin_total.text = "Coins: %d" % GameState.coins
+    visible = true
+    get_tree().paused = true
+
+
+func _on_restart_pressed() -> void:
+    get_tree().paused = false
+    GameState.reset_run()
+    get_tree().reload_current_scene()
+      </script>
+      Save as <code>res://ui/win_screen.tscn</code>. <code>reset_run</code> writes a fresh JSON. The autoload itself is not recreated by <code>reload_current_scene</code>, which is why the function clears the variables and the file, not just one of them.</li>
+    <li><strong>Instance both menus.</strong> Open <code>game.tscn</code>. Instance <code>pause_menu.tscn</code> and <code>win_screen.tscn</code> as children of <code>Game</code>. Save. Press <kbd>F5</kbd>.</li>
+  </ol>
+
+  <div class="checkpoint"><p>Esc freezes the slime and the player mid-jump. Resume continues that jump. Quit closes the window, and the next launch still has your coins. Reach the green orb in room 2: the win panel shows the coin total and the world stays frozen. Restart fades into room 1 with zero coins, no dash, and every pickup back. <em>If Esc does nothing while the panel is up,</em> Process Mode is not Always. <em>If Restart loads a run that still has dash,</em> <code>reset_run</code> did not save before the reload, or an old <code>player.gd</code> is still reading the Day 6 debug flags.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Player or HeartsHud still inside <code>room_01.tscn</code>.</strong> You get two players or two heart rows, and freeing the room kills the one the camera is on. Both belong under <code>Game</code>.</li>
+    <li><strong>Parallax sprite left centred.</strong> The repeat starts at (0, 0) and grows down-right. A centred 1152 px image covers x = -576 to 576, so half the loop is empty and the background pops.</li>
+    <li><strong>CanvasModulate with no light, or a light with no CanvasModulate.</strong> The first is a flat dark cave. The second is a bright cave with a pale blob. You want both.</li>
+    <li><strong>Shadow Enabled off.</strong> Occluder polygons do nothing visible until the light asks for shadows.</li>
+    <li><strong>Shared OccluderPolygon2D after duplicate.</strong> Make Unique before editing the copy, or both nodes show the same rectangle.</li>
+    <li><strong>Loading JSON straight into an int.</strong> <code>coins = data["coins"]</code> is a float. <code>int(data.get("coins", 0))</code> is the counter.</li>
+    <li><strong>Autoload Node Name typo.</strong> <code>GameState</code> is a global identifier. <code>game_state</code> does not match the scripts.</li>
+    <li><strong>Pause menu left on Inherit.</strong> <code>get_tree().paused = true</code> then the button never receives the click, and Esc is not read either, so you cannot unpause.</li>
+    <li><strong>Changing rooms inside <code>body_entered</code> without deferring.</strong> The area is freed mid-callback. <code>request_room</code> only emits; <code>game.gd</code> defers the actual <code>load_room</code>.</li>
+    <li><strong>Forgetting <code>monitoring</code> off on the exit.</strong> The fade is short, but a second overlap can queue a second load. <code>set_deferred("disabled"...)</code> is for shapes; for the area itself <code>set_deferred("monitoring", false)</code> is the matching idea, and <code>_busy</code> is the second lock.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, about 25 min)</h2>
+  <div class="challenge">
+    <h3>A lantern flicker and a room-2 secret</h3>
+    <p>Two small additions. (1) While the player is in <code>HURT</code>, pulse <code>Lantern.energy</code> between about 0.4 and 1.4 using <code>Time.get_ticks_msec()</code>, and set it back to 1.4 when hurt ends. (2) Paint a one-tile gap in room 2's ceiling and hide a coin above it that you can only reach with the double jump. Give it a new <code>pickup_id</code>.</p>
+    <details><summary>Hint</summary>
+      <p>The lantern is <code>$Lantern</code> on the player. Energy is a float on <code>Light2D</code>, so the player script can set it from <code>_process</code>. The secret coin is just another instance of <code>coin.tscn</code>; <code>collect_coin</code> already ignores ids that are in the save, so you only have to type an id that is not already in the table, for example <code>coin_r2_secret</code>.</p>
+    </details>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>A parallax layer should feel far away. What do you set?</p>
+      <ul>
+        <li><code>scroll_scale</code> above 1</li>
+        <li><code>scroll_scale</code> between 0 and 1, and a <code>repeat_size</code> that matches the art</li>
+        <li><code>ignore_camera_scroll</code> on, scale 1</li>
+        <li>A second Camera2D on the sprite</li>
+      </ul>
+      <p class="explain"><code>scroll_scale</code> multiplies camera motion. Smaller than 1 lags behind, which reads as distance. <code>repeat_size</code> is what makes the texture wrap instead of sliding off.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>The lantern texture is assigned, Shadow Enabled is on, and the cave is still fully bright. What is missing?</p>
+      <ul>
+        <li>A second Camera2D</li>
+        <li>Switching the renderer to Forward+</li>
+        <li>A <code>CanvasModulate</code>, because 2D lights only add on top of the current canvas color</li>
+        <li><code>Parallax2D.autoscroll</code></li>
+      </ul>
+      <p class="explain">Without CanvasModulate the unshaded sprites are already at full brightness. The modulate color is what unlit pixels fall back to.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>The save file contains <code>"health": 2</code>. After <code>JSON.parse_string</code>, what is that value's type, and what do you write?</p>
+      <ul>
+        <li>A float; assign <code>health = int(data.get("health", 0))</code></li>
+        <li>An int; assign it directly</li>
+        <li>A string; call <code>JSON.parse_string</code> a second time</li>
+        <li>A Vector2</li>
+      </ul>
+      <p class="explain">JSON has a single number type. Godot's parser returns floats. Counters in this project are ints, so every loaded counter is cast. Bools and strings are left alone. Positions were stored as a two-element array because Vector2 is not a JSON type.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>Esc sets <code>get_tree().paused = true</code> and the Resume button never fires. What do you change on the pause menu root?</p>
+      <ul>
+        <li>Its <code>CanvasLayer</code> layer to 0</li>
+        <li>Turn monitoring off</li>
+        <li>Give it a CollisionShape2D</li>
+        <li>Process Mode = Always, so it still receives input while the tree is paused</li>
+      </ul>
+      <p class="explain">Paused nodes on Inherit do not get <code>_process</code>, <code>_physics_process</code> or input. The menu has to opt out with Always. The Inspector path is Node &gt; Process &gt; Mode.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Why is the player a child of <code>game.tscn</code> instead of a child of each room?</p>
+      <ul>
+        <li>CharacterBody2D cannot be instanced</li>
+        <li>Swapping the room frees that scene's children. The player, camera and HUD have to sit on the scene that stays</li>
+        <li>Autoloads are not allowed to store ints</li>
+        <li>Camera2D limits only work on the main scene root</li>
+      </ul>
+      <p class="explain">The room is <code>queue_free()</code>'d on a transition. Anything parented to it dies. <code>GameState</code> keeps the numbers; the player node keeps the body, the camera and the state machine.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/2d/2d_parallax.html" target="_blank" rel="noopener">2D parallax</a>: <code>Parallax2D</code>, scroll scale, repeat size, and why the sprite's top-left sits on the origin.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/2d/2d_lights_and_shadows.html" target="_blank" rel="noopener">2D lights and shadows</a>: CanvasModulate, PointLight2D, LightOccluder2D polygon drawing.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_camera2d.html" target="_blank" rel="noopener">Camera2D</a>: limits, <code>limit_smoothed</code>, <code>reset_smoothing()</code>, position smoothing.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/singletons_autoload.html" target="_blank" rel="noopener">Singletons (Autoload)</a>: Project Settings &gt; Globals &gt; Autoload.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/io/saving_games.html" target="_blank" rel="noopener">Saving games</a>: <code>user://</code>, FileAccess, what to put in the dictionary.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_json.html" target="_blank" rel="noopener">JSON</a>: <code>stringify</code> and <code>parse_string</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/pausing_games.html" target="_blank" rel="noopener">Pausing games</a>: <code>SceneTree.paused</code> and Process Mode.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/2d/using_tilesets.html" target="_blank" rel="noopener">Using TileSets</a>: occlusion polygons on tiles, if you outgrow the two hand-placed occluders.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <p>This is the end of Cave Runner. The list matches the checklist on the <a href="../games/g02-metroidvania-platformer.html">game page</a>.</p>
+  <ul class="checklist">
+    <li>F5 opens <code>game.tscn</code> at 1152x648. Room 1 fades in with parallax, a dark canvas, the lantern and shadows on the block and the floor.</li>
+    <li>Dash and double jump still come only from the orbs. Hearts, knockback, flicker, spike tiles and the patrolling slime still work.</li>
+    <li>The right-hand opening loads room 2. Camera limits are 1280 x 512 and smoothing speed is 12 there; room 1 stays 1536 x 672 at speed 8.</li>
+    <li>Coins, abilities, health and the checkpoint survive a restart via <code>user://cave_runner.json</code>, and loaded <code>coins</code> / <code>health</code> are passed through <code>int()</code>.</li>
+    <li>Dying returns to the last checkpoint. Esc pauses and Resume continues. The goal shows the win screen with the coin total, and Restart clears the run.</li>
+    <li>I zipped or committed <code>C:\GodotProjects\g02-cave-runner</code>.</li>
+  </ul>
+  <h3>File map</h3>
+  <table>
+    <tr><th>Path</th><th>Role</th></tr>
+    <tr><td><code>res://tiles/cave_tileset.tres</code></td><td>Shared TileSet from Day 5</td></tr>
+    <tr><td><code>res://player/player.tscn</code> <code>player.gd</code></td><td><code>Player</code>. Enum state machine, lantern, hurtbox, camera</td></tr>
+    <tr><td><code>res://components/hurtbox.gd</code></td><td><code>Hurtbox</code>. Forwards hitbox overlaps</td></tr>
+    <tr><td><code>res://components/hitbox.tscn</code> <code>hitbox.gd</code></td><td><code>Hitbox</code>. <code>damage</code> export, layer <code>enemy_attacks</code></td></tr>
+    <tr><td><code>res://enemies/slime.tscn</code> <code>slime.gd</code></td><td>Patrol. Nodes <code>FloorRay</code>, <code>WallRay</code>, <code>Hitbox</code></td></tr>
+    <tr><td><code>res://pickups/coin.tscn</code> <code>coin.gd</code></td><td><code>pickup_id</code> plus <code>GameState.collect_coin</code></td></tr>
+    <tr><td><code>res://pickups/ability_orb.tscn</code> <code>ability_orb.gd</code></td><td><code>ability_id</code> is <code>dash</code> or <code>double_jump</code></td></tr>
+    <tr><td><code>res://pickups/checkpoint.tscn</code> <code>checkpoint.gd</code></td><td>Writes the checkpoint on <code>GameState</code></td></tr>
+    <tr><td><code>res://world/cave_room.gd</code></td><td><code>CaveRoom</code>. Camera limits and <code>scene_path</code></td></tr>
+    <tr><td><code>res://world/room_exit.tscn</code> <code>room_exit.gd</code></td><td><code>next_room</code>, <code>next_spawn</code></td></tr>
+    <tr><td><code>res://world/goal.tscn</code> <code>goal.gd</code></td><td>Calls <code>GameState.win()</code></td></tr>
+    <tr><td><code>res://rooms/room_01.tscn</code></td><td><code>Room01</code>. Layers <code>Background</code>, <code>Decor</code>, <code>Ground</code>, <code>Hazards</code></td></tr>
+    <tr><td><code>res://rooms/room_02.tscn</code></td><td><code>Room02</code>. Same layer names, tighter camera limits</td></tr>
+    <tr><td><code>res://ui/hearts_hud.tscn</code> <code>hearts_hud.gd</code></td><td><code>Heart1</code> <code>Heart2</code> <code>Heart3</code> <code>CoinLabel</code></td></tr>
+    <tr><td><code>res://ui/pause_menu.tscn</code> <code>pause_menu.gd</code></td><td>Process Mode Always. <code>ResumeButton</code>, <code>QuitButton</code></td></tr>
+    <tr><td><code>res://ui/win_screen.tscn</code> <code>win_screen.gd</code></td><td>Group <code>win_screen</code>. <code>CoinTotal</code>, <code>RestartButton</code></td></tr>
+    <tr><td><code>res://autoload/game_state.gd</code></td><td>Autoload node name <code>GameState</code>. File <code>user://cave_runner.json</code></td></tr>
+    <tr><td><code>res://game/game.tscn</code> <code>game.gd</code></td><td>Main scene. <code>ParallaxFar</code>, <code>ParallaxMid</code>, <code>World</code>, <code>CanvasModulate</code>, <code>FadeLayer</code></td></tr>
+  </table>
+  <p><strong>Tomorrow:</strong> Day 8 starts a new project, Bastion Defense. Cave Runner stays in <code>C:\GodotProjects\g02-cave-runner</code>; do not reuse its scenes there.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

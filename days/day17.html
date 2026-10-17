@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 17 - Idle Clicker I: economy core | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day17" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 17 · Game 6: Idle Clicker</div>
+    <h1>Idle Clicker I: economy core</h1>
+    <p class="lead">You copy the Ship Kit into a portrait project and build a Cookie-Clicker-style foundry: tap for crumbs, buy generators from data files, and autosave without ever storing the balance as an integer.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:25</td><td><strong>Block 1: Concepts.</strong> Big numbers, cost curves, Resources, and which Ship Kit autoloads you are allowed to call.</td></tr>
+    <tr><td>0:25 – 0:55</td><td><strong>Block 2: Project.</strong> Copy <code>ship-kit</code>, set the portrait window, confirm Mobile and the main menu.</td></tr>
+    <tr><td>0:55 – 1:40</td><td><strong>Block 3: Data.</strong> Generator and upgrade Resources, then one catalog.</td></tr>
+    <tr><td>1:40 – 1:55</td><td><strong>Break.</strong> Stand up, look away from the screen.</td></tr>
+    <tr><td>1:55 – 2:40</td><td><strong>Block 4: Economy.</strong> The simulation script: prices, multipliers, save and load.</td></tr>
+    <tr><td>2:40 – 3:15</td><td><strong>Block 5: Portrait UI.</strong> Containers, the tap button, lists, autosave.</td></tr>
+    <tr><td>3:15 – 3:30</td><td><strong>Block 6: Quiz and wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>3 h 30 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Run a copied Ship Kit project at 720×1280, stretch mode <code>canvas_items</code>, aspect <code>expand</code>, renderer Mobile, without adding or renaming autoloads.</li>
+    <li>Format large balances with suffixes and persist them as strings so JSON never rounds them as integers past 2^53.</li>
+    <li>Price the next generator with <code>ceilf(base_cost * growth ^ owned)</code> and a geometric bulk price, using the numbers in today's tables.</li>
+    <li>Drive the foundry from <code>GeneratorDef</code> and <code>UpgradeDef</code> resources listed in one catalog.</li>
+    <li>Autosave the run through <code>SaveManager.save_slot</code> and restore it on the next launch.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Days 15 and 16 are done. The folder <code>C:\GodotProjects\ship-kit</code> exists and opens in Godot. Its autoloads are exactly <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, <code>SceneRouter</code>, in that order.</li>
+    <li>You can press <kbd>F5</kbd> in <code>ship-kit</code> and see the main menu. If that folder is missing, stop and finish Days 15–16. Do not recreate those autoloads inside the clicker.</li>
+    <li>Bring-up if you already copied the kit and only the game scene is empty: skip the copy in Block 2, keep the project settings check, and start at Block 3.</li>
+    <li>No asset download today. Buttons, labels and a <code>ColorRect</code> are enough. Optional audio comes tomorrow.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+
+  <h3>What you call, and what you do not touch</h3>
+  <p>The Ship Kit is a library. This game adds files under <code>res://game/</code> and <code>res://data/</code> and replaces the placeholder <code>res://game/game.tscn</code>. <code>SceneRouter.GAME_SCENE</code> is that path, so the file must stay there. The main scene stays <code>res://ui/main_menu.tscn</code>.</p>
+  <p>You will call <code>SaveManager.save_slot</code>, <code>SaveManager.load_slot</code>, <code>SaveManager.get_value</code>, <code>SaveManager.set_value</code>, <code>SaveManager.flush</code>, <code>SceneRouter.go_to</code>, <code>Settings.set_locale</code>, and <code>Events.game_started</code>, <code>Events.toast_requested</code>, <code>Events.achievement_unlocked</code>. You will not emit <code>Events.score_changed</code> or <code>Events.game_over</code> with a crumb total: both signals carry an <code>int</code>, and a late-game balance does not fit in an integer.</p>
+  <div class="callout warn"><span class="callout-title">Do not add an autoload</span>
+    <p>The economy is a node inside <code>game.tscn</code>. A second save singleton would fight <code>SaveManager</code>.</p></div>
+
+  <h3>Floats, strings, and 2^53</h3>
+  <p>JSON numbers are IEEE floats. Every integer above 2^53 (9,007,199,254,740,992) is not representable, so a crumb counter stored as an <code>int</code> and written with <code>JSON.stringify</code> will silently skip values. The in-memory balance is a <code>float</code> (about 15 significant digits). The save file stores that float as text from <code>"%.10g"</code>, and load parses it with <code>float()</code>. Display uses suffixes, so the digits a float cannot keep are not shown. Counts that stay small (generators owned, click count) are stored as numbers and cast with <code>int()</code> on load, because JSON will have turned them into floats.</p>
+
+  <h3>Prices</h3>
+  <p>Let <code>B</code> be base cost, <code>g</code> growth, <code>n</code> how many you already own. The next single unit costs:</p>
+  <p><code>P(n) = ceilf(B * g^n)</code></p>
+  <p>Buying <code>k</code> units in one click uses the closed geometric sum, then one ceil (not a ceil per unit):</p>
+  <p><code>P(n, k) = ceilf( B * g^n * (g^k - 1) / (g - 1) )</code> when <code>g</code> is not 1.</p>
+  <p>Worked sprout (<code>B = 15</code>, <code>g = 1.15</code>): <code>P(0) = 15</code>, <code>P(1) = ceilf(17.25) = 18</code>, <code>P(2) = ceilf(19.8375) = 20</code>, <code>P(3) = ceilf(22.813) = 23</code>. Ten sprouts from zero: <code>1.15^10 ≈ 4.04556</code>, so <code>15 * (4.04556 - 1) / 0.15 ≈ 304.56</code>, and <code>ceilf</code> makes <strong>305</strong>. Summing the four single ceils 15+18+20+23 is 76, while the bulk formula for <code>k = 4</code> ceils once to 75. The x1 button uses <code>P(n)</code>. Tomorrow's challenge can call the bulk function. They are allowed to disagree by a crumb.</p>
+  <p>Production per second is <code>sum(base_rate * owned * generator_mult) * global_mult</code>. A tap adds <code>1 * click_mult * global_mult</code> and does not change the per-second label. Taps and generator ticks both add to lifetime, which never goes down.</p>
+
+  <div class="callout tip"><span class="callout-title">Coming from Unity or another engine</span>
+    <p>A Godot <code>Resource</code> (<code>.tres</code>) is a ScriptableObject: data you edit in the Inspector and load by path. The catalog is that data. The script only evaluates formulas.</p></div>
+
+  <h2 id="build-1">Block 2: Copy the kit and set the portrait window</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Close Godot.</strong> If the editor is open, use <kbd class="menu">Project &gt; Quit to Project List</kbd>, then close the Project Manager. Copying a folder while the editor has it open can lock files.</li>
+    <li><strong>Copy the template.</strong> Open PowerShell and run:
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+if (Test-Path C:\GodotProjects\idle-clicker) {
+    Write-Host "STOP: C:\GodotProjects\idle-clicker already exists. Do not copy over it."
+} elseif (-not (Test-Path C:\GodotProjects\ship-kit\project.godot)) {
+    Write-Host "STOP: ship-kit is missing. Finish Days 15 and 16 first."
+} else {
+    Copy-Item -Path C:\GodotProjects\ship-kit -Destination C:\GodotProjects\idle-clicker -Recurse
+    Write-Host "Copied."
+}
+      </script>
+    </li>
+    <li><strong>Import the copy.</strong> Open the Godot Project Manager. Click <kbd class="ui">Import</kbd>. Browse to <code>C:\GodotProjects\idle-clicker\project.godot</code>, click <kbd class="ui">Select</kbd>, then <kbd class="ui">Import &amp; Edit</kbd>.</li>
+    <li><strong>Confirm the autoloads.</strong> <kbd class="menu">Project &gt; Project Settings</kbd>. On the left, open <kbd class="ui">Globals</kbd> then <kbd class="ui">Autoload</kbd>. You should see, top to bottom, <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, <code>SceneRouter</code>. Do not add a row. Do not rename one. Close nothing yet.</li>
+    <li><strong>Set the application name.</strong> In the Project Settings search box, type <code>name</code>. Under <kbd class="ui">Application &gt; Config</kbd>, set <kbd class="ui">Name</kbd> to <code>Crumb Foundry</code> and <kbd class="ui">Version</kbd> to <code>0.1.0</code>. This is the name a phone shows. The folder stays <code>idle-clicker</code>.</li>
+    <li><strong>Point the main scene at the menu.</strong> Search <code>main scene</code>. Under <kbd class="ui">Application &gt; Run</kbd>, set <kbd class="ui">Main Scene</kbd> to <code>res://ui/main_menu.tscn</code> (click the folder icon and pick that file). If it is already that path, leave it.</li>
+    <li><strong>Set the portrait viewport.</strong> Search <code>viewport</code>. Under <kbd class="ui">Display &gt; Window &gt; Size</kbd> set <kbd class="ui">Viewport Width</kbd> to <code>720</code>, <kbd class="ui">Viewport Height</kbd> to <code>1280</code>, <kbd class="ui">Window Width Override</kbd> to <code>360</code>, and <kbd class="ui">Window Height Override</kbd> to <code>640</code>. The indigo frame in the 2D view stays 720×1280. The override only shrinks the desktop test window so it fits a monitor.</li>
+    <li><strong>Set stretch.</strong> Search <code>stretch</code>. Set <kbd class="ui">Mode</kbd> to <code>canvas_items</code> and <kbd class="ui">Aspect</kbd> to <code>expand</code>. Extra pixels on a tall or wide phone become extra window, and anchors use them. The base design size stays 720×1280.</li>
+    <li><strong>Lock the phone to portrait.</strong> Search <code>orientation</code>. Set <kbd class="ui">Display &gt; Window &gt; Handheld &gt; Orientation</kbd> to <kbd class="ui">Portrait</kbd>. Changing this does not swap width and height for you; you already set 720×1280.</li>
+    <li><strong>Use the Mobile renderer.</strong> Search <code>rendering method</code>. Set <kbd class="ui">Rendering &gt; Renderer &gt; Rendering Method</kbd> to <kbd class="ui">Mobile</kbd>. Flat 2D UI does not need Forward+. If a bar at the top of the editor asks you to restart, click it and let the project reload. Click <kbd class="ui">Close</kbd> on Project Settings if it is still open.</li>
+  </ol>
+  <div class="checkpoint"><p>Press <kbd>F5</kbd>. The window is tall and narrow (about 360×640 on the desktop). The Ship Kit main menu appears, not a blank game. The <kbd class="ui">Output</kbd> panel shows no script error. Close the game with <kbd>F8</kbd>. If the window is landscape, Viewport Width and Height are swapped. If Godot says an autoload is missing, you copied the wrong folder.</p></div>
+
+  <h2 id="build-2">Block 3: Data-driven generators and upgrades</h2>
+  <p>Prices live in resources so you can retune the foundry without editing formulas. You will create eight generators and six upgrades, then one catalog that lists them.</p>
+  <ol class="steps">
+    <li><strong>Make the data folder.</strong> In the <kbd class="ui">FileSystem</kbd> dock (bottom-left), right-click <code>res://</code> and choose <kbd class="ui">Create New &gt; Folder</kbd>. Name it <code>data</code> and click <kbd class="ui">OK</kbd>. The kit already has a <code>data</code> folder? Use that one. Do not create <code>data2</code>.</li>
+    <li><strong>Create the generator script.</strong> Right-click <code>data</code> → <kbd class="ui">Create New &gt; Script</kbd>. Set <kbd class="ui">Path</kbd> to <code>res://data/generator_def.gd</code>, <kbd class="ui">Template</kbd> to <kbd class="ui">Empty</kbd>, language <kbd class="ui">GDScript</kbd>. Click <kbd class="ui">Create</kbd>. The script editor opens. Press <kbd>Ctrl</kbd>+<kbd>A</kbd> and replace the file with:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/generator_def.gd">
+extends Resource
+class_name GeneratorDef
+
+@export var id: String = ""
+@export var title_key: String = ""
+@export var base_cost: float = 15.0
+@export var growth: float = 1.15
+@export var base_rate: float = 0.1
+@export var color: Color = Color(0.49, 0.73, 0.29, 1)
+      </script>
+    </li>
+    <li><strong>Save the script.</strong> Press <kbd>Ctrl</kbd>+<kbd>S</kbd>. If the FileSystem dock does not show the script as recognized, use <kbd class="menu">Project &gt; Reload Current Project</kbd> so <code>class_name GeneratorDef</code> appears in the resource picker.</li>
+    <li><strong>Create the upgrade script</strong> the same way: <code>res://data/upgrade_def.gd</code>, template Empty, replace all, save.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/upgrade_def.gd">
+extends Resource
+class_name UpgradeDef
+
+enum Kind { CLICK, GENERATOR, GLOBAL }
+enum Pay { CRUMBS, SPARKS }
+
+@export var id: String = ""
+@export var title_key: String = ""
+@export var cost: float = 100.0
+@export var kind: Kind = Kind.CLICK
+@export var pay: Pay = Pay.CRUMBS
+@export var target_id: String = ""
+@export var multiplier: float = 2.0
+@export var require_upgrade: String = ""
+@export var require_generator: String = ""
+@export var require_owned: int = 0
+@export var persists: bool = false
+      </script>
+    </li>
+    <li><strong>Create the catalog script</strong> at <code>res://data/economy_catalog.gd</code>. Replace all and save.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/economy_catalog.gd">
+extends Resource
+class_name EconomyCatalog
+
+@export var generators: Array[GeneratorDef] = []
+@export var upgrades: Array[UpgradeDef] = []
+      </script>
+    </li>
+    <li><strong>Create the formatter</strong> at <code>res://game/big_format.gd</code> (the <code>game</code> folder already exists). Template Empty. Replace all and save. <code>format_duration</code> is used by tomorrow's offline panel; leave it in the file.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/big_format.gd">
+extends RefCounted
+class_name BigFormat
+
+const SUFFIXES: PackedStringArray = [
+    "", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc",
+]
+
+static func format_amount(value: float) -> String:
+    if not is_finite(value):
+        return "inf"
+    var sign := ""
+    if value < 0.0:
+        sign = "-"
+        value = absf(value)
+    if value < 1000.0:
+        if value >= 100.0 or absf(value - floorf(value)) < 0.05:
+            return sign + str(int(floorf(value + 0.001)))
+        return sign + ("%.1f" % value)
+    var max_tier := SUFFIXES.size() - 1
+    var tier := int(floorf(log(value) / log(1000.0)))
+    if tier > max_tier:
+        return sign + ("%.3e" % value)
+    var scaled := value / pow(1000.0, float(tier))
+    return sign + ("%.2f" % scaled) + SUFFIXES[tier]
+
+static func format_duration(seconds: int) -> String:
+    var safe := maxi(seconds, 0)
+    var hours := int(safe / 3600)
+    var minutes := int((safe % 3600) / 60)
+    if hours > 0:
+        return "%dh %dm" % [hours, minutes]
+    return "%dm %ds" % [minutes, safe % 60]
+
+static func store(value: float) -> String:
+    if not is_finite(value):
+        return "0"
+    return "%.10g" % value
+
+static func load_amount(raw: Variant) -> float:
+    if raw == null:
+        return 0.0
+    if raw is String:
+        if (raw as String).is_empty():
+            return 0.0
+        return float(raw)
+    if raw is float or raw is int:
+        return float(raw)
+    return 0.0
+      </script>
+    </li>
+  </ol>
+
+  <h3>The balance sheet</h3>
+  <p>Type these numbers. Growth is <code>1.15</code> or <code>1.14</code> or <code>1.13</code>, not <code>15</code>.</p>
+  <table>
+    <thead><tr><th>File</th><th>Id</th><th>Title key</th><th>Base cost</th><th>Growth</th><th>Base rate / s</th><th>Color (R, G, B)</th></tr></thead>
+    <tbody>
+      <tr><td>sprout.tres</td><td>sprout</td><td>CLICKER_GEN_SPROUT</td><td>15</td><td>1.15</td><td>0.1</td><td>0.49, 0.73, 0.29</td></tr>
+      <tr><td>grove.tres</td><td>grove</td><td>CLICKER_GEN_GROVE</td><td>100</td><td>1.15</td><td>1</td><td>0.18, 0.56, 0.31</td></tr>
+      <tr><td>mill.tres</td><td>mill</td><td>CLICKER_GEN_MILL</td><td>1100</td><td>1.15</td><td>8</td><td>0.77, 0.65, 0.45</td></tr>
+      <tr><td>foundry.tres</td><td>foundry</td><td>CLICKER_GEN_FOUNDRY</td><td>12000</td><td>1.15</td><td>47</td><td>0.88, 0.48, 0.18</td></tr>
+      <tr><td>workshop.tres</td><td>workshop</td><td>CLICKER_GEN_WORKSHOP</td><td>130000</td><td>1.15</td><td>260</td><td>0.54, 0.63, 0.71</td></tr>
+      <tr><td>convoy.tres</td><td>convoy</td><td>CLICKER_GEN_CONVOY</td><td>1400000</td><td>1.14</td><td>1400</td><td>0.36, 0.49, 0.60</td></tr>
+      <tr><td>reactor.tres</td><td>reactor</td><td>CLICKER_GEN_REACTOR</td><td>20000000</td><td>1.13</td><td>7800</td><td>0.24, 0.78, 0.78</td></tr>
+      <tr><td>gate.tres</td><td>gate</td><td>CLICKER_GEN_GATE</td><td>330000000</td><td>1.13</td><td>44000</td><td>0.73, 0.63, 0.91</td></tr>
+    </tbody>
+  </table>
+  <table>
+    <thead><tr><th>File</th><th>Id</th><th>Title key</th><th>Cost</th><th>Kind</th><th>Target id</th><th>Mult</th><th>Require upgrade</th><th>Require generator / owned</th></tr></thead>
+    <tbody>
+      <tr><td>steel_tap.tres</td><td>steel_tap</td><td>CLICKER_UPG_STEEL_TAP</td><td>100</td><td>Click</td><td></td><td>2</td><td></td><td></td></tr>
+      <tr><td>double_tap.tres</td><td>double_tap</td><td>CLICKER_UPG_DOUBLE_TAP</td><td>500</td><td>Click</td><td></td><td>2</td><td>steel_tap</td><td></td></tr>
+      <tr><td>sprout_food.tres</td><td>sprout_food</td><td>CLICKER_UPG_SPROUT_FOOD</td><td>250</td><td>Generator</td><td>sprout</td><td>2</td><td></td><td>sprout / 1</td></tr>
+      <tr><td>grove_song.tres</td><td>grove_song</td><td>CLICKER_UPG_GROVE_SONG</td><td>1500</td><td>Generator</td><td>grove</td><td>2</td><td></td><td>grove / 1</td></tr>
+      <tr><td>mill_gears.tres</td><td>mill_gears</td><td>CLICKER_UPG_MILL_GEARS</td><td>12000</td><td>Generator</td><td>mill</td><td>2</td><td></td><td>mill / 1</td></tr>
+      <tr><td>focus.tres</td><td>focus</td><td>CLICKER_UPG_FOCUS</td><td>50000</td><td>Global</td><td></td><td>1.5</td><td></td><td></td></tr>
+    </tbody>
+  </table>
+  <p>Every upgrade: <kbd class="ui">Pay</kbd> = <kbd class="ui">Crumbs</kbd>, <kbd class="ui">Persists</kbd> off. Spark upgrades are tomorrow. Global <code>1.5</code> means +50% to taps and to every generator, and it stacks by multiplying.</p>
+
+  <ol class="steps">
+    <li><strong>Create the first generator resource.</strong> In the <kbd class="ui">FileSystem</kbd> dock, right-click <code>data</code> → <kbd class="ui">Create New &gt; Resource</kbd>. In the search box type <code>GeneratorDef</code>, select it, click <kbd class="ui">Create</kbd>. Save the file as <code>res://data/sprout.tres</code> and click <kbd class="ui">Save</kbd>. If the type is missing from the list, reload the project and try again.</li>
+    <li><strong>Fill Sprout.</strong> Click <code>sprout.tres</code> so the <kbd class="ui">Inspector</kbd> shows it. Set <kbd class="ui">Id</kbd> to <code>sprout</code>, <kbd class="ui">Title Key</kbd> to <code>CLICKER_GEN_SPROUT</code>, <kbd class="ui">Base Cost</kbd> to <code>15</code>, <kbd class="ui">Growth</kbd> to <code>1.15</code>, <kbd class="ui">Base Rate</kbd> to <code>0.1</code>. Click the <kbd class="ui">Color</kbd> swatch and set R <code>0.49</code>, G <code>0.73</code>, B <code>0.29</code>. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+    <li><strong>Repeat for the other seven generators.</strong> Same menu, same type <code>GeneratorDef</code>, file name and fields from the table. Save after each file. You should have eight <code>.tres</code> files in <code>data</code>.</li>
+    <li><strong>Create Steel Tap.</strong> Right-click <code>data</code> → <kbd class="ui">Create New &gt; Resource</kbd>, type <code>UpgradeDef</code>, save as <code>res://data/steel_tap.tres</code>. Set <kbd class="ui">Id</kbd> <code>steel_tap</code>, <kbd class="ui">Title Key</kbd> <code>CLICKER_UPG_STEEL_TAP</code>, <kbd class="ui">Cost</kbd> <code>100</code>, <kbd class="ui">Kind</kbd> <kbd class="ui">Click</kbd>, <kbd class="ui">Pay</kbd> <kbd class="ui">Crumbs</kbd>, <kbd class="ui">Multiplier</kbd> <code>2</code>. Leave Target Id, Require Upgrade and Require Generator empty. Require Owned stays <code>0</code>. Persists stays off. Save.</li>
+    <li><strong>Repeat for the other five upgrades</strong> using the upgrade table. <kbd class="ui">Kind</kbd> must match the table: a generator upgrade with an empty Target Id does nothing.</li>
+    <li><strong>Create the catalog resource.</strong> Right-click <code>data</code> → <kbd class="ui">Create New &gt; Resource</kbd>, type <code>EconomyCatalog</code>, save as <code>res://data/catalog.tres</code>.</li>
+    <li><strong>Fill the generator array.</strong> In the Inspector, find <kbd class="ui">Generators</kbd>, set the size to <code>8</code>. Drag <code>sprout.tres</code> onto element 0, then grove, mill, foundry, workshop, convoy, reactor, gate, in that order. The order is the list order on screen.</li>
+    <li><strong>Fill the upgrade array.</strong> Set <kbd class="ui">Upgrades</kbd> size to <code>6</code>. Drag steel_tap, double_tap, sprout_food, grove_song, mill_gears, focus, in that order. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+  </ol>
+  <div class="checkpoint"><p>Click <code>catalog.tres</code>. Generators shows 8 filled slots, Upgrades shows 6, and none say <code>&lt;empty&gt;</code>. Sprout's Base Cost is 15 and Growth is 1.15. If a slot says <code>[Object:null]</code> or empty, the drag missed the slot; drag that file again and save.</p></div>
+
+  <h3>Strings</h3>
+  <p>The kit already imports <code>res://i18n/translations.csv</code>. You append rows. Do not delete the header or the UI rows from Day 16. Columns are <code>keys,en,es,de,fr,pt_BR,ru,zh_CN</code>. Fill English, Spanish and German. Leave the last four columns empty so the comma count stays the same.</p>
+  <ol class="steps">
+    <li><strong>Open the CSV.</strong> In the <kbd class="ui">FileSystem</kbd> dock, double-click <code>i18n/translations.csv</code>. It opens as text. Scroll to the last line. Paste the rows below as new lines at the end. Save with <kbd>Ctrl</kbd>+<kbd>S</kbd>.
+      <script type="text/x-code" data-lang="csv" data-file="res://i18n/translations.csv">
+CLICKER_TITLE,Crumb Foundry,Fundición de migas,Krümelwerk,,,,
+CLICKER_CRUMBS,%s crumbs,%s migas,%s Krümel,,,,
+CLICKER_RATE,%s / s,%s / s,%s / s,,,,
+CLICKER_TAP,Tap,Tocar,Tippen,,,,
+CLICKER_GENERATORS,Generators,Generadores,Erzeuger,,,,
+CLICKER_UPGRADES,Upgrades,Mejoras,Aufwertungen,,,,
+CLICKER_MENU,Menu,Menú,Menü,,,,
+CLICKER_GEN_SPROUT,Sprout,Brote,Spross,,,,
+CLICKER_GEN_GROVE,Grove,Arboleda,Hain,,,,
+CLICKER_GEN_MILL,Mill,Molino,Mühle,,,,
+CLICKER_GEN_FOUNDRY,Foundry,Fundición,Gießerei,,,,
+CLICKER_GEN_WORKSHOP,Workshop,Taller,Werkstatt,,,,
+CLICKER_GEN_CONVOY,Convoy,Convoy,Konvoi,,,,
+CLICKER_GEN_REACTOR,Reactor,Reactor,Reaktor,,,,
+CLICKER_GEN_GATE,Gate,Portal,Tor,,,,
+CLICKER_UPG_STEEL_TAP,Steel Tap,Toque de acero,Stahlfinger,,,,
+CLICKER_UPG_DOUBLE_TAP,Double Tap,Doble toque,Doppeltipp,,,,
+CLICKER_UPG_SPROUT_FOOD,Sprout Food,Abono,Sprossenfutter,,,,
+CLICKER_UPG_GROVE_SONG,Grove Song,Canción de la arboleda,Hainlied,,,,
+CLICKER_UPG_MILL_GEARS,Mill Gears,Engranajes,Mühlräder,,,,
+CLICKER_UPG_FOCUS,Focus,Concentración,Fokus,,,,
+      </script>
+    </li>
+    <li><strong>Reimport.</strong> Click <code>translations.csv</code> once in the FileSystem dock (do not edit it). The Inspector becomes the import view. Click <kbd class="ui">Reimport</kbd> at the bottom. If there is no Reimport button, use <kbd class="menu">Project &gt; Reload Current Project</kbd>.</li>
+  </ol>
+
+  <h2 id="build-3">Block 4: The economy script</h2>
+  <ol class="steps">
+    <li><strong>Open the game scene.</strong> In the FileSystem dock, double-click <code>game/game.tscn</code>. If the root is not a <code>Control</code> named <code>Game</code>, use <kbd class="menu">Scene &gt; New Scene</kbd>, choose <kbd class="ui">Other Node</kbd>, pick <code>Control</code>, click <kbd class="ui">Create</kbd>, press <kbd>F2</kbd> and rename it <code>Game</code>. Save with <kbd>Ctrl</kbd>+<kbd>S</kbd> to <code>res://game/game.tscn</code> and choose to overwrite. <code>SceneRouter</code> loads this exact path.</li>
+    <li><strong>Make the root fill the screen.</strong> Select <code>Game</code>. In the Inspector, set <kbd class="ui">Layout &gt; Layout Mode</kbd> to <kbd class="ui">Anchors</kbd> and <kbd class="ui">Anchors Preset</kbd> to <kbd class="ui">Full Rect</kbd>. In the same Inspector, find <kbd class="ui">Theme</kbd> (use the search box: type <code>theme</code>) and load <code>res://ui/theme/game_theme.tres</code>.</li>
+    <li><strong>Add the Economy node.</strong> Select <code>Game</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>Node</code>, pick the plain <code>Node</code> (not Node2D), click <kbd class="ui">Create</kbd>. Press <kbd>F2</kbd> and name it <code>Economy</code>.</li>
+    <li><strong>Attach the economy script.</strong> Right-click <code>Economy</code> → <kbd class="ui">Attach Script</kbd>. Path <code>res://game/economy.gd</code>, template Empty, click <kbd class="ui">Create</kbd>. Press <kbd>Ctrl</kbd>+<kbd>A</kbd> and replace the whole file with the listing below. Save.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/economy.gd">
+extends Node
+class_name CrumbEconomy
+
+const SAVE_SLOT: StringName = &"run"
+
+signal state_changed
+
+@export var catalog: EconomyCatalog
+
+var crumbs: float = 0.0
+var lifetime: float = 0.0
+var total_clicks: int = 0
+var owned: Dictionary = {}
+var upgrades_owned: Dictionary = {}
+
+var _ready_done: bool = false
+
+func _ready() -> void:
+    if catalog == null:
+        push_error("Assign data/catalog.tres on the Economy node.")
+        return
+    load_run()
+    _ready_done = true
+    print("Catalog generators: ", catalog.generators.size(), " upgrades: ", catalog.upgrades.size())
+    for gen: GeneratorDef in catalog.generators:
+        print("  ", gen.id, " first cost ", next_cost(gen.id), " rate ", gen.base_rate)
+
+func _notification(what: int) -> void:
+    if not _ready_done:
+        return
+    if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+        save_run()
+
+func tick(delta: float) -> void:
+    var gained := rate() * delta
+    if gained <= 0.0:
+        return
+    crumbs += gained
+    lifetime += gained
+
+func click() -> float:
+    var gained := click_value()
+    crumbs += gained
+    lifetime += gained
+    total_clicks += 1
+    state_changed.emit()
+    return gained
+
+func owned_count(id: String) -> int:
+    return int(owned.get(id, 0))
+
+func has_upgrade(id: String) -> bool:
+    return bool(upgrades_owned.get(id, false))
+
+func next_cost(id: String) -> float:
+    var gen := find_generator(id)
+    if gen == null:
+        return INF
+    return _unit_cost(gen, owned_count(id))
+
+func bulk_cost(id: String, count: int) -> float:
+    var gen := find_generator(id)
+    if gen == null or count <= 0:
+        return INF
+    var growth := gen.growth
+    var n := owned_count(id)
+    if is_equal_approx(growth, 1.0):
+        return ceilf(gen.base_cost * float(count))
+    var first := gen.base_cost * pow(growth, float(n))
+    var total := first * (pow(growth, float(count)) - 1.0) / (growth - 1.0)
+    if not is_finite(total):
+        return INF
+    return ceilf(total)
+
+func try_buy_generator(id: String, count: int = 1) -> bool:
+    if count <= 0:
+        return false
+    var cost := next_cost(id) if count == 1 else bulk_cost(id, count)
+    if not is_finite(cost) or crumbs + 0.001 < cost:
+        return false
+    crumbs -= cost
+    owned[id] = owned_count(id) + count
+    state_changed.emit()
+    return true
+
+func try_buy_upgrade(id: String) -> bool:
+    var up := find_upgrade(id)
+    if up == null or not upgrade_available(up):
+        return false
+    if up.pay == UpgradeDef.Pay.SPARKS:
+        return false
+    if crumbs + 0.001 < up.cost:
+        return false
+    crumbs -= up.cost
+    upgrades_owned[up.id] = true
+    state_changed.emit()
+    return true
+
+func upgrade_available(up: UpgradeDef) -> bool:
+    if has_upgrade(up.id):
+        return false
+    if up.require_upgrade != "" and not has_upgrade(up.require_upgrade):
+        return false
+    if up.require_generator != "" and owned_count(up.require_generator) < up.require_owned:
+        return false
+    return true
+
+func rate() -> float:
+    if catalog == null:
+        return 0.0
+    var per_second := 0.0
+    for gen: GeneratorDef in catalog.generators:
+        per_second += gen.base_rate * float(owned_count(gen.id)) * _generator_multiplier(gen.id)
+    return per_second * _global_multiplier()
+
+func click_value() -> float:
+    return _click_multiplier() * _global_multiplier()
+
+func save_run() -> void:
+    if catalog == null:
+        return
+    var payload := {
+        "crumbs": BigFormat.store(crumbs),
+        "lifetime": BigFormat.store(lifetime),
+        "owned": _owned_payload(),
+        "upgrades": _upgrade_payload(),
+        "total_clicks": total_clicks,
+        "saved_unix": int(Time.get_unix_time_from_system()),
+    }
+    if not SaveManager.save_slot(SAVE_SLOT, payload):
+        push_error("SaveManager.save_slot failed")
+        return
+    var best := BigFormat.load_amount(SaveManager.get_value("best_lifetime", "0"))
+    if lifetime > best:
+        SaveManager.set_value("best_lifetime", BigFormat.store(lifetime))
+    SaveManager.flush()
+
+func load_run() -> void:
+    var data := SaveManager.load_slot(SAVE_SLOT, {})
+    if data.is_empty():
+        return
+    crumbs = BigFormat.load_amount(data.get("crumbs", "0"))
+    lifetime = BigFormat.load_amount(data.get("lifetime", "0"))
+    total_clicks = int(data.get("total_clicks", 0))
+    owned.clear()
+    var raw_owned: Variant = data.get("owned", {})
+    if raw_owned is Dictionary:
+        var dict := raw_owned as Dictionary
+        for key in dict.keys():
+            owned[String(key)] = int(dict[key])
+    upgrades_owned.clear()
+    var raw_up: Variant = data.get("upgrades", [])
+    if raw_up is Array:
+        for entry in raw_up as Array:
+            upgrades_owned[String(entry)] = true
+
+func find_generator(id: String) -> GeneratorDef:
+    if catalog == null:
+        return null
+    for gen: GeneratorDef in catalog.generators:
+        if gen.id == id:
+            return gen
+    return null
+
+func find_upgrade(id: String) -> UpgradeDef:
+    if catalog == null:
+        return null
+    for up: UpgradeDef in catalog.upgrades:
+        if up.id == id:
+            return up
+    return null
+
+func _unit_cost(gen: GeneratorDef, count: int) -> float:
+    var raw := gen.base_cost * pow(gen.growth, float(count))
+    if not is_finite(raw):
+        return INF
+    return ceilf(raw)
+
+func _generator_multiplier(id: String) -> float:
+    var mult := 1.0
+    if catalog == null:
+        return mult
+    for up: UpgradeDef in catalog.upgrades:
+        if has_upgrade(up.id) and up.kind == UpgradeDef.Kind.GENERATOR and up.target_id == id:
+            mult *= up.multiplier
+    return mult
+
+func _click_multiplier() -> float:
+    var mult := 1.0
+    if catalog == null:
+        return mult
+    for up: UpgradeDef in catalog.upgrades:
+        if has_upgrade(up.id) and up.kind == UpgradeDef.Kind.CLICK:
+            mult *= up.multiplier
+    return mult
+
+func _global_multiplier() -> float:
+    var mult := 1.0
+    if catalog == null:
+        return mult
+    for up: UpgradeDef in catalog.upgrades:
+        if has_upgrade(up.id) and up.kind == UpgradeDef.Kind.GLOBAL:
+            mult *= up.multiplier
+    return mult
+
+func _owned_payload() -> Dictionary:
+    var payload := {}
+    for key in owned.keys():
+        payload[String(key)] = int(owned[key])
+    return payload
+
+func _upgrade_payload() -> Array:
+    var payload: Array = []
+    for key in upgrades_owned.keys():
+        if bool(upgrades_owned[key]):
+            payload.append(String(key))
+    return payload
+
+      </script>
+    </li>
+    <li><strong>Assign the catalog.</strong> Click the <kbd class="ui">2D</kbd> workspace button (top center) so you see the scene again. Select <code>Economy</code>. In the Inspector, drag <code>catalog.tres</code> from the FileSystem dock onto the <kbd class="ui">Catalog</kbd> slot. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+  </ol>
+  <div class="callout docs"><span class="callout-title">load_slot shape</span>
+    <p><code>load_slot</code> returns the dictionary you passed to <code>save_slot</code>. The <code>format</code> / <code>saved_at</code> wrapper stays inside <code>SaveManager</code>. Use that dictionary directly. Do not write the wrapper yourself.</p></div>
+
+  <h2 id="build-4">Block 5: Portrait UI and autosave</h2>
+  <p>Build this tree. A node marked <code>%</code> must be a scene unique name: right-click it in the Scene dock and choose <kbd class="ui">Access as Unique Name</kbd>. A <code>%</code> appears beside the name. Scripts then use <code>%CrumbLabel</code> from anywhere in this scene.</p>
+  <pre class="scene-tree">Game (Control)                 [game.gd]  Full Rect, theme = game_theme.tres
+├── Background (ColorRect)     Full Rect, mouse Ignore
+├── Margin (MarginContainer)   Full Rect, margins 16
+│   └── Columns (VBoxContainer)
+│       ├── TitleLabel (Label)             text = CLICKER_TITLE
+│       ├── CrumbLabel (Label)          %  auto-translate Disabled
+│       ├── RateLabel (Label)           %  auto-translate Disabled
+│       ├── ClickButton (Button)        %  min height 140, auto-translate Disabled
+│       ├── TabRow (HBoxContainer)
+│       │   ├── GeneratorsTab (Button)     text = CLICKER_GENERATORS
+│       │   └── UpgradesTab (Button)       text = CLICKER_UPGRADES
+│       ├── Lists (Control)                vertical Expand + Fill
+│       │   ├── GenScroll (ScrollContainer)   % Full Rect
+│       │   │   └── GenList (VBoxContainer)   % horizontal Expand + Fill
+│       │   └── UpScroll (ScrollContainer)    % Full Rect, eye closed
+│       │       └── UpgradeList (VBoxContainer) %
+│       └── BottomRow (HBoxContainer)
+│           └── MenuButton (Button)         text = CLICKER_MENU
+├── Economy (Node)             [economy.gd]
+├── AutosaveTimer (Timer)      %  15 s, Autostart on
+└── PauseMenu (instance of ui/pause_menu.tscn)  layer 20</pre>
+
+  <ol class="steps">
+    <li><strong>Add the background.</strong> Select <code>Game</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>ColorRect</code>, rename it <code>Background</code>. Anchors Preset <kbd class="ui">Full Rect</kbd>. Set <kbd class="ui">Color</kbd> to R <code>0.11</code>, G <code>0.08</code>, B <code>0.16</code>. In the Inspector search box type <code>mouse</code> and set <kbd class="ui">Filter</kbd> to <kbd class="ui">Ignore</kbd> so it does not eat taps.</li>
+    <li><strong>Add the margin.</strong> Select <code>Game</code>, add a <code>MarginContainer</code>, rename it <code>Margin</code>, Anchors Preset <kbd class="ui">Full Rect</kbd>. Expand <kbd class="ui">Theme Overrides &gt; Constants</kbd>. Use the empty dropdown at the bottom of Constants to add <kbd class="ui">Margin Left</kbd> and set it to <code>16</code>. Repeat for Margin Top, Margin Right and Margin Bottom.</li>
+    <li><strong>Add the column.</strong> Select <code>Margin</code>, add a <code>VBoxContainer</code>, rename it <code>Columns</code>. In <kbd class="ui">Layout &gt; Size Flags</kbd>, check <kbd class="ui">Fill</kbd> and <kbd class="ui">Expand</kbd> for both Horizontal and Vertical so the column uses the space inside the margins.</li>
+    <li><strong>Add the title.</strong> Select <code>Columns</code>, add a <code>Label</code>, rename it <code>TitleLabel</code>. Set <kbd class="ui">Text</kbd> to <code>CLICKER_TITLE</code>. Leave auto-translate alone so the key is translated. Expand <kbd class="ui">Theme Overrides &gt; Font Sizes</kbd>, add <kbd class="ui">Font Size</kbd>, set it to <code>28</code>.</li>
+    <li><strong>Add the crumb and rate labels.</strong> Add two more <code>Label</code> nodes under <code>Columns</code>, named <code>CrumbLabel</code> and <code>RateLabel</code>. On each: right-click → <kbd class="ui">Access as Unique Name</kbd>. Inspector search <code>auto translate</code>, set <kbd class="ui">Auto Translate Mode</kbd> to <kbd class="ui">Disabled</kbd> (code already passes translated text; leaving this on would translate it a second time). On <code>CrumbLabel</code>, set Theme Overrides Font Size to <code>36</code>.</li>
+    <li><strong>Add the tap button.</strong> Under <code>Columns</code>, add a <code>Button</code> named <code>ClickButton</code>. Access as Unique Name. Auto Translate Mode <kbd class="ui">Disabled</kbd>. <kbd class="ui">Layout &gt; Custom Minimum Size</kbd> Y = <code>140</code>. Vertical size flags: <kbd class="ui">Expand</kbd> off, so the button does not swallow the lists. Horizontal: <kbd class="ui">Fill</kbd> on.</li>
+    <li><strong>Add the tabs.</strong> Under <code>Columns</code>, add an <code>HBoxContainer</code> named <code>TabRow</code>. Under it, add two <code>Button</code> nodes named <code>GeneratorsTab</code> and <code>UpgradesTab</code>. Set their <kbd class="ui">Text</kbd> to <code>CLICKER_GENERATORS</code> and <code>CLICKER_UPGRADES</code>. Leave auto-translate inherited. On each button, Horizontal size flags <kbd class="ui">Fill</kbd> and <kbd class="ui">Expand</kbd> on.</li>
+    <li><strong>Add the list area.</strong> Under <code>Columns</code>, add a plain <code>Control</code> named <code>Lists</code>. Vertical size flags: <kbd class="ui">Fill</kbd> and <kbd class="ui">Expand</kbd> both on. This is the only column child that should expand. If the tap button is huge and the list is a sliver, Expand is on the wrong node.</li>
+    <li><strong>Add the generator scroller.</strong> Select <code>Lists</code>, add a <code>ScrollContainer</code> named <code>GenScroll</code>. Access as Unique Name. Anchors Preset <kbd class="ui">Full Rect</kbd>. Inspector: <kbd class="ui">Horizontal Scroll Mode</kbd> = <kbd class="ui">Disabled</kbd>. Under it, add a <code>VBoxContainer</code> named <code>GenList</code>. Access as Unique Name. Horizontal size flags <kbd class="ui">Fill</kbd> and <kbd class="ui">Expand</kbd> on, or the buttons will be a few pixels wide.</li>
+    <li><strong>Add the upgrade scroller</strong> the same way: <code>UpScroll</code> (unique, Full Rect, horizontal scroll Disabled) and child <code>UpgradeList</code> (unique, horizontal Fill + Expand). Then click the eye icon to the right of <code>UpScroll</code> in the Scene dock so the eye closes and the node starts hidden.</li>
+    <li><strong>Add the menu button.</strong> Under <code>Columns</code>, add an <code>HBoxContainer</code> named <code>BottomRow</code>, and under that a <code>Button</code> named <code>MenuButton</code>. Text <code>CLICKER_MENU</code>. Horizontal Fill + Expand on.</li>
+    <li><strong>Add the autosave timer.</strong> Select <code>Game</code>, add a <code>Timer</code> named <code>AutosaveTimer</code>. Access as Unique Name. Inspector: <kbd class="ui">Wait Time</kbd> <code>15</code>, <kbd class="ui">Autostart</kbd> on, <kbd class="ui">One Shot</kbd> off. Fifteen seconds caps how much a killed phone process can lose. The file is tiny.</li>
+    <li><strong>Instance the pause menu.</strong> Select <code>Game</code>. In the Scene dock toolbar, click the chain-link icon <kbd class="ui">Instantiate Child Scene</kbd>. Pick <code>res://ui/pause_menu.tscn</code> and click <kbd class="ui">Open</kbd>. Select that new node. Set its <kbd class="ui">Layer</kbd> to <code>20</code> so it draws above this UI and still under <code>SceneRouter</code> (layer 100). Do not edit the pause menu's script.</li>
+    <li><strong>Attach the game script.</strong> Right-click <code>Game</code> → <kbd class="ui">Attach Script</kbd>, path <code>res://game/game.gd</code>, template Empty. Replace the whole file and save.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/game.gd">
+extends Control
+
+@onready var _economy: CrumbEconomy = $Economy
+
+var _gen_buttons: Dictionary = {}
+var _up_buttons: Dictionary = {}
+
+func _ready() -> void:
+    _build_generator_rows()
+    _build_upgrade_rows()
+    %ClickButton.pressed.connect(_on_click)
+    %GeneratorsTab.pressed.connect(_show_generators.bind(true))
+    %UpgradesTab.pressed.connect(_show_generators.bind(false))
+    %MenuButton.pressed.connect(_on_menu)
+    %AutosaveTimer.timeout.connect(_on_autosave)
+    _show_generators(true)
+    Events.game_started.emit()
+    _refresh()
+
+func _process(delta: float) -> void:
+    _economy.tick(delta)
+    _refresh()
+
+func _build_generator_rows() -> void:
+    if _economy.catalog == null:
+        return
+    for gen: GeneratorDef in _economy.catalog.generators:
+        var button := Button.new()
+        button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+        button.custom_minimum_size = Vector2(0, 64)
+        button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        button.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+        button.pressed.connect(_on_buy_generator.bind(gen.id))
+        %GenList.add_child(button)
+        _gen_buttons[gen.id] = button
+
+func _build_upgrade_rows() -> void:
+    if _economy.catalog == null:
+        return
+    for up: UpgradeDef in _economy.catalog.upgrades:
+        var button := Button.new()
+        button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+        button.custom_minimum_size = Vector2(0, 64)
+        button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        button.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+        button.pressed.connect(_on_buy_upgrade.bind(up.id))
+        %UpgradeList.add_child(button)
+        _up_buttons[up.id] = button
+
+func _show_generators(show_generators: bool) -> void:
+    %GenScroll.visible = show_generators
+    %UpScroll.visible = not show_generators
+
+func _on_click() -> void:
+    _economy.click()
+
+func _on_buy_generator(id: String) -> void:
+    _economy.try_buy_generator(id, 1)
+
+func _on_buy_upgrade(id: String) -> void:
+    _economy.try_buy_upgrade(id)
+
+func _on_menu() -> void:
+    _economy.save_run()
+    SceneRouter.go_to(SceneRouter.MAIN_MENU_SCENE)
+
+func _on_autosave() -> void:
+    _economy.save_run()
+    print("autosaved ", BigFormat.store(_economy.crumbs))
+
+func _refresh() -> void:
+    if _economy.catalog == null:
+        return
+    %CrumbLabel.text = tr("CLICKER_CRUMBS") % BigFormat.format_amount(_economy.crumbs)
+    %RateLabel.text = tr("CLICKER_RATE") % BigFormat.format_amount(_economy.rate())
+    %ClickButton.text = tr("CLICKER_TAP") + "  +" + BigFormat.format_amount(_economy.click_value())
+    for gen: GeneratorDef in _economy.catalog.generators:
+        var button := _gen_buttons[gen.id] as Button
+        var cost := _economy.next_cost(gen.id)
+        var afford := _economy.crumbs + 0.001 >= cost and is_finite(cost)
+        button.text = tr(gen.title_key) + "  x" + str(_economy.owned_count(gen.id)) + "   " + BigFormat.format_amount(cost)
+        button.disabled = not afford
+    for up: UpgradeDef in _economy.catalog.upgrades:
+        var button := _up_buttons[up.id] as Button
+        var owned_flag := _economy.has_upgrade(up.id)
+        var shown := owned_flag or _economy.upgrade_available(up)
+        button.visible = shown
+        if not shown:
+            continue
+        button.text = tr(up.title_key) + "   " + BigFormat.format_amount(up.cost)
+        button.disabled = owned_flag or _economy.crumbs + 0.001 < up.cost
+      </script>
+    </li>
+    <li><strong>Save the scene</strong> with <kbd>Ctrl</kbd>+<kbd>S</kbd>. Switch the top workspace to <kbd class="ui">2D</kbd> and check the tree against the diagram. <code>Economy</code> must be a child of <code>Game</code>, not of <code>Columns</code>.</li>
+  </ol>
+
+  <div class="checkpoint"><p>Press <kbd>F6</kbd> (Run Current Scene). Output prints <code>Catalog generators: 8 upgrades: 6</code> and <code>sprout first cost 15</code>. The title reads Crumb Foundry, the big line reads <code>0 crumbs</code>, the rate reads <code>0 / s</code>, and the button reads <code>Tap +1</code>. Sprout shows <code>x0  15</code> and is disabled. Tap 15 times: Sprout enables. Buy it. The rate becomes <code>0.1 / s</code> and the next Sprout price is <code>18</code>. Open the Upgrades tab: only Steel Tap is listed (the others are gated). If you see <code>CLICKER_TITLE</code> as literal text, reimport the CSV. If Output says the catalog is not assigned, select Economy and drop <code>catalog.tres</code> on Catalog again.</p></div>
+
+  <ol class="steps">
+    <li><strong>Watch an autosave.</strong> Leave the game running for a bit more than 15 seconds. Output prints <code>autosaved</code> and a number. Use <kbd class="menu">Project &gt; Open User Data Folder</kbd>. Open <code>saves/run.json</code> in a text editor. <code>crumbs</code> is a string inside <code>data</code>, not a bare integer field you cast with <code>int()</code>. <code>owned.sprout</code> is <code>1</code> if you bought one. Close the text editor.</li>
+    <li><strong>Prove the load.</strong> Stop the game with <kbd>F8</kbd>. Press <kbd>F6</kbd> again. The sprout count and the crumb total come back. They will be a little higher than the file if the generators ticked between the save and the quit; buy nothing and confirm the count is still 1.</li>
+    <li><strong>Walk through the menu.</strong> Press <kbd>F5</kbd>. The main menu appears. Use the Ship Kit's play button (it calls <code>SceneRouter.go_to</code> on <code>res://game/game.tscn</code>). The foundry loads the same save. Press the key bound to the <code>pause</code> action (check <kbd class="menu">Project &gt; Project Settings &gt; Input Map</kbd> if you are not sure; the kit's usual key is Esc). The pause menu appears. Resume, then press Menu and confirm you return to the main menu.</li>
+    <li><strong>Try Spanish.</strong> From the main menu, open the Ship Kit settings screen and set the language to <code>es</code>. Play again. The tab button reads Generadores and the tap button reads Tocar. If the settings screen is awkward to reach, stop the game and temporarily add <code>Settings.set_locale("es")</code> as the first line of <code>_ready</code> in <code>game.gd</code>, press <kbd>F6</kbd>, confirm Tocar, then delete that line and save. Do not leave the forced locale in the file.</li>
+  </ol>
+  <div class="checkpoint"><p><code>user://saves/run.json</code> exists, a second <kbd>F6</kbd> restores the sprout, and the pause menu opens. If the second run starts at 0 crumbs, <code>save_slot</code> failed: read the Output error. If buttons are paper-thin, <code>GenList</code> is missing Horizontal Fill and Expand.</p></div>
+
+  <div class="callout external"><span class="callout-title">External resource (optional, not required today)</span>
+    <p>Buttons are enough to ship the loop. If you later want a click sound, search <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a> for a UI audio pack and pick a short click by listening. Pack versions rename files, so do not type a filename from memory. Tomorrow generates a click in code so you are not blocked. Verify license terms on Kenney's page; the packs used in this course are CC0.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Storing crumbs with <code>int()</code></strong> looks fine at 15 crumbs and breaks past 2^53. Save with <code>BigFormat.store</code>. Cast only owned counts and <code>total_clicks</code>.</li>
+    <li><strong>Growth typed as 15</strong> makes the second sprout cost <code>ceilf(15 * 15) = 225</code>. The checkpoint price is 18.</li>
+    <li><strong>A shared scene path.</strong> Saving the game scene anywhere except <code>res://game/game.tscn</code> leaves the menu loading the empty kit scene.</li>
+    <li><strong>Unique names forgotten.</strong> <code>%CrumbLabel</code> errors with "Node not found" when Access as Unique Name is off, even if the node exists.</li>
+    <li><strong>Auto-translate left on for code-built strings</strong> turns <code>0 crumbs</code> into a missing-key lookup. Dynamic labels are Disabled. Static buttons keep the raw key as their Text.</li>
+    <li><strong>Expand on the tap button</strong> hides the scroller. Only <code>Lists</code> expands vertically inside <code>Columns</code>.</li>
+    <li><strong>Saving from <code>_notification</code> before <code>_ready</code> finishes</strong> would write an empty run over a good file. <code>_ready_done</code> is that guard. Do not remove it.</li>
+    <li><strong>Emitting <code>Events.score_changed</code> with the balance.</strong> The argument is an <code>int</code>. Keep crumbs off that signal.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 20–30 min)</h2>
+  <div class="challenge">
+    <h3>Buy 10</h3>
+    <p>Add a second button on each generator row that calls <code>_economy.try_buy_generator(id, 10)</code> and shows <code>bulk_cost(id, 10)</code>. From zero sprouts the label should read 305, not 10 times 15. Hint: build both buttons inside the loop in <code>_build_generator_rows</code>, and give the x10 button its own <code>Dictionary</code> so <code>_refresh</code> can update it. Do not ceil each of the ten prices and add them.</p>
+    <p>Second, smaller pass: after buying Steel Tap, one tap should add 2 crumbs, and the button text should read <code>Tap +2</code>. If it still says +1, Kind is not Click or the upgrade was not added to <code>catalog.tres</code>.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="2">
+      <p>You own 1 sprout (base cost 15, growth 1.15). What does the next single sprout cost?</p>
+      <ul>
+        <li>15</li>
+        <li>17.25</li>
+        <li>18</li>
+        <li>30</li>
+      </ul>
+      <p class="explain"><code>ceilf(15 * 1.15) = ceilf(17.25) = 18</code>. The button shows the ceiled price, not the raw float.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Why is the crumb balance saved as a string from a float, rather than as an <code>int</code>?</p>
+      <ul>
+        <li>Godot JSON cannot store numbers at all.</li>
+        <li>JSON numbers are floats, and integers past 2^53 are not exact.</li>
+        <li><code>SaveManager</code> rejects int values.</li>
+        <li>Floats use less disk than strings, so the string is only for the UI.</li>
+      </ul>
+      <p class="explain">The memory value is a float. The file stores text so a later <code>int()</code> cast cannot round the balance. Small counts are still ints, cast on load.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>Which call writes the run?</p>
+      <ul>
+        <li><code>SaveManager.save_slot(&amp;"run", payload)</code></li>
+        <li><code>Events.score_changed.emit</code></li>
+        <li><code>Settings.set_value</code></li>
+        <li>A new autoload named <code>ClickerSave</code></li>
+      </ul>
+      <p class="explain">The run goes through the Ship Kit <code>SaveManager</code>. High-water lifetime also uses <code>set_value</code> on that same autoload, then <code>flush()</code>.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>Aspect <code>expand</code> with stretch mode <code>canvas_items</code> means:</p>
+      <ul>
+        <li>The picture is cropped to 720×1280 on every phone.</li>
+        <li>Black bars are added and the UI never gains pixels.</li>
+        <li>The renderer switches to Forward+.</li>
+        <li>The base size covers the screen, and extra pixels become extra room that anchors and containers must handle.</li>
+      </ul>
+      <p class="explain">That is why the root is Full Rect and the list lives in a container, not at hard-coded coordinates.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>Buying 4 sprouts from zero with the bulk formula costs 75, while 15+18+20+23 = 76. What should you ship?</p>
+      <ul>
+        <li>Hide the difference by using <code>int</code> prices.</li>
+        <li>Always add ten ceiled unit prices, and delete <code>bulk_cost</code>.</li>
+        <li>Use <code>P(n)</code> for the x1 button and one <code>ceilf</code> on the geometric sum for a multi-buy.</li>
+        <li>Charge 15 forever so the two formulas match.</li>
+      </ul>
+      <p class="explain">One ceil on the closed form is the rule in <code>bulk_cost</code>. It can be one crumb under the sum of per-unit ceils. Document it; do not "fix" it with integers.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/resources.html" target="_blank" rel="noopener">Resources</a>: custom data resources and <code>.tres</code> files.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_exports.html" target="_blank" rel="noopener">GDScript exports</a>: <code>@export</code> and typed arrays.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/ui/gui_containers.html" target="_blank" rel="noopener">Using containers</a>: why the list is a <code>VBoxContainer</code> inside a <code>ScrollContainer</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/ui/size_and_anchors.html" target="_blank" rel="noopener">Size and anchors</a>: Full Rect and size flags.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/rendering/multiple_resolutions.html" target="_blank" rel="noopener">Multiple resolutions</a>: <code>canvas_items</code> and aspect <code>expand</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/io/saving_games.html" target="_blank" rel="noopener">Saving games</a>: why JSON numbers come back as floats.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/i18n/localization_using_spreadsheets.html" target="_blank" rel="noopener">Localization using spreadsheets</a>: the CSV you appended.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_scrollcontainer.html" target="_blank" rel="noopener">ScrollContainer</a></li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li><kbd>F5</kbd> opens the Ship Kit menu and Play lands in the foundry. <kbd>F6</kbd> on <code>game.tscn</code> prints 8 generators and 6 upgrades.</li>
+    <li>Fifteen taps buy one sprout at 15. The next price is 18. The rate is 0.1 / s.</li>
+    <li><code>user://saves/run.json</code> stores crumbs as a string. Restarting restores the sprout.</li>
+    <li>Pause (the <code>pause</code> action) opens the kit pause menu. Menu returns through <code>SceneRouter</code>.</li>
+    <li>No new autoload was added. Main scene is still <code>res://ui/main_menu.tscn</code>.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> offline income capped at 8 hours and 50% efficiency, sparks from <code>floorf(sqrt(lifetime / 1e6))</code>, achievements, a bit of juice, then a signed Android AAB reminder and a Play closed test. Design notes live on the <a href="../games/g06-idle-clicker.html">Idle Clicker game page</a>.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

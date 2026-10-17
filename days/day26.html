@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 26 - Deckbuilder III: map, relics, saving runs, release | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day26" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 26 · Deckbuilder</div>
+    <h1>Deckbuilder III: map, relics, saving runs, release</h1>
+    <p class="lead">Climb a fixed branching map, take card rewards, rest, shop, and relics, and write the whole run through <code>SaveManager.save_slot</code>. Continue reloads it, including a half-played hand. Then point the export presets at this project the way Day 16 showed you.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Concepts.</strong> What is saved, what is cast with <code>int()</code>, relic hooks.</td></tr>
+    <tr><td>0:20 – 1:20</td><td><strong>Map and relics.</strong> Fourteen rooms, five relic resources.</td></tr>
+    <tr><td>1:20 – 1:35</td><td><strong>Break.</strong></td></tr>
+    <tr><td>1:35 – 2:40</td><td><strong>Rewards, shop, rest, run director.</strong></td></tr>
+    <tr><td>2:40 – 3:20</td><td><strong>Save, resume, balance, translations.</strong></td></tr>
+    <tr><td>3:20 – 4:00</td><td><strong>Release reminder, quiz, wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>4 h 0 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Walk a 14-room map: combats, an elite, two shops, two rests, a treasure, a two-enemy fight, and the Ash Titan.</li>
+    <li>Add cards, remove a card for 75 gold, and carry relics whose numbers are in the table below.</li>
+    <li>Resume a fight from the main menu with the same hand, energy, and enemy intent.</li>
+    <li>Set the Android package to <code>com.yourname.deckbuilder</code> and follow <a href="../days/day16.html">Day 16</a> for a Windows release export and an Android debug install.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 25 drag-and-drop fight works from <kbd>F5</kbd> → Play. <code>battle.gd</code> already applies <code>vajra</code>, <code>anchor</code>, <code>bag_of_preparation</code>, and <code>orichalcum</code> when those ids are in the relic list. Do not rewrite it.</li>
+    <li><code>SaveManager</code>, <code>SceneRouter</code>, <code>Events</code>, <code>Settings</code>, and <code>Audio</code> are the Ship Kit autoloads. Call <code>save_slot</code> / <code>load_slot</code> / <code>set_value</code> / <code>flush</code>. Do not add another autoload.</li>
+    <li>If you skipped Day 25, paste that day's <code>combat.gd</code> and card scenes before today's <code>game.gd</code>. Today calls <code>load_battle</code>, <code>export_battle</code>, and <code>current_hp</code>.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>One slot for the run, one key for the record</h3>
+  <p><code>SaveManager.save_slot(&amp;"run", payload)</code> writes <code>user://saves/run.json</code>. The file on disk is an envelope, <code>format</code>, <code>saved_at</code>, and <code>data</code>. <code>load_slot</code> returns the dictionary you saved, not that envelope. Best floor is not part of the run. It is <code>SaveManager.set_value("deck_best_floor", n)</code> plus <code>flush()</code>, so it survives <code>delete_slot</code> when the run ends.</p>
+  <p>JSON stores every number as a float. A saved energy of 2 comes back as <code>2.0</code>. Every counter in <code>_load_run</code> and in <code>Battle.from_dictionary</code> goes through <code>int()</code>. Card ids are strings and stay strings. After <code>RandomNumberGenerator.seed</code> is set, set <code>state</code> second: assigning <code>seed</code> replaces <code>state</code>.</p>
+
+  <h3>The map is code, the offer is data</h3>
+  <p>Room layout lives in <code>MapCatalog</code> and is not saved. The save stores which ids are cleared, which are open, the pending screen, and any offer you already rolled (three reward cards, shop stock, relic id). Quitting on a shop must not reroll it. Combat saves the dictionary from <code>Battle.to_dictionary()</code> only while it is your turn.</p>
+
+  <h3>Relic resources are labels. Hooks are code</h3>
+  <p>A relic <code>.tres</code> holds an id and two translation keys. The effect is a hook that already exists, because each relic happens at a different time. Burning Blood heals 6 after a win, in <code>game.gd</code>. The other four run inside <code>Battle</code>.</p>
+  <table>
+    <tr><th>Id</th><th>When</th><th>Number</th></tr>
+    <tr><td><code>burning_blood</code></td><td>After you win a fight</td><td>Heal 6, capped at max HP</td></tr>
+    <tr><td><code>vajra</code></td><td>Combat start</td><td>+1 Strength</td></tr>
+    <tr><td><code>anchor</code></td><td>Start of turn 1, after Block is cleared</td><td>+10 Block</td></tr>
+    <tr><td><code>bag_of_preparation</code></td><td>Turn 1 draw</td><td>Draw 7 instead of 5</td></tr>
+    <tr><td><code>orichalcum</code></td><td>End of your turn, if Block is 0, before the enemy hits</td><td>+6 Block</td></tr>
+  </table>
+  <p>Run start: 70 HP, 99 gold. Card reward pool is the nine non-starter cards. Prices: card 50, relic 140, remove one card 75. Combat gold 20, elite 40, boss 25. If a relic drop finds nothing left, you get 50 gold instead. Rest heals <code>floor(max_hp * 0.30)</code> and will not pass max HP (21 at 70 max).</p>
+
+  <h2 id="build-1">Block 2: Map and relic files</h2>
+  <ol class="steps">
+    <li><strong>Relic script.</strong> Create <code>res://data/relic_data.gd</code>, inherits <code>Resource</code>, class name <code>RelicData</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/relic_data.gd">
+extends Resource
+class_name RelicData
+
+@export var id: String = ""
+@export var name_key: String = ""
+@export var desc_key: String = ""
+      </script>
+    </li>
+    <li><strong>Folder.</strong> In the FileSystem dock, right-click <code>res://data</code> → <kbd class="ui">New Folder</kbd> → <code>relics</code>.</li>
+    <li><strong>Burning Blood.</strong> Right-click <code>relics</code> → <kbd class="ui">Create New</kbd> → <kbd class="ui">Resource</kbd> → <code>RelicData</code>. Save as <code>res://data/relics/burning_blood.tres</code>. Id <code>burning_blood</code>, Name Key <code>DECK_RELIC_BURNING</code>, Desc Key <code>DECK_RELIC_BURNING_DESC</code>. Save.</li>
+    <li><strong>The other four.</strong> Same dialog, one file each.
+      <table>
+        <tr><th>File</th><th>Id</th><th>Name key</th><th>Desc key</th></tr>
+        <tr><td><code>vajra.tres</code></td><td>vajra</td><td><code>DECK_RELIC_VAJRA</code></td><td><code>DECK_RELIC_VAJRA_DESC</code></td></tr>
+        <tr><td><code>anchor.tres</code></td><td>anchor</td><td><code>DECK_RELIC_ANCHOR</code></td><td><code>DECK_RELIC_ANCHOR_DESC</code></td></tr>
+        <tr><td><code>bag_of_preparation.tres</code></td><td>bag_of_preparation</td><td><code>DECK_RELIC_BAG</code></td><td><code>DECK_RELIC_BAG_DESC</code></td></tr>
+        <tr><td><code>orichalcum.tres</code></td><td>orichalcum</td><td><code>DECK_RELIC_ORICHALCUM</code></td><td><code>DECK_RELIC_ORICHALCUM_DESC</code></td></tr>
+      </table>
+    </li>
+    <li><strong>Register the paths.</strong> Open <code>res://data/database.gd</code>. Replace the empty array
+      <script type="text/x-code" data-lang="gdscript" data-file="anchor in database.gd">
+const RELIC_PATHS: Array[String] = []
+      </script>
+      with
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/database.gd">
+const RELIC_PATHS: Array[String] = [
+    "res://data/relics/burning_blood.tres",
+    "res://data/relics/vajra.tres",
+    "res://data/relics/anchor.tres",
+    "res://data/relics/bag_of_preparation.tres",
+    "res://data/relics/orichalcum.tres",
+]
+      </script>
+      Leave the rest of the file. Explicit paths still matter in an export: <code>DirAccess.get_files_at</code> will not hand you these <code>.tres</code> files from <code>res://</code>.</li>
+    <li><strong>Map catalog.</strong> Create folder <code>res://game/map</code>. Create <code>res://game/map/map_catalog.gd</code>, inherits <code>RefCounted</code>, class name <code>MapCatalog</code>. Room 0 is the bottom-left combat. Room 13 is the boss. Column 0, 1, 2 are left, middle, right.
+      <details>
+        <summary>map_catalog.gd (whole file)</summary>
+        <script type="text/x-code" data-lang="gdscript" data-file="res://game/map/map_catalog.gd">
+extends RefCounted
+class_name MapCatalog
+
+
+static func nodes() -> Array[Dictionary]:
+    var out: Array[Dictionary] = []
+    out.append(_pack(0, 0, 0, "combat", _one("jaw_worm"), _next(2, 3)))
+    out.append(_pack(1, 0, 2, "combat", _one("cultist"), _next(3, 4)))
+    out.append(_pack(2, 1, 0, "combat", _one("jaw_worm"), _next(5, 6)))
+    out.append(_pack(3, 1, 1, "shop", _one(""), _next(6, 7)))
+    out.append(_pack(4, 1, 2, "combat", _one("cultist"), _next(7, -1)))
+    out.append(_pack(5, 2, 0, "elite", _one("blue_slaver"), _next(8, -1)))
+    out.append(_pack(6, 2, 1, "rest", _one(""), _next(8, 9)))
+    out.append(_pack(7, 2, 2, "treasure", _one(""), _next(9, -1)))
+    out.append(_pack(8, 3, 0, "combat", _one("jaw_worm"), _next(10, 11)))
+    out.append(_pack(9, 3, 2, "combat", _one("cultist"), _next(11, -1)))
+    out.append(_pack(10, 4, 0, "rest", _one(""), _next(12, -1)))
+    out.append(_pack(11, 4, 2, "combat", _two("jaw_worm", "jaw_worm"), _next(12, -1)))
+    out.append(_pack(12, 5, 1, "shop", _one(""), _next(13, -1)))
+    out.append(_pack(13, 6, 1, "boss", _one("ash_titan"), _next(-1, -1)))
+    return out
+
+
+static func get_node(id: int) -> Dictionary:
+    for node in nodes():
+        if int(node["id"]) == id:
+            return node
+    return {}
+
+
+static func _pack(id: int, row: int, col: int, type: String, enemies: Array[String], next_ids: Array[int]) -> Dictionary:
+    return {
+        "id": id,
+        "row": row,
+        "col": col,
+        "type": type,
+        "enemies": enemies,
+        "next": next_ids,
+    }
+
+
+static func _one(enemy_id: String) -> Array[String]:
+    var ids: Array[String] = []
+    if enemy_id != "":
+        ids.append(enemy_id)
+    return ids
+
+
+static func _two(a: String, b: String) -> Array[String]:
+    var ids: Array[String] = []
+    ids.append(a)
+    ids.append(b)
+    return ids
+
+
+static func _next(a: int, b: int) -> Array[int]:
+    var ids: Array[int] = []
+    if a >= 0:
+        ids.append(a)
+    if b >= 0:
+        ids.append(b)
+    return ids
+        </script>
+      </details>
+    </li>
+    <li><strong>Map scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd> → Other Node → <code>Control</code> named <code>MapScreen</code>. Anchor menu above the viewport → <kbd class="ui">Full Rect</kbd>. Mouse Filter <kbd class="ui">Ignore</kbd> so empty map space does not eat clicks meant for buttons you will spawn.</li>
+    <li><strong>Header.</strong> Add a <code>Label</code> child named <code>Title</code>. Anchor <kbd class="ui">Top Wide</kbd> (full width along the top). If that preset is easy to miss, choose Full Rect, then set Offset Top <code>8</code>, Offset Bottom <code>48</code>, Offset Left <code>16</code>, Offset Right <code>-16</code>. Set Text to <code>Choose the next room</code>. Unique name. Add a sibling <code>Label</code> named <code>Stats</code>. Position it under the title: Offset Top <code>40</code>, Offset Bottom <code>72</code>, Offset Left <code>16</code>, Offset Right <code>-16</code>. Unique name. Mouse Filter Ignore on both labels.</li>
+    <li><strong>Map script.</strong> Attach <code>res://game/map/map_screen.gd</code> to <code>MapScreen</code>, inherits <code>Control</code>, class name <code>MapScreen</code>. Save the scene as <code>res://game/map/map_screen.tscn</code>. Not the main scene.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/map/map_screen.gd">
+extends Control
+class_name MapScreen
+
+signal node_chosen(node_id: int)
+
+const NODE_SIZE: Vector2 = Vector2(140, 44)
+
+var _cleared: Array[int] = []
+var _open: Array[int] = []
+var _present_tries: int = 0
+
+
+func _ready() -> void:
+    mouse_filter = Control.MOUSE_FILTER_IGNORE
+    resized.connect(_on_resized)
+
+
+func show_map(cleared_ids: Array, open_ids: Array, hp: int, gold: int, best_floor: int, seed_no: int) -> void:
+    _cleared = _as_ints(cleared_ids)
+    _open = _as_ints(open_ids)
+    %Title.text = tr("DECK_MAP_TITLE")
+    %Stats.text = "%s   %s   %s   %s" % [
+        tr("DECK_HP") % [hp, 70],
+        tr("DECK_GOLD") % gold,
+        tr("DECK_BEST") % best_floor,
+        tr("DECK_SEED") % seed_no,
+    ]
+    call_deferred("_present")
+
+
+func _present() -> void:
+    if size.y < 64.0 and _present_tries < 5:
+        _present_tries += 1
+        call_deferred("_present")
+        return
+    _present_tries = 0
+    _rebuild_buttons()
+    queue_redraw()
+
+
+func _draw() -> void:
+    for node in MapCatalog.nodes():
+        var next_ids: Array = node["next"]
+        for raw in next_ids:
+            var other: Dictionary = MapCatalog.get_node(int(raw))
+            if other.is_empty():
+                continue
+            draw_line(_center(node), _center(other), Color(0.72, 0.66, 0.5), 3.0)
+
+
+func _rebuild_buttons() -> void:
+    for child in get_children():
+        if child is Button:
+            remove_child(child)
+            child.queue_free()
+    for node in MapCatalog.nodes():
+        var button := Button.new()
+        var node_id: int = int(node["id"])
+        button.text = _type_label(str(node["type"]))
+        button.custom_minimum_size = NODE_SIZE
+        button.size = NODE_SIZE
+        button.position = _center(node) - NODE_SIZE * 0.5
+        var open: bool = _open.has(node_id)
+        button.disabled = not open
+        if _cleared.has(node_id):
+            button.modulate = Color(0.55, 0.75, 0.55)
+        elif open:
+            button.modulate = Color.WHITE
+        else:
+            button.modulate = Color(0.45, 0.45, 0.45)
+        button.pressed.connect(_on_pressed.bind(node_id))
+        add_child(button)
+
+
+func _on_pressed(node_id: int) -> void:
+    node_chosen.emit(node_id)
+
+
+func _on_resized() -> void:
+    _rebuild_buttons()
+    queue_redraw()
+
+
+func _center(node: Dictionary) -> Vector2:
+    var row: int = int(node["row"])
+    var col: int = int(node["col"])
+    var x: float = 240.0 + float(col) * 250.0
+    var y: float = size.y - 80.0 - float(row) * 78.0
+    return Vector2(x, y)
+
+
+func _type_label(kind: String) -> String:
+    match kind:
+        "combat":
+            return tr("DECK_NODE_COMBAT")
+        "elite":
+            return tr("DECK_NODE_ELITE")
+        "shop":
+            return tr("DECK_NODE_SHOP")
+        "rest":
+            return tr("DECK_NODE_REST")
+        "treasure":
+            return tr("DECK_NODE_TREASURE")
+        "boss":
+            return tr("DECK_NODE_BOSS")
+        _:
+            return kind
+
+
+func _as_ints(value: Array) -> Array[int]:
+    var out: Array[int] = []
+    for item in value:
+        out.append(int(item))
+    return out
+      </script>
+      <code>_present</code> waits until the control has a height, then places buttons. A control that has not been laid out yet reports a tiny size. Five retries is the cap. <code>resized</code> places the buttons again when the window changes.</li>
+  </ol>
+  <div class="checkpoint"><p>Open <code>map_screen.tscn</code> and press <kbd>F6</kbd>. You get the title and an empty stats line (no run has called <code>show_map</code> yet). Output is clean. Lines and buttons appear once <code>game.gd</code> calls <code>show_map</code>.</p></div>
+
+  <h2 id="build-2">Block 3: Reward, shop, rest, result</h2>
+  <p>Each of these scenes is the same shape: a full-rect <code>Control</code>, one <code>VBoxContainer</code> inset by a margin, a title label, a host for buttons built in code, and one or two real buttons you place in the editor. Do the reward scene click by click. Repeat that pattern for the other three with the names in the tree below.</p>
+  <ol class="steps">
+    <li><strong>Reward scene.</strong> New scene, root <code>Control</code> named <code>RewardScreen</code>, Anchor Full Rect. Add <code>MarginContainer</code> <code>Margin</code>, Full Rect, theme constant margins 24 on all four sides. Add child <code>VBoxContainer</code> <code>Column</code>, size flags Fill and Expand on both axes. Override Separation to <code>12</code>.</li>
+    <li><strong>Reward nodes.</strong> Under <code>Column</code>, add <code>Label</code> <code>Title</code> (unique name, text <code>Choose a card</code>), <code>Label</code> <code>RelicLabel</code> (unique, autowrap Word Smart), <code>VBoxContainer</code> <code>CardHost</code> (unique, size flags vertical Expand), <code>Button</code> <code>SkipButton</code> (unique, text <code>Skip</code>). Save <code>res://game/reward/reward_screen.tscn</code>. Create the <code>reward</code> folder when the save dialog asks, or make the folder first.</li>
+    <li><strong>Reward script.</strong> Attach <code>res://game/reward/reward_screen.gd</code>, class name <code>RewardScreen</code>, inherits <code>Control</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/reward/reward_screen.gd">
+extends Control
+class_name RewardScreen
+
+signal picked(card_id: String)
+
+
+func _ready() -> void:
+    %SkipButton.pressed.connect(_on_skip)
+    %Title.text = tr("DECK_REWARD_TITLE")
+    %SkipButton.text = tr("DECK_SKIP")
+
+
+func show_offer(card_ids: Array, relic_id: String) -> void:
+    Database.load_all()
+    %Title.text = tr("DECK_REWARD_TITLE")
+    %SkipButton.text = tr("DECK_SKIP")
+    if relic_id == "":
+        %RelicLabel.text = ""
+    else:
+        var key: String = Database.relic_name_key(relic_id)
+        var relic_name: String = relic_id if key == "" else tr(key)
+        %RelicLabel.text = tr("DECK_RELIC_GAIN") % relic_name
+    _clear(%CardHost)
+    for raw in card_ids:
+        var card: CardData = Database.card(str(raw))
+        if card == null:
+            continue
+        var button := Button.new()
+        button.text = "%s   %d\n%s" % [tr(card.name_key), card.cost, card.rules_text()]
+        button.pressed.connect(_on_pick.bind(card.id))
+        %CardHost.add_child(button)
+
+
+func _on_pick(card_id: String) -> void:
+    picked.emit(card_id)
+
+
+func _on_skip() -> void:
+    picked.emit("")
+
+
+func _clear(node: Node) -> void:
+    for child in node.get_children():
+        node.remove_child(child)
+        child.queue_free()
+      </script>
+    </li>
+    <li><strong>Shop scene.</strong> Same shell. Root <code>ShopScreen</code>. Children of the column: <code>Title</code>, <code>GoldLabel</code>, <code>CardHost</code> (VBox), <code>RelicButton</code> (Button), <code>RemoveButton</code> (Button), <code>DeckHost</code> (VBox), <code>LeaveButton</code> (Button). Unique-name every one of those. Save <code>res://game/shop/shop_screen.tscn</code>. Attach <code>shop_screen.gd</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/shop/shop_screen.gd">
+extends Control
+class_name ShopScreen
+
+signal buy_card(card_id: String)
+signal buy_relic
+signal remove_card(card_id: String)
+signal leave_shop
+
+var _removing: bool = false
+
+
+func _ready() -> void:
+    %RelicButton.pressed.connect(_on_relic)
+    %RemoveButton.pressed.connect(_on_remove_mode)
+    %LeaveButton.pressed.connect(_on_leave)
+
+
+func show_shop(gold: int, card_ids: Array, relic_id: String, deck_ids: Array, card_price: int, relic_price: int, remove_price: int) -> void:
+    Database.load_all()
+    %Title.text = tr("DECK_SHOP_TITLE")
+    %GoldLabel.text = tr("DECK_GOLD") % gold
+    %LeaveButton.text = tr("DECK_LEAVE")
+    %RemoveButton.text = tr("DECK_REMOVE") % remove_price
+    %RemoveButton.disabled = gold < remove_price
+    _clear(%CardHost)
+    for raw in card_ids:
+        var card: CardData = Database.card(str(raw))
+        if card == null:
+            continue
+        var button := Button.new()
+        button.text = tr("DECK_BUY_CARD") % [tr(card.name_key), card_price]
+        button.disabled = gold < card_price
+        button.pressed.connect(_on_buy_card.bind(card.id))
+        %CardHost.add_child(button)
+    if relic_id == "":
+        %RelicButton.visible = false
+    else:
+        %RelicButton.visible = true
+        var key: String = Database.relic_name_key(relic_id)
+        var relic_name: String = relic_id if key == "" else tr(key)
+        %RelicButton.text = tr("DECK_BUY_RELIC") % [relic_name, relic_price]
+        %RelicButton.disabled = gold < relic_price
+    _clear(%DeckHost)
+    %DeckHost.visible = _removing
+    if _removing:
+        var seen: Dictionary = {}
+        for raw_id in deck_ids:
+            var id: String = str(raw_id)
+            seen[id] = int(seen.get(id, 0)) + 1
+        for id in seen.keys():
+            var card_data: CardData = Database.card(str(id))
+            var label: String = str(id)
+            if card_data != null:
+                label = tr(card_data.name_key)
+            var button := Button.new()
+            button.text = "%s x%d" % [label, int(seen[id])]
+            button.pressed.connect(_on_remove.bind(str(id)))
+            %DeckHost.add_child(button)
+
+
+func _on_buy_card(card_id: String) -> void:
+    buy_card.emit(card_id)
+
+
+func _on_relic() -> void:
+    buy_relic.emit()
+
+
+func _on_remove_mode() -> void:
+    _removing = not _removing
+    remove_card.emit("")
+
+
+func _on_remove(card_id: String) -> void:
+    _removing = false
+    remove_card.emit(card_id)
+
+
+func _on_leave() -> void:
+    _removing = false
+    leave_shop.emit()
+
+
+func _clear(node: Node) -> void:
+    for child in node.get_children():
+        node.remove_child(child)
+        child.queue_free()
+      </script>
+      Emitting <code>remove_card</code> with an empty id only asks the run to redraw the shop after the toggle. The run ignores an empty id.</li>
+    <li><strong>Rest scene.</strong> Root <code>RestScreen</code>. Column children: <code>Title</code>, <code>Body</code> (Label, autowrap), <code>HealButton</code>. All unique. Save <code>res://game/rest/rest_screen.tscn</code>. Script:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/rest/rest_screen.gd">
+extends Control
+class_name RestScreen
+
+signal healed
+
+
+func _ready() -> void:
+    %HealButton.pressed.connect(_on_heal)
+
+
+func show_rest(hp: int, max_hp: int, amount: int) -> void:
+    %Title.text = tr("DECK_REST_TITLE")
+    %Body.text = tr("DECK_HP") % [hp, max_hp]
+    if amount <= 0:
+        %HealButton.text = tr("DECK_LEAVE")
+    else:
+        %HealButton.text = tr("DECK_REST_HEAL") % amount
+    %HealButton.disabled = false
+
+
+func _on_heal() -> void:
+    healed.emit()
+      </script>
+    </li>
+    <li><strong>Result scene.</strong> Root <code>ResultScreen</code>. Column children: <code>Title</code>, <code>Body</code> (autowrap), <code>OkButton</code>. All unique. Save <code>res://game/result/result_screen.tscn</code>. Script:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/result/result_screen.gd">
+extends Control
+class_name ResultScreen
+
+signal closed
+
+
+func _ready() -> void:
+    %OkButton.pressed.connect(_on_ok)
+
+
+func show_message(title: String, body: String, button_text: String) -> void:
+    %Title.text = title
+    %Body.text = body
+    %OkButton.text = button_text
+
+
+func _on_ok() -> void:
+    closed.emit()
+      </script>
+    </li>
+  </ol>
+  <div class="checkpoint"><p>Each of the four scenes opens, shows its title label, and has no script errors. Unique names show a <code>%</code>. None of them was set as the main scene.</p></div>
+
+  <h2 id="build-3">Block 4: The run, the slot, the menu</h2>
+  <ol class="steps">
+    <li><strong>Strings.</strong> Append these rows to <code>res://i18n/translations.csv</code>. Reimport the csv from the Import dock if the button is enabled.
+      <script type="text/x-code" data-lang="csv" data-file="res://i18n/translations.csv">
+DECK_CONTINUE,Continue run,Continuar partida,Lauf fortsetzen,Continue run,Continue run,Continue run,Continue run
+DECK_NEW_RUN,New run,Nueva partida,Neuer Lauf,New run,New run,New run,New run
+DECK_SAVED_PROMPT,A saved run is on disk. Continue it or replace it.,Hay una partida guardada. Continúala o reemplázala.,Ein gespeicherter Lauf liegt bereit. Fortsetzen oder ersetzen.,A saved run is on disk. Continue it or replace it.,A saved run is on disk. Continue it or replace it.,A saved run is on disk. Continue it or replace it.,A saved run is on disk. Continue it or replace it.
+DECK_MAP_TITLE,Choose the next room,Elige la siguiente sala,Wähle den nächsten Raum,Choose the next room,Choose the next room,Choose the next room,Choose the next room
+DECK_GOLD,Gold %d,Oro %d,Gold %d,Gold %d,Gold %d,Gold %d,Gold %d
+DECK_FLOOR,Floor %d,Piso %d,Ebene %d,Floor %d,Floor %d,Floor %d,Floor %d
+DECK_BEST,Best floor %d,Mejor piso %d,Beste Ebene %d,Best floor %d,Best floor %d,Best floor %d,Best floor %d
+DECK_SEED,Seed %d,Semilla %d,Seed %d,Seed %d,Seed %d,Seed %d,Seed %d
+DECK_NODE_COMBAT,Combat,Combate,Kampf,Combat,Combat,Combat,Combat
+DECK_NODE_ELITE,Elite,Elite,Elite,Elite,Elite,Elite,Elite
+DECK_NODE_SHOP,Shop,Tienda,Laden,Shop,Shop,Shop,Shop
+DECK_NODE_REST,Rest,Descanso,Rast,Rest,Rest,Rest,Rest
+DECK_NODE_TREASURE,Treasure,Tesoro,Schatz,Treasure,Treasure,Treasure,Treasure
+DECK_NODE_BOSS,Boss,Jefe,Boss,Boss,Boss,Boss,Boss
+DECK_REWARD_TITLE,Choose a card,Elige una carta,Wähle eine Karte,Choose a card,Choose a card,Choose a card,Choose a card
+DECK_SKIP,Skip,Saltar,Überspringen,Skip,Skip,Skip,Skip
+DECK_SHOP_TITLE,Shop,Tienda,Laden,Shop,Shop,Shop,Shop
+DECK_BUY_CARD,Buy %s (%d),Comprar %s (%d),Kaufen %s (%d),Buy %s (%d),Buy %s (%d),Buy %s (%d),Buy %s (%d)
+DECK_BUY_RELIC,Buy relic %s (%d),Comprar reliquia %s (%d),Relikt %s (%d),Buy relic %s (%d),Buy relic %s (%d),Buy relic %s (%d),Buy relic %s (%d)
+DECK_REMOVE,Remove a card (%d),Quitar una carta (%d),Karte entfernen (%d),Remove a card (%d),Remove a card (%d),Remove a card (%d),Remove a card (%d)
+DECK_LEAVE,Leave,Salir,Verlassen,Leave,Leave,Leave,Leave
+DECK_REST_TITLE,Rest site,Sitio de descanso,Rastplatz,Rest site,Rest site,Rest site,Rest site
+DECK_REST_HEAL,Heal %d HP,Curar %d PV,Heile %d LP,Heal %d HP,Heal %d HP,Heal %d HP,Heal %d HP
+DECK_TREASURE,You found %s.,Encontraste %s.,Du findest %s.,You found %s.,You found %s.,You found %s.,You found %s.
+DECK_NO_RELIC,No relics left. +50 gold.,No quedan reliquias. +50 de oro.,Keine Relikte mehr. +50 Gold.,No relics left. +50 gold.,No relics left. +50 gold.,No relics left. +50 gold.,No relics left. +50 gold.
+DECK_RUN_WIN,The Ash Titan falls. Run complete.,El Titán cae. Partida completa.,Der Asche-Titan fällt. Lauf geschafft.,The Ash Titan falls. Run complete.,The Ash Titan falls. Run complete.,The Ash Titan falls. Run complete.,The Ash Titan falls. Run complete.
+DECK_RUN_LOSE,Your run ends.,Tu partida termina.,Dein Lauf endet.,Your run ends.,Your run ends.,Your run ends.,Your run ends.
+DECK_MENU,Main menu,Menú principal,Hauptmenü,Main menu,Main menu,Main menu,Main menu
+DECK_BURNING,Burning Blood heals %d.,Sangre ardiente cura %d.,Brennendes Blut heilt %d.,Burning Blood heals %d.,Burning Blood heals %d.,Burning Blood heals %d.,Burning Blood heals %d.
+DECK_RELIC_GAIN,Relic gained: %s.,Reliquia obtenida: %s.,Relikt erhalten: %s.,Relic gained: %s.,Relic gained: %s.,Relic gained: %s.,Relic gained: %s.
+DECK_RELIC_BURNING,Burning Blood,Sangre ardiente,Brennendes Blut,Burning Blood,Burning Blood,Burning Blood,Burning Blood
+DECK_RELIC_VAJRA,Vajra,Vajra,Vajra,Vajra,Vajra,Vajra,Vajra
+DECK_RELIC_ANCHOR,Anchor,Ancla,Anker,Anchor,Anchor,Anchor,Anchor
+DECK_RELIC_BAG,Bag of Preparation,Bolsa de preparación,Vorbereitungsbeutel,Bag of Preparation,Bag of Preparation,Bag of Preparation,Bag of Preparation
+DECK_RELIC_ORICHALCUM,Orichalcum,Oricalco,Orichalcum,Orichalcum,Orichalcum,Orichalcum,Orichalcum
+DECK_RELIC_BURNING_DESC,After each combat you win heal 6 HP.,Tras cada combate ganado cura 6 PV.,Nach jedem gewonnenen Kampf heile 6 LP.,After each combat you win heal 6 HP.,After each combat you win heal 6 HP.,After each combat you win heal 6 HP.,After each combat you win heal 6 HP.
+DECK_RELIC_VAJRA_DESC,At the start of each combat gain 1 Strength.,Al empezar cada combate gana 1 de Fuerza.,Zu Kampfbeginn +1 Stärke.,At the start of each combat gain 1 Strength.,At the start of each combat gain 1 Strength.,At the start of each combat gain 1 Strength.,At the start of each combat gain 1 Strength.
+DECK_RELIC_ANCHOR_DESC,At the start of each combat gain 10 Block.,Al empezar cada combate gana 10 de Bloqueo.,Zu Kampfbeginn +10 Block.,At the start of each combat gain 10 Block.,At the start of each combat gain 10 Block.,At the start of each combat gain 10 Block.,At the start of each combat gain 10 Block.
+DECK_RELIC_BAG_DESC,Draw 2 extra cards on turn 1.,Roba 2 cartas extra en el turno 1.,Ziehe am Zug 1 zwei Karten mehr.,Draw 2 extra cards on turn 1.,Draw 2 extra cards on turn 1.,Draw 2 extra cards on turn 1.,Draw 2 extra cards on turn 1.
+DECK_RELIC_ORICHALCUM_DESC,If you end your turn with 0 Block gain 6 Block.,Si terminas el turno con 0 de Bloqueo gana 6.,Mit 0 Block am Zugende +6 Block.,If you end your turn with 0 Block gain 6 Block.,If you end your turn with 0 Block gain 6 Block.,If you end your turn with 0 Block gain 6 Block.,If you end your turn with 0 Block gain 6 Block.
+      </script>
+    </li>
+    <li><strong>Continue on the menu.</strong> Open <code>res://ui/main_menu.tscn</code>. Select the parent of the existing Play button (the VBox or the menu root). Add a <code>Button</code> named <code>ContinueButton</code>. Drag it so it sits directly under Play. Set Text to <code>Continue run</code>. Right-click → <kbd class="ui">Access as Unique Name</kbd>. Save the scene.</li>
+    <li><strong>Menu script, additive.</strong> Open <code>res://ui/main_menu.gd</code>. Do not delete the Play handler. Add this variable with the other <code>@onready</code> lines. Inside the existing <code>_ready</code>, add the three lines at the bottom of that function. If there is no <code>_ready</code>, add the function as written. Add <code>_on_continue_pressed</code> at the bottom of the file.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://ui/main_menu.gd">
+@onready var continue_button: Button = %ContinueButton
+
+
+func _ready() -> void:
+    continue_button.text = tr("DECK_CONTINUE")
+    continue_button.visible = SaveManager.has_slot(&"run")
+    continue_button.pressed.connect(_on_continue_pressed)
+
+
+func _on_continue_pressed() -> void:
+    SaveManager.set_value("deck_continue", true)
+    SaveManager.flush()
+    SceneRouter.go_to(SceneRouter.GAME_SCENE)
+      </script>
+      If <code>_ready</code> already exists, paste only the three lines that touch <code>continue_button</code> into it, and paste <code>_on_continue_pressed</code> once. Two <code>_ready</code> functions will not compile.</li>
+    <li><strong>Instance screens.</strong> Open <code>res://game/game.tscn</code>. Select <code>Game</code>. For each scene, click the chain-link <kbd class="ui">Instantiate Child Scene</kbd> icon and pick the file. Then select the instance, Anchor menu → <kbd class="ui">Full Rect</kbd>, right-click → <kbd class="ui">Access as Unique Name</kbd>. Order under <code>Game</code>: <code>map_screen.tscn</code> (<code>%MapScreen</code>), the existing <code>%Combat</code>, <code>reward_screen.tscn</code>, <code>shop_screen.tscn</code>, <code>rest_screen.tscn</code>, <code>result_screen.tscn</code>. Leave <code>PauseMenu</code> last so it draws on top.</li>
+    <li><strong>Confirm panel.</strong> Select <code>Game</code>, add a <code>Panel</code> named <code>Confirm</code>. Anchor menu → <kbd class="ui">Center</kbd>. Custom Minimum Size <code>520 x 180</code>. In the Inspector, set Position so the panel sits in the middle of the indigo frame (about <code>380, 270</code> if the anchors are centered and offsets are half the size; if the panel is stuck in the corner, choose Center again). Add child <code>Label</code> <code>ConfirmLabel</code>, Full Rect, offsets 16, autowrap Word Smart, unique. Add <code>Button</code> <code>ContinueRun</code> at the bottom-left of the panel, text <code>Continue run</code>, unique. Add <code>Button</code> <code>NewRun</code> to its right, text <code>New run</code>, unique. In the Inspector, turn <kbd class="ui">Visible</kbd> off on <code>Confirm</code> so a new game does not show it until code asks.</li>
+    <li><strong>Run script.</strong> Open <code>res://game/game.gd</code> and replace the whole file. This is the director. Combat rules stay in <code>battle.gd</code>.
+      <details>
+        <summary>game.gd (replace the whole file)</summary>
+        <script type="text/x-code" data-lang="gdscript" data-file="res://game/game.gd">
+extends Control
+
+const START_HP: int = 70
+const START_GOLD: int = 99
+const CARD_PRICE: int = 50
+const RELIC_PRICE: int = 140
+const REMOVE_PRICE: int = 75
+const HEAL_RATIO: float = 0.30
+const BURNING_HEAL: int = 6
+const GOLD_COMBAT: int = 20
+const GOLD_ELITE: int = 40
+const GOLD_BOSS: int = 25
+const PITY_GOLD: int = 50
+
+@onready var map_screen: MapScreen = %MapScreen
+@onready var combat: Combat = %Combat
+@onready var reward_screen: RewardScreen = %RewardScreen
+@onready var shop_screen: ShopScreen = %ShopScreen
+@onready var rest_screen: RestScreen = %RestScreen
+@onready var result_screen: ResultScreen = %ResultScreen
+
+var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var seed_value: int = 0
+var hp: int = START_HP
+var max_hp: int = START_HP
+var gold: int = START_GOLD
+var deck: Array[String] = []
+var relics: Array[String] = []
+var cleared: Array[int] = []
+var available: Array[int] = []
+var current_node: int = -1
+var pending: String = "map"
+var reward_cards: Array[String] = []
+var reward_gold: int = 0
+var reward_relic: String = ""
+var shop_cards: Array[String] = []
+var shop_relic: String = ""
+
+
+func _ready() -> void:
+    Database.load_all()
+    map_screen.node_chosen.connect(_on_node_chosen)
+    combat.battle_ended.connect(_on_battle_ended)
+    combat.battle.state_changed.connect(_on_combat_changed)
+    reward_screen.picked.connect(_on_reward_picked)
+    shop_screen.buy_card.connect(_on_buy_card)
+    shop_screen.buy_relic.connect(_on_buy_relic)
+    shop_screen.remove_card.connect(_on_remove_card)
+    shop_screen.leave_shop.connect(_on_leave_shop)
+    rest_screen.healed.connect(_on_rest)
+    result_screen.closed.connect(_on_result_closed)
+    %ContinueRun.pressed.connect(_on_continue_run)
+    %NewRun.pressed.connect(_on_new_run_pressed)
+    %ConfirmLabel.text = tr("DECK_SAVED_PROMPT")
+    %ContinueRun.text = tr("DECK_CONTINUE")
+    %NewRun.text = tr("DECK_NEW_RUN")
+    var cont: bool = bool(SaveManager.get_value("deck_continue", false))
+    SaveManager.set_value("deck_continue", false)
+    SaveManager.flush()
+    if cont and SaveManager.has_slot(&"run"):
+        _load_run()
+    elif SaveManager.has_slot(&"run"):
+        _show_confirm()
+    else:
+        _new_run()
+
+
+func _show_confirm() -> void:
+    _hide_screens()
+    %Confirm.visible = true
+
+
+func _on_continue_run() -> void:
+    %Confirm.visible = false
+    _load_run()
+
+
+func _on_new_run_pressed() -> void:
+    %Confirm.visible = false
+    _new_run()
+
+
+func _new_run() -> void:
+    _rng.randomize()
+    seed_value = _rng.randi()
+    _rng.seed = seed_value
+    hp = START_HP
+    max_hp = START_HP
+    gold = START_GOLD
+    deck = Database.starter_deck()
+    relics.clear()
+    cleared.clear()
+    available.clear()
+    available.append(0)
+    available.append(1)
+    current_node = -1
+    pending = "map"
+    reward_cards.clear()
+    reward_gold = 0
+    reward_relic = ""
+    shop_cards.clear()
+    shop_relic = ""
+    Events.game_started.emit()
+    _save_run()
+    _show_map()
+
+
+func _on_node_chosen(node_id: int) -> void:
+    if not available.has(node_id):
+        return
+    current_node = node_id
+    var node: Dictionary = MapCatalog.get_node(node_id)
+    var kind: String = str(node.get("type", ""))
+    if kind == "combat" or kind == "elite" or kind == "boss":
+        reward_gold = _gold_for(kind)
+        reward_relic = ""
+        var enemies: Array[String] = []
+        var raw_enemies: Variant = node.get("enemies", [])
+        if raw_enemies is Array:
+            for raw in raw_enemies:
+                enemies.append(str(raw))
+        pending = "combat"
+        combat.start_battle(deck, enemies, relics, hp, max_hp)
+        _save_run()
+        _show_only(combat)
+    elif kind == "shop":
+        _roll_shop()
+        pending = "shop"
+        _save_run()
+        _show_shop()
+    elif kind == "rest":
+        pending = "rest"
+        _save_run()
+        _show_rest()
+    elif kind == "treasure":
+        reward_relic = _grant_relic()
+        pending = "treasure"
+        _mark_cleared()
+        _save_run()
+        _show_treasure()
+
+
+func _on_combat_changed() -> void:
+    if pending != "combat":
+        return
+    if combat.battle.phase != Battle.Phase.PLAYER:
+        return
+    hp = combat.current_hp()
+    _save_run()
+
+
+func _on_battle_ended(victory: bool) -> void:
+    if pending != "combat":
+        return
+    if not victory:
+        hp = 0
+        _end_run(false)
+        return
+    var gained: int = reward_gold
+    gold += gained
+    reward_gold = 0
+    if relics.has("burning_blood"):
+        var before: int = combat.current_hp()
+        hp = mini(max_hp, before + BURNING_HEAL)
+    else:
+        hp = combat.current_hp()
+    var kind: String = str(MapCatalog.get_node(current_node).get("type", ""))
+    reward_relic = ""
+    if kind == "elite" or kind == "boss":
+        reward_relic = _grant_relic()
+    reward_cards = _roll_cards(3)
+    pending = "reward"
+    _mark_cleared()
+    _save_run()
+    _show_reward()
+
+
+func _on_reward_picked(card_id: String) -> void:
+    if card_id != "":
+        deck.append(card_id)
+    reward_cards.clear()
+    var kind: String = str(MapCatalog.get_node(current_node).get("type", ""))
+    if kind == "boss":
+        _end_run(true)
+        return
+    pending = "map"
+    _save_run()
+    _show_map()
+
+
+func _on_buy_card(card_id: String) -> void:
+    if gold < CARD_PRICE:
+        return
+    var index: int = shop_cards.find(card_id)
+    if index < 0:
+        return
+    shop_cards.remove_at(index)
+    deck.append(card_id)
+    gold -= CARD_PRICE
+    _save_run()
+    _show_shop()
+
+
+func _on_buy_relic() -> void:
+    if shop_relic == "" or gold < RELIC_PRICE:
+        return
+    if relics.has(shop_relic):
+        return
+    relics.append(shop_relic)
+    shop_relic = ""
+    gold -= RELIC_PRICE
+    _save_run()
+    _show_shop()
+
+
+func _on_remove_card(card_id: String) -> void:
+    if card_id == "":
+        _show_shop()
+        return
+    if gold < REMOVE_PRICE:
+        return
+    var index: int = deck.find(card_id)
+    if index < 0:
+        return
+    deck.remove_at(index)
+    gold -= REMOVE_PRICE
+    _save_run()
+    _show_shop()
+
+
+func _on_leave_shop() -> void:
+    _mark_cleared()
+    pending = "map"
+    _save_run()
+    _show_map()
+
+
+func _on_rest() -> void:
+    hp = mini(max_hp, hp + _heal_amount())
+    _mark_cleared()
+    pending = "map"
+    _save_run()
+    _show_map()
+
+
+func _on_result_closed() -> void:
+    if pending == "victory" or pending == "defeat":
+        SceneRouter.go_to(SceneRouter.MAIN_MENU_SCENE)
+        return
+    pending = "map"
+    _save_run()
+    _show_map()
+
+
+func _end_run(victory: bool) -> void:
+    var floor_no: int = _floor_reached()
+    var best: int = int(SaveManager.get_value("deck_best_floor", 0))
+    if floor_no > best:
+        SaveManager.set_value("deck_best_floor", floor_no)
+        SaveManager.flush()
+    SaveManager.delete_slot(&"run")
+    pending = "victory" if victory else "defeat"
+    if not victory:
+        Events.game_over.emit(floor_no)
+    var title: String = tr("DECK_RUN_WIN") if victory else tr("DECK_RUN_LOSE")
+    var body: String = tr("DECK_FLOOR") % floor_no
+    result_screen.show_message(title, body, tr("DECK_MENU"))
+    _show_only(result_screen)
+
+
+func _show_map() -> void:
+    var best: int = int(SaveManager.get_value("deck_best_floor", 0))
+    map_screen.show_map(cleared, available, hp, gold, best, seed_value)
+    _show_only(map_screen)
+
+
+func _show_reward() -> void:
+    reward_screen.show_offer(reward_cards, reward_relic)
+    _show_only(reward_screen)
+
+
+func _show_shop() -> void:
+    shop_screen.show_shop(gold, shop_cards, shop_relic, deck, CARD_PRICE, RELIC_PRICE, REMOVE_PRICE)
+    _show_only(shop_screen)
+
+
+func _show_rest() -> void:
+    rest_screen.show_rest(hp, max_hp, _heal_amount())
+    _show_only(rest_screen)
+
+
+func _show_treasure() -> void:
+    var body: String = tr("DECK_NO_RELIC")
+    if reward_relic != "":
+        var key: String = Database.relic_name_key(reward_relic)
+        var relic_name: String = reward_relic if key == "" else tr(key)
+        body = tr("DECK_TREASURE") % relic_name
+    result_screen.show_message(tr("DECK_NODE_TREASURE"), body, tr("DECK_LEAVE"))
+    _show_only(result_screen)
+
+
+func _show_only(screen: Control) -> void:
+    _hide_screens()
+    screen.visible = true
+    screen.process_mode = Node.PROCESS_MODE_INHERIT
+
+
+func _hide_screens() -> void:
+    _hide_one(map_screen)
+    _hide_one(combat)
+    _hide_one(reward_screen)
+    _hide_one(shop_screen)
+    _hide_one(rest_screen)
+    _hide_one(result_screen)
+    %Confirm.visible = false
+
+
+func _hide_one(screen: Control) -> void:
+    screen.visible = false
+    screen.process_mode = Node.PROCESS_MODE_DISABLED
+
+
+func _save_run() -> void:
+    var payload: Dictionary = {
+        "hp": hp,
+        "max_hp": max_hp,
+        "gold": gold,
+        "seed": seed_value,
+        "rng_state": int(_rng.state),
+        "deck": _copy_strings(deck),
+        "relics": _copy_strings(relics),
+        "cleared": _copy_ints(cleared),
+        "available": _copy_ints(available),
+        "current_node": current_node,
+        "pending": pending,
+        "reward_cards": _copy_strings(reward_cards),
+        "reward_gold": reward_gold,
+        "reward_relic": reward_relic,
+        "shop_cards": _copy_strings(shop_cards),
+        "shop_relic": shop_relic,
+    }
+    if pending == "combat":
+        payload["combat"] = combat.export_battle()
+    if not SaveManager.save_slot(&"run", payload):
+        push_error("Deckbuilder save_slot failed")
+
+
+func _load_run() -> void:
+    var data: Dictionary = SaveManager.load_slot(&"run", {})
+    if data.is_empty() or not data.has("hp"):
+        _new_run()
+        return
+    hp = int(data.get("hp", START_HP))
+    max_hp = int(data.get("max_hp", START_HP))
+    gold = int(data.get("gold", START_GOLD))
+    seed_value = int(data.get("seed", 0))
+    _rng.seed = seed_value
+    _rng.state = int(data.get("rng_state", 0))
+    deck = _as_strings(data.get("deck", []))
+    relics = _as_strings(data.get("relics", []))
+    cleared = _as_ints(data.get("cleared", []))
+    available = _as_ints(data.get("available", []))
+    current_node = int(data.get("current_node", -1))
+    pending = str(data.get("pending", "map"))
+    reward_cards = _as_strings(data.get("reward_cards", []))
+    reward_gold = int(data.get("reward_gold", 0))
+    reward_relic = str(data.get("reward_relic", ""))
+    shop_cards = _as_strings(data.get("shop_cards", []))
+    shop_relic = str(data.get("shop_relic", ""))
+    if pending == "combat" and data.get("combat") is Dictionary:
+        combat.load_battle(data["combat"])
+        _show_only(combat)
+    elif pending == "reward":
+        _show_reward()
+    elif pending == "shop":
+        _show_shop()
+    elif pending == "rest":
+        _show_rest()
+    elif pending == "treasure":
+        _show_treasure()
+    else:
+        pending = "map"
+        _show_map()
+
+
+func _mark_cleared() -> void:
+    if current_node < 0:
+        return
+    if not cleared.has(current_node):
+        cleared.append(current_node)
+    var node: Dictionary = MapCatalog.get_node(current_node)
+    available.clear()
+    var next_ids: Variant = node.get("next", [])
+    if next_ids is Array:
+        for raw in next_ids:
+            available.append(int(raw))
+
+
+func _roll_shop() -> void:
+    shop_cards = _roll_cards(3)
+    shop_relic = ""
+    var options: Array[String] = []
+    for relic_id in Database.RELIC_IDS:
+        if not relics.has(relic_id):
+            options.append(relic_id)
+    if not options.is_empty():
+        shop_relic = options[_rng.randi_range(0, options.size() - 1)]
+
+
+func _roll_cards(count: int) -> Array[String]:
+    var bag: Array[String] = []
+    for card_id in Database.REWARD_IDS:
+        bag.append(card_id)
+    for i in range(bag.size() - 1, 0, -1):
+        var j: int = _rng.randi_range(0, i)
+        var swap: String = bag[i]
+        bag[i] = bag[j]
+        bag[j] = swap
+    var picked: Array[String] = []
+    var n: int = mini(count, bag.size())
+    for index in n:
+        picked.append(bag[index])
+    return picked
+
+
+func _grant_relic() -> String:
+    var options: Array[String] = []
+    for relic_id in Database.RELIC_IDS:
+        if not relics.has(relic_id):
+            options.append(relic_id)
+    if options.is_empty():
+        gold += PITY_GOLD
+        return ""
+    var pick: String = options[_rng.randi_range(0, options.size() - 1)]
+    relics.append(pick)
+    return pick
+
+
+func _gold_for(kind: String) -> int:
+    if kind == "elite":
+        return GOLD_ELITE
+    if kind == "boss":
+        return GOLD_BOSS
+    if kind == "combat":
+        return GOLD_COMBAT
+    return 0
+
+
+func _heal_amount() -> int:
+    var room: int = max_hp - hp
+    var planned: int = int(floor(float(max_hp) * HEAL_RATIO))
+    return mini(room, planned)
+
+
+func _floor_reached() -> int:
+    if current_node < 0:
+        return 1
+    var node: Dictionary = MapCatalog.get_node(current_node)
+    if node.is_empty():
+        return 1
+    return int(node["row"]) + 1
+
+
+func _copy_strings(source: Array[String]) -> Array[String]:
+    var out: Array[String] = []
+    for item in source:
+        out.append(item)
+    return out
+
+
+func _copy_ints(source: Array[int]) -> Array[int]:
+    var out: Array[int] = []
+    for item in source:
+        out.append(item)
+    return out
+
+
+func _as_strings(value: Variant) -> Array[String]:
+    var out: Array[String] = []
+    if value is Array:
+        for item in value:
+            out.append(str(item))
+    return out
+
+
+func _as_ints(value: Variant) -> Array[int]:
+    var out: Array[int] = []
+    if value is Array:
+        for item in value:
+            out.append(int(item))
+    return out
+        </script>
+      </details>
+      The <code>int()</code> calls in <code>_load_run</code> are the ones that must stay.</li>
+  </ol>
+  <div class="checkpoint"><p>Press <kbd>F8</kbd> if a game is running, then <kbd>F5</kbd>. The menu's Continue button is hidden (no slot yet). Play opens a map with two enabled rooms at the bottom, Combat labels, and lines running upward. Click the left Combat. Jaw Worm appears with the card hand from Day 25. End the turn or play one Strike. Then quit with the window X.</p></div>
+
+  <h2 id="build-4">Block 5: Resume, balance, release</h2>
+  <ol class="steps">
+    <li><strong>Read the file.</strong> Press <kbd>F5</kbd> again. Continue run is visible. Click it. You should be in the same fight: same enemy HP, same energy, same hand size. The on-disk file is under <code>%APPDATA%\Godot\app_userdata\Deckbuilder\saves\run.json</code> (paste that in Explorer's address bar). Open it. Energy and HP have decimals (<code>2.0</code>). The game still treats them as ints because <code>_load_run</code> and <code>from_dictionary</code> call <code>int()</code>.</li>
+    <li><strong>Replace versus resume.</strong> Return to the menu with pause if your pause menu has a main-menu button, or stop with <kbd>F8</kbd> and <kbd>F5</kbd>. Click Play, not Continue. The confirm panel appears. New run replaces the slot as soon as the fresh map saves. Continue run on that panel reloads the old fight. Pick one and finish a room.</li>
+    <li><strong>One of each room.</strong> From a fresh run (99 gold, 70 HP): win or flee upward until you have seen a shop (buy nothing you cannot afford; Remove lists the deck), a rest (Heal 21 HP after you have lost life; at full HP the button says Leave and still exits), and a treasure (a relic name, then Leave). Elite gold is 40. On the row that has the second rest, the left button is Rest and the right button is two Jaw Worms. The rest skips that fight. Both paths then reach the upper shop and the boss.</li>
+    <li><strong>Anchor check.</strong> When a shop or treasure offers Anchor, take it. The next fight's log contains <code>Anchor: +10 Block.</code> and your Block line is 10 before you play a card. If the log says it and Block is 0, Block was cleared after the relic instead of before. That order is already in <code>_begin_player_turn</code>.</li>
+    <li><strong>Locale.</strong> Open Settings from the menu (Ship Kit). Switch the locale to <code>es</code>. Start a fight. The End turn button reads <code>Fin del turno</code> and Strike's name reads <code>Golpe</code>. Switch back to <code>en</code> when you are done. If the keys stay as <code>DECK_END_TURN</code>, reimport <code>translations.csv</code>.</li>
+    <li><strong>Balance knobs, and only these.</strong> Play the opening Jaw Worm three times with the starter deck. A careful fight (Bash plus Strikes, Defend the 11) should end around 40–55 HP. If you lose more than one of the three, open <code>jaw_worm.tres</code> and set the first intent's Damage from 11 to 9. Do not raise energy above 3, do not raise starting HP, and do not change shop prices. Cultist's intent should read Attack 9 (6 plus 3 starting Strength). The Ash Titan is allowed to end runs; that room is the last one.</li>
+    <li><strong>Credits line.</strong> Open <code>res://licenses/THIRD_PARTY.txt</code>. At the bottom, add this paragraph and save. Cards and enemies are <code>ColorRect</code> and <code>Label</code> nodes. There is no sprite file to credit.
+      <script type="text/x-code" data-lang="text" data-file="res://licenses/THIRD_PARTY.txt">
+Deckbuilder draws cards and enemies with Godot ColorRect and Label nodes. No external sprite pack is required.
+
+Godot Engine, see GODOT_LICENSE.txt and GODOT_COPYRIGHT.txt.
+      </script>
+    </li>
+    <li><strong>Package name.</strong> <kbd class="menu">Project &gt; Export</kbd>. Select the Android preset from Day 16. Set <kbd class="ui">Package &gt; Unique Name</kbd> to <code>com.yourname.deckbuilder</code>, with your own name in place of <code>yourname</code>. The Windows preset has no package name. Close the dialog and save the export presets if Godot asks.</li>
+    <li><strong>Release builds.</strong> Follow <a href="../days/day16.html">Day 16</a> again for this project: install or reuse the export templates, export a Windows release build, and install an Android debug build on a phone or emulator. Confirm both open the menu in landscape, Play reaches the map, and Continue returns to a fight you quit on purpose.</li>
+  </ol>
+  <div class="callout external"><span class="callout-title">External resource (optional audio)</span>
+    <p>Verify on the official page; pack names stay, filenames change. If you want a click, open <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a>, search Interface Sounds, and pick any short click by ear. Import it yourself and call <code>Audio.play_sfx</code> from the drop handler. Then add one line to <code>THIRD_PARTY.txt</code>: Kenney Interface Sounds, CC0, https://kenney.nl/assets. The game is complete with silence. Settings already drives the Master, Music, and SFX buses.</p></div>
+  <div class="checkpoint"><p>Continue restores a mid-fight hand. New run asks before it replaces that file. Best floor remains after a loss (check by winning or dying, returning to the menu, and starting a new map: the stats line shows Best floor greater than 0). The Windows export and the Android debug build both reach the map.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Two <code>_ready</code> functions in <code>main_menu.gd</code>.</strong> Add the continue lines to the existing function. The parser error names the duplicate.</li>
+    <li><strong>Ints left as floats.</strong> Phase becomes unreadable, gold comparisons fail in surprising ways, or <code>available.has(node_id)</code> misses because one side is <code>0</code> and the other is <code>0.0</code>. Cast on load. <code>has</code> on ints is exact.</li>
+    <li><strong>Seed assigned after state.</strong> <code>rng.seed = ...</code> wipes <code>state</code>. Restore state second or the next shop rerolls.</li>
+    <li><strong>Clearing the room when you enter a fight.</strong> Quit-and-continue would skip the fight. <code>_mark_cleared</code> runs on victory, on leaving the shop, on resting, and when the treasure is granted.</li>
+    <li><strong>Healing Burning Blood on load.</strong> The heal is applied once when the fight becomes a reward, then saved. Loading a reward must not heal again.</li>
+    <li><strong>Scanning <code>res://</code> for relics.</strong> Keep <code>RELIC_PATHS</code>. An export that cannot see <code>.tres</code> names still <code>load()</code>s a path you wrote down.</li>
+    <li><strong>Main scene pointed at the map.</strong> <kbd>F5</kbd> opens the menu. Continue is a button there, not a second main scene.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 30 min)</h2>
+  <div class="challenge">
+    <h3>One relic of your own</h3>
+    <p>Add <code>odd_mushroom.tres</code> (id <code>odd_mushroom</code>) and a sixth string in <code>Database.RELIC_IDS</code> and <code>RELIC_PATHS</code>. In <code>Battle._compute_damage</code>, if the attacker is the player and the relic list contains <code>odd_mushroom</code>, add 2 to <code>base</code> before Strength. Give it translation keys and a one-line shop description: "Your attacks deal +2 damage."</p>
+    <p>Hint: do the addition in one function so the intent preview and the real hit stay equal. A bonus applied only inside <code>_deal_damage</code> will lie on the enemy panel.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="2">
+      <p>A saved fight loads with energy <code>2.0</code>. What keeps the energy variable an int?</p>
+      <ul>
+        <li><code>SaveManager</code> refuses floats, so this file cannot exist.</li>
+        <li>GDScript turns every JSON float back into an int automatically.</li>
+        <li><code>int()</code> around each loaded counter in <code>_load_run</code> and <code>Battle.from_dictionary</code>.</li>
+        <li>Storing energy in a <code>Vector2</code>.</li>
+      </ul>
+      <p class="explain">The slot is JSON. Numbers come back as floats. The casts are in the load functions, not in the autoload.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Best floor should remain after the run file is deleted. Which call is that?</p>
+      <ul>
+        <li><code>save_slot(&amp;"run", {"best": n})</code> after <code>delete_slot</code>.</li>
+        <li><code>set_value("deck_best_floor", n)</code> and <code>flush()</code>, then <code>delete_slot(&amp;"run")</code>.</li>
+        <li><code>Settings.set_volume</code>.</li>
+        <li>A second autoload named <code>Profile</code>.</li>
+      </ul>
+      <p class="explain">The run slot is the climb. The profile key is the record. Deleting the slot does not clear <code>set_value</code> data. <code>flush</code> writes the profile now, including when the app is about to close.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>Why are relic <code>.tres</code> paths listed in <code>RELIC_PATHS</code> instead of <code>DirAccess.get_files_at("res://data/relics")</code>?</p>
+      <ul>
+        <li>An exported project does not list imported <code>.tres</code> files from <code>res://</code> the way the editor does. <code>load</code> of a known path still works.</li>
+        <li><code>DirAccess</code> cannot read <code>res://</code> at all.</li>
+        <li>Resources are not allowed in subfolders.</li>
+        <li><code>get_files_at</code> randomizes order, which would reroll shops.</li>
+      </ul>
+      <p class="explain">The class reference for <code>get_files_at</code> says exported <code>res://</code> listings are <code>.gd</code>, <code>.import</code>, and similar, plus <code>.remap</code> names depending on the text-to-binary export setting. A written path avoids that.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>You quit on the shop, then Continue. The three cards are different. What failed?</p>
+      <ul>
+        <li>Anchor cleared the shop.</li>
+        <li>JSON cannot store strings.</li>
+        <li><code>Array.shuffle</code> was seeded, so this is expected.</li>
+        <li>The offer was rolled again on load instead of reading <code>shop_cards</code> and <code>shop_relic</code> from the slot.</li>
+      </ul>
+      <p class="explain">The map is code and can be rebuilt. The offer is random, so it is stored. Load shows that stock. The next roll uses the saved RNG state only when something new is generated.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Anchor says +10 Block at the start of combat. Your Block line is 0 on turn 1. Which order matches the code you shipped?</p>
+      <ul>
+        <li>Add Anchor's Block, then set Block to 0 because the turn started.</li>
+        <li>Set Block to 0, then, on turn 1 only, add 10 if the relic id is present.</li>
+        <li>Add 10 Block at the end of the enemy turn so the player never sees it.</li>
+        <li>Anchor replaces energy, not Block.</li>
+      </ul>
+      <p class="explain"><code>_begin_player_turn</code> clears Block first. Anchor runs after that clear, and only when <code>turn_number</code> is 1. The next turn clears it again, which is what you want: the Block existed for the first enemy phase.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/io/saving_games.html" target="_blank" rel="noopener">Saving games</a>: why this project still goes through one autoload instead of a second file format.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_json.html" target="_blank" rel="noopener">JSON</a>: numbers become floats. That is the <code>int()</code> rule.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_randomnumbergenerator.html" target="_blank" rel="noopener">RandomNumberGenerator</a>: set <code>seed</code>, then <code>state</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_diraccess.html" target="_blank" rel="noopener">DirAccess</a>: the <code>get_files_at</code> note about exported <code>res://</code> folders.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/i18n/localization_using_spreadsheets.html" target="_blank" rel="noopener">Localization using spreadsheets</a>: the <code>translations.csv</code> columns.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_canvasitem.html" target="_blank" rel="noopener">CanvasItem</a>: <code>draw_line</code> and <code>queue_redraw</code> for the map.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/rendering/renderers.html" target="_blank" rel="noopener">Renderers</a>: why this 2D UI project stays on Mobile.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <p>This is the store-ready list for Deckbuilder. Tick it when you have seen it yourself.</p>
+  <ul class="checklist">
+    <li>Play from the main menu opens the branching map. Continue resumes a saved run, including a half-played fight.</li>
+    <li>Play while a run exists asks before it replaces the slot.</li>
+    <li>Fights still use energy, piles, intents, drag-and-drop, and the twelve cards. Rewards, shop, rest, treasure, relics, and the Ash Titan all open.</li>
+    <li>Best floor is kept with <code>set_value</code> after the run slot is deleted.</li>
+    <li><code>DECK_</code> strings show in English, Spanish, and German.</li>
+    <li>Pause, Settings (volumes, fullscreen, locale), and the credits screen from the Ship Kit still work. <code>THIRD_PARTY.txt</code> says the cards are ColorRects and Labels.</li>
+    <li>Viewport 1280×720, stretch <code>canvas_items</code>, aspect <code>expand</code>, Mobile renderer, landscape, package <code>com.yourname.deckbuilder</code>.</li>
+    <li>A Windows release export and an Android debug build both reach the map, using the steps linked from <a href="../days/day16.html">Day 16</a>.</li>
+  </ul>
+
+  <h3>File map</h3>
+  <table>
+    <tr><th>Path</th><th>Role</th></tr>
+    <tr><td><code>res://data/card_data.gd</code></td><td><code>CardData</code> resource, 12 <code>.tres</code> files in <code>data/cards</code></td></tr>
+    <tr><td><code>res://data/card_instance.gd</code></td><td>Runtime card in a pile</td></tr>
+    <tr><td><code>res://data/intent_step.gd</code></td><td>One beat of an enemy pattern</td></tr>
+    <tr><td><code>res://data/enemy_data.gd</code></td><td>Four enemies in <code>data/enemies</code></td></tr>
+    <tr><td><code>res://data/relic_data.gd</code></td><td>Five relics in <code>data/relics</code></td></tr>
+    <tr><td><code>res://data/database.gd</code></td><td>Path lists, starter deck, reward ids, relic ids</td></tr>
+    <tr><td><code>res://game/battle.gd</code></td><td>Rules: piles, energy, damage, intents, relic hooks</td></tr>
+    <tr><td><code>res://game/game.gd</code></td><td>Run director, save slot <code>run</code></td></tr>
+    <tr><td><code>res://game/combat/</code></td><td><code>Combat</code>, <code>CardView</code>, <code>HandView</code>, <code>EnemyView</code>, <code>DropZone</code></td></tr>
+    <tr><td><code>res://game/map/</code></td><td><code>MapCatalog</code>, <code>MapScreen</code></td></tr>
+    <tr><td><code>res://game/reward/</code> <code>shop/</code> <code>rest/</code> <code>result/</code></td><td>The four non-combat screens</td></tr>
+    <tr><td><code>res://ui/main_menu.tscn</code></td><td>Ship Kit menu plus <code>ContinueButton</code></td></tr>
+    <tr><td><code>autoload/</code></td><td>Untouched: <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, <code>SceneRouter</code></td></tr>
+  </table>
+  <p><strong>Tomorrow:</strong> Day 27 starts Deep Digger, a different project. Deckbuilder stays in <code>C:\GodotProjects\deckbuilder</code>.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

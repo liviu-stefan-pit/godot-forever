@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 12 - Torchlight Dungeon I: GridMap and a first-person controller | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day12" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 1 · Day 12 · Game 5</div>
+    <h1>Torchlight Dungeon I: GridMap and a first-person controller</h1>
+    <p class="lead">You start a new Forward+ project and build a dark, walkable dungeon: a MeshLibrary of primitive boxes, a GridMap painted from a small map, and a CharacterBody3D that looks with the mouse and carries a flickering torch.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Concepts.</strong> GridMap versus a pile of meshes, and why yaw and pitch live on different nodes.</td></tr>
+    <tr><td>0:20 – 1:25</td><td><strong>Project and MeshLibrary.</strong> Folders, physics layer names, floor and wall items, navigation bake, export.</td></tr>
+    <tr><td>1:25 – 1:35</td><td><strong>Break.</strong> Stand up. Look away from the screen.</td></tr>
+    <tr><td>1:35 – 2:25</td><td><strong>Paint and atmosphere.</strong> GridMap of the ASCII level, dark WorldEnvironment, fog, volumetric fog.</td></tr>
+    <tr><td>2:25 – 3:30</td><td><strong>First person.</strong> Mouse look, sprint, torch flicker, footstep click, pause that releases the cursor.</td></tr>
+    <tr><td>3:30 – 4:00</td><td><strong>Challenge, quiz, wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>4 h</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Export a MeshLibrary from primitive meshes with collision and a baked navigation mesh.</li>
+    <li>Paint the provided ASCII dungeon with GridMap and walk it without falling through the floor.</li>
+    <li>Move a CharacterBody3D in first person: yaw on the body, pitch on the head, mouse captured, sprint on Shift.</li>
+    <li>Light the scene with a flickering SpotLight3D and OmniLight3D against a dark Environment that has both fog types.</li>
+    <li>Pause with Escape so the simulation freezes and the mouse cursor comes back.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Godot 4.x standard (non-.NET) is installed. This is a new project. Do not continue the arena brawler.</li>
+    <li>You can create folders under <code>C:\GodotProjects</code>.</li>
+    <li>Editor indent is spaces, size 4 (<kbd class="menu">Editor &gt; Editor Settings &gt; Text Editor &gt; Behavior &gt; Indent</kbd>).</li>
+  </ul>
+  <div class="callout note"><span class="callout-title">Skipped earlier days?</span>
+    <p>You do not need the previous games open. Today creates <code>C:\GodotProjects\g05-torchlight-dungeon</code> from an empty project. Days 13 and 14 continue this folder.</p>
+  </div>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>GridMap is a mesh stamp, not a node stamp</h3>
+  <p>A GridMap repeats items from a MeshLibrary on a 3D grid, the way a tile map repeats tiles. Each item is one MeshInstance3D, optional collision on a StaticBody3D child, and an optional NavigationRegion3D child. Other node types on the item are dropped at export. You paint meshes. You do not paint enemies, doors, or the player. Those stay real scenes, placed on top of the grid tomorrow.</p>
+  <div class="callout docs"><span class="callout-title">Docs constraint</span>
+    <p>The library scene root is a Node3D. Each item is a MeshInstance3D. The material must sit on the mesh resource (BoxMesh's Material), not on the MeshInstance3D Material Override. Up to one StaticBody3D and one NavigationRegion3D are kept. See <a href="https://docs.godotengine.org/en/stable/tutorials/3d/using_gridmaps.html" target="_blank" rel="noopener">Using GridMaps</a>.</p>
+  </div>
+  <h3>Yaw on the body, pitch on the head</h3>
+  <p>A first-person pawn is the same idea as a camera boom in other engines. The CharacterBody3D yaws (turns left and right) so movement and the collision capsule face the look direction. A child Node3D named Head pitches (looks up and down) so the capsule does not tip over. The Camera3D, the spotlight, and tomorrow's ray all hang under Head. Godot cameras look down their local <code>-Z</code> axis.</p>
+  <p><code>Input.get_vector</code> takes four actions: negative X, positive X, negative Y, positive Y. Passing <code>move_up</code> as the negative-Y action means W produces <code>y = -1</code>. A Node3D's forward axis is also <code>-Z</code>, so that <code>-1</code> lands on forward when you multiply the body's basis by <code>Vector3(wish.x, 0, wish.y)</code>. No extra flip.</p>
+  <h3>Two fogs</h3>
+  <p>Environment fog tints distant pixels. Volumetric fog is a froxel volume that the torch actually lights. Volumetric fog runs only on the Forward+ renderer. The project you create today must be Forward+, not Mobile or Compatibility.</p>
+
+  <h2 id="build-1">Block 1: Project, layers, and the library scene</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Create the project.</strong> In the Project Manager, click <kbd class="ui">Create</kbd>. Set <kbd class="ui">Project Name</kbd> to <code>g05-torchlight-dungeon</code>. Set the path to <code>C:\GodotProjects\g05-torchlight-dungeon</code>. Click <kbd class="ui">Create Folder</kbd> if Godot offers it. Under <kbd class="ui">Renderer</kbd>, choose <kbd class="ui">Forward+</kbd>. Leave Version Control on <kbd class="ui">Git</kbd> if the dropdown is there (it writes a <code>.gitignore</code>). Click <kbd class="ui">Create &amp; Edit</kbd>.</li>
+    <li><strong>Window size.</strong> <kbd class="menu">Project &gt; Project Settings</kbd>. Open <kbd class="ui">Display &gt; Window &gt; Size</kbd>. Set <kbd class="ui">Viewport Width</kbd> to <code>1280</code> and <kbd class="ui">Viewport Height</kbd> to <code>720</code>. Click <kbd class="ui">Close</kbd>.</li>
+    <li><strong>Name the 3D physics layers.</strong> Open <kbd class="menu">Project &gt; Project Settings</kbd> again. On the left open <kbd class="ui">Layer Names &gt; 3D Physics</kbd>. Set layer 1 to <code>world</code>, 2 <code>player</code>, 3 <code>enemies</code>, 4 <code>player_attacks</code>, 5 <code>enemy_attacks</code>, 6 <code>pickups</code>, 7 <code>triggers</code>. Click <kbd class="ui">Close</kbd>. These names show up on every collision checkbox from now on.</li>
+    <li><strong>Make folders.</strong> In the <kbd class="ui">FileSystem</kbd> dock (bottom-left), right-click <code>res://</code> and choose <kbd class="ui">New Folder</kbd>. Create <code>library</code>, then <code>player</code>, <code>ui</code>. (Tomorrow adds <code>enemies</code>, <code>props</code>, and <code>components</code>.)</li>
+    <li><strong>Input actions.</strong> <kbd class="menu">Project &gt; Project Settings &gt; Input Map</kbd>. Leave <kbd class="ui">Show Built-in Actions</kbd> off. In the action field at the top, type a name and click <kbd class="ui">Add</kbd> for each of these: <code>move_left</code>, <code>move_right</code>, <code>move_up</code>, <code>move_down</code>, <code>sprint</code>, <code>attack</code>, <code>interact</code>, <code>pause</code>, <code>reload</code>.</li>
+    <li><strong>Bind the keys.</strong> On each action, click the <kbd class="ui">+</kbd> at the right, press the key in the Event Configuration dialog, then click <kbd class="ui">OK</kbd>. Use <kbd>A</kbd>, <kbd>D</kbd>, <kbd>W</kbd>, <kbd>S</kbd>, <kbd>Shift</kbd> (sprint), <kbd>E</kbd> (interact), <kbd>Escape</kbd> (pause), <kbd>R</kbd> (reload). For <code>attack</code>, click <kbd class="ui">+</kbd> and click the left mouse button while the dialog is listening, then <kbd class="ui">OK</kbd>. The binding should read Left Mouse Button. Close Project Settings.</li>
+  </ol>
+  <div class="checkpoint"><p>FileSystem shows <code>library</code>, <code>player</code>, and <code>ui</code>. <kbd class="menu">Project &gt; Project Settings &gt; Input Map</kbd> lists nine custom actions, and <code>attack</code> has a mouse binding. If the mouse click closed the dialog without a binding, click <kbd class="ui">+</kbd> again and click once inside the listening dialog before you press OK.</p></div>
+
+  <ol class="steps">
+    <li><strong>Library root.</strong> In the <kbd class="ui">Scene</kbd> dock, click <kbd class="ui">Other Node</kbd> (or <kbd>Ctrl</kbd>+<kbd>A</kbd>), search <code>Node3D</code>, click <kbd class="ui">Create</kbd>. Press <kbd>F2</kbd> and rename it <code>Library</code>. <kbd>Ctrl</kbd>+<kbd>S</kbd>, save as <code>res://library/mesh_library.tscn</code>.</li>
+    <li><strong>Floor mesh.</strong> Select <code>Library</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>MeshInstance3D</code>, rename it <code>Floor</code>. In the <kbd class="ui">Inspector</kbd>, set <kbd class="ui">Transform &gt; Position</kbd> to <code>0, 0.1, 0</code>. Under <kbd class="ui">Mesh</kbd>, choose <kbd class="ui">New BoxMesh</kbd>. Click the BoxMesh resource so its properties expand. Set <kbd class="ui">Size</kbd> to <code>2, 0.2, 2</code>.</li>
+    <li><strong>Floor material, on the mesh.</strong> Still inside that BoxMesh, find <kbd class="ui">Material</kbd> and choose <kbd class="ui">New StandardMaterial3D</kbd>. Click the material. Set <kbd class="ui">Albedo &gt; Color</kbd> to a dark stone, RGB <code>0.22, 0.20, 0.18</code>. Leave <kbd class="ui">Geometry &gt; Material Override</kbd> on the MeshInstance3D empty. The exporter only keeps the mesh resource's material.</li>
+    <li><strong>Floor collision.</strong> Select <code>Floor</code>, add a child <code>StaticBody3D</code>. With that body selected, in <kbd class="ui">Collision &gt; Layer</kbd> enable only <code>world</code> (layer 1). Clear the other layer bits if any are on. Set <kbd class="ui">Collision &gt; Mask</kbd> to empty (click each enabled bit off). Add a child <code>CollisionShape3D</code>. In <kbd class="ui">Shape</kbd>, choose <kbd class="ui">New BoxShape3D</kbd>. Click it and set <kbd class="ui">Size</kbd> to <code>2, 0.2, 2</code>.</li>
+    <li><strong>Navigation on the floor only.</strong> Select <code>Floor</code>, add a child <code>NavigationRegion3D</code>. In the Inspector, <kbd class="ui">Navigation Mesh</kbd> → <kbd class="ui">New NavigationMesh</kbd>. Click the resource. Set <kbd class="ui">Agent Radius</kbd> to <code>0.4</code> and <kbd class="ui">Agent Height</kbd> to <code>1.6</code>. Add a child <code>MeshInstance3D</code> under the region and rename it <code>NavBake</code>. Give it a <kbd class="ui">New BoxMesh</kbd> with <kbd class="ui">Size</kbd> <code>1.9, 0.05, 1.9</code>. Set NavBake <kbd class="ui">Position</kbd> to <code>0, 0.12, 0</code>. That thin box is the bake source. It is not exported as a visible mesh.</li>
+    <li><strong>Bake.</strong> Select <code>NavigationRegion3D</code>. In the toolbar at the top of the 3D viewport, click <kbd class="ui">Bake NavMesh</kbd>. A translucent navigation mesh appears just above the slab. If you change the agent radius later, bake again before you export.</li>
+  </ol>
+
+  <pre class="scene-tree">Library (Node3D)                  mesh_library.tscn
+├── Floor (MeshInstance3D)        BoxMesh 2 x 0.2 x 2, position y 0.1
+│   ├── StaticBody3D              layer world
+│   │   └── CollisionShape3D      BoxShape3D 2 x 0.2 x 2
+│   └── NavigationRegion3D        NavigationMesh agent radius 0.4
+│       └── NavBake (MeshInstance3D)
+└── Wall (MeshInstance3D)         added in the next steps
+    └── StaticBody3D
+        └── CollisionShape3D</pre>
+
+  <div class="checkpoint"><p>Select <code>Floor</code> and look in the viewport: a flat 2 by 2 slab. Select <code>NavigationRegion3D</code>: a blue-tinted nav mesh sits on it. If Bake NavMesh is missing, click the 3D workspace button (top center) and select the region again. If the slab is bright white, the StandardMaterial3D was created on Material Override. Delete that override and put the material on the BoxMesh.</p></div>
+
+  <h2 id="build-2">Block 1 continued: The wall, then export</h2>
+  <ol class="steps">
+    <li><strong>Wall mesh.</strong> Select <code>Library</code>, add another <code>MeshInstance3D</code>, rename it <code>Wall</code>. Set <kbd class="ui">Position</kbd> to <code>0, 1, 0</code>. <kbd class="ui">Mesh</kbd> → <kbd class="ui">New BoxMesh</kbd>, <kbd class="ui">Size</kbd> <code>2, 2, 2</code>. On that BoxMesh, <kbd class="ui">Material</kbd> → <kbd class="ui">New StandardMaterial3D</kbd>, <kbd class="ui">Albedo &gt; Color</kbd> RGB <code>0.11, 0.11, 0.13</code>. Do not add a NavigationRegion3D to the wall. Enemies should not path across solid stone.</li>
+    <li><strong>Wall collision.</strong> Under <code>Wall</code>, add <code>StaticBody3D</code> with <kbd class="ui">Collision &gt; Layer</kbd> only <code>world</code> and an empty mask. Add <code>CollisionShape3D</code> with <kbd class="ui">New BoxShape3D</kbd>, <kbd class="ui">Size</kbd> <code>2, 2, 2</code>.</li>
+    <li><strong>Save, then export.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd>. With <code>mesh_library.tscn</code> open, use the menu bar: <kbd class="menu">Scene &gt; Export As... &gt; MeshLibrary...</kbd>. Save the file as <code>res://library/mesh_library.tres</code> and confirm. The FileSystem dock should show the <code>.tres</code> next to the scene.</li>
+  </ol>
+  <div class="callout warn"><span class="callout-title">Re-export after every library edit</span>
+    <p>The <code>.tres</code> is a copy. Moving a mesh, rebaking navigation, or recoloring a material does nothing to grids that already point at the old resource until you export again and overwrite <code>mesh_library.tres</code>.</p></div>
+  <div class="checkpoint"><p><code>res://library/mesh_library.tres</code> exists. Floor is the first child of Library, Wall is the second, so the GridMap panel will show Floor then Wall. If Wall was created first, drag Floor above Wall in the Scene dock, save, and export again.</p></div>
+
+  <h2 id="build-3">Block 2: Paint the dungeon and kill the lights</h2>
+  <p>Cell size stays at the default <code>2, 2, 2</code> meters. You will turn <kbd class="ui">Center Y</kbd> off so a cell's origin sits on the bottom face. Floor slabs then occupy y 0 to 0.2 inside the cell, and walls fill y 0 to 2. With Center X and Center Z left on, cell <code>(x, 0, z)</code> is centered at world <code>(2x + 1, 0, 2z + 1)</code>.</p>
+  <p>Letters in the map are floor cells. Props go on them tomorrow. Paint floor under every letter. <code>d</code> is the brass door gap. <code>D</code> is the iron door gap. <code>S</code> spawn, <code>E</code> enemies, <code>B</code> brass key, <code>I</code> iron key, <code>X</code> exit.</p>
+  <pre class="plain">        x: 0 1 2 3 4 5 6 7 8
+z 0:       # # # # # # # # #
+z 1:       # S . . # . . B #
+z 2:       # . . . d . # . #
+z 3:       # . E . # . # . #
+z 4:       # # # # # . # . #
+z 5:       # . . . # . . . #
+z 6:       # . I . # # D # #
+z 7:       # . . . . . . X #
+z 8:       # # # # # # # # #</pre>
+  <p>Path check, so you know the paint is a real level: from S the only way east is the brass door <code>d</code> at (4, 2). The brass key B is at (7, 1). The iron key I is in the west room at (2, 6), reached along row z=5. The iron door D at (6, 6) is the only step south into the exit at (7, 7).</p>
+
+  <ol class="steps">
+    <li><strong>Main scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>. Choose <kbd class="ui">Other Node</kbd>, add <code>Node3D</code>, rename it <code>Main</code>. Save as <code>res://main.tscn</code>.</li>
+    <li><strong>GridMap.</strong> Select <code>Main</code>, add a <code>GridMap</code>. In the Inspector, drag <code>mesh_library.tres</code> from the FileSystem dock onto <kbd class="ui">Mesh Library</kbd>. Under <kbd class="ui">Cell</kbd>, leave <kbd class="ui">Size</kbd> at <code>2, 2, 2</code>. Leave <kbd class="ui">Center X</kbd> and <kbd class="ui">Center Z</kbd> checked. Uncheck <kbd class="ui">Center Y</kbd>. Under <kbd class="ui">Collision</kbd>, <kbd class="ui">Layer</kbd> should be only <code>world</code>. Under <kbd class="ui">Navigation</kbd>, enable <kbd class="ui">Bake Navigation</kbd> so each floor cell contributes its baked nav mesh at runtime.</li>
+    <li><strong>Paint walls.</strong> Selecting the GridMap opens the <kbd class="ui">GridMap</kbd> bottom panel. Click the <code>Wall</code> thumbnail. Click <kbd class="ui">Paint</kbd> in that panel's toolbar. In the 3D viewport, orbit with the middle mouse button and click cells. Paint every <code>#</code> in the map. Border first: the entire row z=0 (x=0 through 8), the entire row z=8, and columns x=0 and x=8 from z=1 through z=7. Then the interior walls, cell by cell:</li>
+  </ol>
+  <pre class="plain">z=1: (4,1)
+z=2: (6,2)
+z=3: (4,3) (6,3)
+z=4: (1,4) (2,4) (3,4) (4,4) (6,4)
+z=5: (4,5)
+z=6: (4,6) (5,6) (7,6)</pre>
+  <ol class="steps">
+    <li><strong>Change grid floor if you click the wrong height.</strong> The <kbd class="ui">Floor</kbd> field in the GridMap panel (the docs call it Change Grid Floor) must stay at <code>0</code>. <kbd>Ctrl</kbd>+mouse wheel changes it. If a wall appears in the air, set Floor back to 0, choose <kbd class="ui">Erase</kbd>, click the mistake, then return to <kbd class="ui">Paint</kbd>.</li>
+    <li><strong>Paint floors.</strong> Click the <code>Floor</code> thumbnail, stay on <kbd class="ui">Paint</kbd>, and fill every non-wall cell, including S, E, d, D, B, I, and X. Do not paint floor on top of a wall cell. The open cells are:</li>
+  </ol>
+  <pre class="plain">z=1: (1,1) (2,1) (3,1) (5,1) (6,1) (7,1)
+z=2: (1,2) (2,2) (3,2) (4,2) (5,2) (7,2)
+z=3: (1,3) (2,3) (3,3) (5,3) (7,3)
+z=4: (5,4) (7,4)
+z=5: (1,5) (2,5) (3,5) (5,5) (6,5) (7,5)
+z=6: (1,6) (2,6) (3,6) (6,6)
+z=7: (1,7) (2,7) (3,7) (4,7) (5,7) (6,7) (7,7)</pre>
+  <ol class="steps">
+    <li><strong>WorldEnvironment.</strong> Select <code>Main</code>, add a <code>WorldEnvironment</code>. In the Inspector, <kbd class="ui">Environment</kbd> → <kbd class="ui">New Environment</kbd>. Click the resource so the sections expand.</li>
+    <li><strong>Background and ambient.</strong> Set <kbd class="ui">Background &gt; Mode</kbd> to <kbd class="ui">Custom Color</kbd>. Set <kbd class="ui">Background &gt; Color</kbd> to RGB <code>0.01, 0.012, 0.02</code>. Set <kbd class="ui">Ambient Light &gt; Source</kbd> to <kbd class="ui">Color</kbd>. Set <kbd class="ui">Ambient Light &gt; Color</kbd> to RGB <code>0.03, 0.03, 0.05</code>, <kbd class="ui">Energy</kbd> to <code>0.2</code>, and <kbd class="ui">Sky Contribution</kbd> to <code>0</code>. Sky contribution must be below 1 or the ambient color is ignored.</li>
+    <li><strong>Distance fog.</strong> Expand <kbd class="ui">Fog</kbd>. Enable <kbd class="ui">Enabled</kbd>. Set <kbd class="ui">Light Color</kbd> to RGB <code>0.04, 0.035, 0.05</code>, <kbd class="ui">Density</kbd> to <code>0.035</code>, and <kbd class="ui">Aerial Perspective</kbd> to <code>0</code> (there is no sky to blend).</li>
+    <li><strong>Volumetric fog.</strong> Expand <kbd class="ui">Volumetric Fog</kbd>. Enable <kbd class="ui">Enabled</kbd>. Set <kbd class="ui">Density</kbd> to <code>0.015</code>, <kbd class="ui">Albedo</kbd> to RGB <code>0.55, 0.50, 0.42</code>, and <kbd class="ui">Length</kbd> to <code>24</code>. Leave emission at 0. A little density is enough; the torch will pick it up once the player exists.</li>
+    <li><strong>Save and set the main scene.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd>. <kbd class="menu">Project &gt; Project Settings &gt; Application &gt; Run</kbd>. Set <kbd class="ui">Main Scene</kbd> to <code>res://main.tscn</code>. Close the window.</li>
+  </ol>
+  <div class="callout version"><span class="callout-title">Forward+ only</span>
+    <p>Volumetric fog does not render on Mobile or Compatibility. If the Viewport stays flat grey, you created the project with the wrong renderer. <kbd class="menu">Project &gt; Project Settings &gt; Rendering &gt; Renderer</kbd> and switch to Forward+, then reload the project.</p></div>
+  <div class="checkpoint"><p>Press <kbd>F6</kbd> (Run Current Scene). The window is a nearly black void. You should not fall, because there is no player yet, and the <kbd class="ui">Output</kbd> panel should have no script errors. Close with <kbd>F8</kbd>. Orbit in the editor: a closed 9 by 9 block of cells, two meters each, with a corridor you can trace from the north-west room to the south-east corner. If you see a stack of walls on several floors, Change Grid Floor was not 0 while you painted. Erase the extras.</p></div>
+
+  <h2 id="build-4">Block 3: First-person body, torch, footsteps, pause</h2>
+  <p>The capsule is 1.6 m tall and 0.3 m in radius, origin at the center, so the feet are 0.8 m below the body. Floor top is y = 0.2. Spawn the body at y = 1.0. Cell (1, 1) centers at world (3, 0, 3), so the player starts at (3, 1, 3), turned to face +X (toward the brass door).</p>
+
+  <pre class="scene-tree">Player (CharacterBody3D)          [player.gd]  group player
+├── CollisionShape3D              CapsuleShape3D radius 0.3, height 1.6
+├── Blip (MeshInstance3D)         small box at the feet, for the minimap tomorrow
+├── Head (Node3D)                 position y 0.55
+│   ├── Camera3D                  Current on, fov 75
+│   ├── SpotLight3D
+│   └── OmniLight3D
+└── Footsteps (AudioStreamPlayer)</pre>
+
+  <ol class="steps">
+    <li><strong>Player scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>. Add a <code>CharacterBody3D</code>, rename it <code>Player</code>. Save as <code>res://player/player.tscn</code>. In the Inspector set <kbd class="ui">Collision &gt; Layer</kbd> to only <code>player</code> (layer 2). Set <kbd class="ui">Collision &gt; Mask</kbd> to <code>world</code> only for today (you will add <code>enemies</code> tomorrow). Leave <kbd class="ui">Motion Mode</kbd> at <kbd class="ui">Grounded</kbd> and <kbd class="ui">Floor &gt; Snap Length</kbd> at <code>0.1</code>.</li>
+    <li><strong>Capsule.</strong> Add a child <code>CollisionShape3D</code>. <kbd class="ui">Shape</kbd> → <kbd class="ui">New CapsuleShape3D</kbd>. Set <kbd class="ui">Radius</kbd> to <code>0.3</code> and <kbd class="ui">Height</kbd> to <code>1.6</code>. Height includes the hemispheres and must be at least twice the radius.</li>
+    <li><strong>Group.</strong> Select <code>Player</code>. Open the <kbd class="ui">Node</kbd> tab (next to Inspector) and the <kbd class="ui">Groups</kbd> sub-tab. Type <code>player</code>, click <kbd class="ui">Add</kbd>. The node is now in that group.</li>
+    <li><strong>Blip.</strong> Add a child <code>MeshInstance3D</code> named <code>Blip</code>. <kbd class="ui">Position</kbd> <code>0, -0.72, 0</code>. <kbd class="ui">Mesh</kbd> → <kbd class="ui">New BoxMesh</kbd>, <kbd class="ui">Size</kbd> <code>0.4, 0.06, 0.4</code>. On the BoxMesh, <kbd class="ui">Material</kbd> → <kbd class="ui">New StandardMaterial3D</kbd>, <kbd class="ui">Albedo &gt; Color</kbd> RGB <code>1, 0.85, 0.3</code>. This is a floor marker the top-down minimap will see. The eye camera sits above it.</li>
+    <li><strong>Head and camera.</strong> Add a child <code>Node3D</code> named <code>Head</code>. Set <kbd class="ui">Position</kbd> to <code>0, 0.55, 0</code>. Under Head, add <code>Camera3D</code>. Enable <kbd class="ui">Current</kbd> (Inspector <kbd class="ui">Current</kbd> on). Leave <kbd class="ui">Fov</kbd> at <code>75</code> and <kbd class="ui">Projection</kbd> at <kbd class="ui">Perspective</kbd>.</li>
+    <li><strong>Spot torch.</strong> Under Head, add <code>SpotLight3D</code>. Set <kbd class="ui">Light &gt; Color</kbd> to RGB <code>1.0, 0.78, 0.45</code>, <kbd class="ui">Light &gt; Energy</kbd> to <code>5</code>, and enable <kbd class="ui">Shadow &gt; Enabled</kbd>. Set <kbd class="ui">Spot &gt; Range</kbd> to <code>14</code>, <kbd class="ui">Spot &gt; Angle</kbd> to <code>26</code>, and <kbd class="ui">Spot &gt; Attenuation</kbd> to <code>1.4</code>. Range and angle ignore the node scale, so do not scale the light to "make it longer."</li>
+    <li><strong>Fill omni.</strong> Under Head, add <code>OmniLight3D</code>. Same light color <code>1.0, 0.78, 0.45</code>. <kbd class="ui">Energy</kbd> <code>1.4</code>. <kbd class="ui">Omni &gt; Range</kbd> <code>3.2</code>. <kbd class="ui">Omni &gt; Attenuation</kbd> <code>1.2</code>. Leave its shadow off. One shadow-casting light is enough, and the docs warn that fast-moving lights ghost in volumetric fog when temporal reprojection is on.</li>
+    <li><strong>Footstep player.</strong> Select <code>Player</code>, add an <code>AudioStreamPlayer</code>, rename it <code>Footsteps</code>. Leave <kbd class="ui">Stream</kbd> empty. The script builds a short click so you are not blocked on an audio file.</li>
+    <li><strong>Script.</strong> Select <code>Player</code>, right-click, <kbd class="ui">Attach Script</kbd>. Path <code>res://player/player.gd</code>. Click <kbd class="ui">Create</kbd>. In the script editor, <kbd>Ctrl</kbd>+<kbd>A</kbd> and replace the whole file:</li>
+  </ol>
+
+<script type="text/x-code" data-lang="gdscript" data-file="res://player/player.gd">
+extends CharacterBody3D
+
+const WALK_SPEED: float = 4.2
+const SPRINT_SPEED: float = 7.0
+const MOUSE_SENS: float = 0.0025
+const PITCH_MIN: float = -1.15
+const PITCH_MAX: float = 1.15
+const STEP_WALK: float = 0.48
+const STEP_SPRINT: float = 0.32
+
+var _gravity: float = 9.8
+var _pitch: float = 0.0
+var _step_wait: float = 0.0
+var _flicker_time: float = 0.0
+
+@onready var _head: Node3D = $Head
+@onready var _spot: SpotLight3D = $Head/SpotLight3D
+@onready var _omni: OmniLight3D = $Head/OmniLight3D
+@onready var _steps: AudioStreamPlayer = $Footsteps
+
+
+func _ready() -> void:
+    _gravity = float(ProjectSettings.get_setting("physics/3d/default_gravity"))
+    Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+    _steps.stream = _make_step_stream()
+    _steps.volume_db = -8.0
+
+
+func _unhandled_input(event: InputEvent) -> void:
+    if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+        return
+    if event is InputEventMouseMotion:
+        var motion := event as InputEventMouseMotion
+        rotate_y(-motion.screen_relative.x * MOUSE_SENS)
+        _pitch = clampf(_pitch - motion.screen_relative.y * MOUSE_SENS, PITCH_MIN, PITCH_MAX)
+        _head.rotation.x = _pitch
+
+
+func _physics_process(delta: float) -> void:
+    var wish := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+    var speed: float = SPRINT_SPEED if Input.is_action_pressed("sprint") else WALK_SPEED
+    # wish.y is -1 on W. Node3D forward is -Z, so basis * (x, 0, wish.y) is forward.
+    var dir: Vector3 = global_transform.basis * Vector3(wish.x, 0.0, wish.y)
+    dir.y = 0.0
+    if dir.length_squared() > 0.0001:
+        dir = dir.normalized()
+    velocity.x = dir.x * speed
+    velocity.z = dir.z * speed
+    if not is_on_floor():
+        velocity.y -= _gravity * delta
+    else:
+        velocity.y = -0.1
+    move_and_slide()
+    var moving: bool = wish.length() > 0.1 and is_on_floor()
+    _update_steps(delta, moving, speed > WALK_SPEED)
+
+
+func _process(delta: float) -> void:
+    _flicker_time += delta
+    var wobble: float = 0.82 + 0.14 * sin(_flicker_time * 17.0) + 0.06 * sin(_flicker_time * 43.0)
+    _spot.light_energy = 5.0 * wobble
+    _omni.light_energy = 1.4 * wobble
+
+
+func _update_steps(delta: float, moving: bool, sprinting: bool) -> void:
+    if not moving:
+        _step_wait = 0.0
+        return
+    _step_wait -= delta
+    if _step_wait > 0.0:
+        return
+    _step_wait = STEP_SPRINT if sprinting else STEP_WALK
+    _steps.pitch_scale = randf_range(0.92, 1.12)
+    _steps.play()
+
+
+func _make_step_stream() -> AudioStreamWAV:
+    var wav := AudioStreamWAV.new()
+    wav.format = AudioStreamWAV.FORMAT_8_BITS
+    wav.mix_rate = 22050
+    wav.stereo = false
+    var count: int = 700
+    var data := PackedByteArray()
+    data.resize(count)
+    for i in count:
+        var env: float = 1.0 - (float(i) / float(count))
+        var tone: float = sin(float(i) * 0.55) * env
+        var sample: int = int(tone * 70.0)
+        if sample < 0:
+            sample = 0
+        data[i] = sample
+    wav.data = data
+    return wav
+</script>
+
+  <ol class="steps">
+    <li><strong>Instance the player into Main.</strong> Open <code>main.tscn</code> (double-click it in FileSystem). Drag <code>player.tscn</code> from FileSystem onto <code>Main</code> in the Scene dock. Select the <code>Player</code> instance. Set <kbd class="ui">Transform &gt; Position</kbd> to <code>3, 1, 3</code> (cell 1, 1). Set <kbd class="ui">Rotation</kbd> degrees to <code>0, -90, 0</code> so forward, which is <code>-Z</code>, points toward +X and the brass door.</li>
+    <li><strong>Pause layer.</strong> Still in <code>main.tscn</code>, select <code>Main</code>, add a <code>CanvasLayer</code>, rename it <code>PauseMenu</code>. In the Inspector set <kbd class="ui">Process &gt; Mode</kbd> to <kbd class="ui">Always</kbd>. A paused tree skips normal nodes. This layer must keep running or Escape cannot unpause. Set <kbd class="ui">Layer</kbd> to <code>10</code>.</li>
+    <li><strong>Pause panel.</strong> Under <code>PauseMenu</code>, add a <code>PanelContainer</code> named <code>PausePanel</code>. Set <kbd class="ui">Layout &gt; Position</kbd> to <code>490, 260</code> and, if a custom minimum size field is visible, leave it. Add a child <code>VBoxContainer</code> named <code>VBox</code>. Under VBox add a <code>Label</code> named <code>PauseTitle</code> with <kbd class="ui">Text</kbd> <code>Paused</code>. Add a <code>Button</code> named <code>ResumeButton</code> with <kbd class="ui">Text</kbd> <code>Resume</code>. In the Inspector, uncheck <kbd class="ui">Visibility &gt; Visible</kbd> on <code>PausePanel</code> so the game does not start covered.</li>
+    <li><strong>Pause script.</strong> Select <code>PauseMenu</code>, <kbd class="ui">Attach Script</kbd>, path <code>res://ui/pause_menu.gd</code>. Replace the whole file:</li>
+  </ol>
+
+<script type="text/x-code" data-lang="gdscript" data-file="res://ui/pause_menu.gd">
+extends CanvasLayer
+
+@onready var _panel: PanelContainer = $PausePanel
+
+
+func _ready() -> void:
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    _panel.visible = false
+    $PausePanel/VBox/ResumeButton.pressed.connect(_resume)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+    if not event.is_action_pressed("pause"):
+        return
+    if get_tree().paused:
+        _resume()
+    else:
+        _pause()
+    get_viewport().set_input_as_handled()
+
+
+func _pause() -> void:
+    get_tree().paused = true
+    _panel.visible = true
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _resume() -> void:
+    get_tree().paused = false
+    _panel.visible = false
+    Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+</script>
+
+  <ol class="steps">
+    <li><strong>Save everything.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd> on <code>main.tscn</code>. If a scene tab still has a dot, save that tab too.</li>
+  </ol>
+
+  <pre class="scene-tree">Main (Node3D)                     main.tscn
+├── GridMap                       mesh_library.tres, Center Y off, Bake Navigation on
+├── WorldEnvironment
+├── Player                        instance, position (3, 1, 3), rotation Y -90
+└── PauseMenu (CanvasLayer)       [pause_menu.gd]  process mode Always
+    └── PausePanel (PanelContainer)
+        └── VBox (VBoxContainer)
+            ├── PauseTitle (Label)
+            └── ResumeButton (Button)</pre>
+
+  <div class="checkpoint"><p>Press <kbd>F5</kbd>. Click the game window once if the cursor is still free. You should be standing in a dark room, a warm cone of light on the stone, the cone pulsing slightly. W moves toward the look direction, Shift is faster, and a dry click plays on each step (about every 0.48 s walking, 0.32 s sprinting). Mouse look turns the body and pitches the head, and you cannot tilt past about 66 degrees. Escape shows Paused, the cursor returns, and you stop moving. Escape or Resume hides the panel and captures the mouse again. Output has no errors.</p>
+    <p>If you fall forever, Center Y is still on, or the player Y is 0. Set position Y to 1. If you spawn inside a wall, position XZ is not (3, 3). If the window is black with no cone, the Camera3D Current flag is off, or the lights are not under Head. If W strafes instead of walking forward, the player rotation Y is not -90, or the movement code was edited so it no longer multiplies the basis.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Material Override on the MeshInstance3D.</strong> The MeshLibrary export keeps the BoxMesh material slot. A pretty color set on the node is discarded, and the grid looks grey or unshaded.</li>
+    <li><strong>Exported once, edited after.</strong> Grids keep the old <code>.tres</code> until you choose <kbd class="menu">Scene &gt; Export As... &gt; MeshLibrary...</kbd> again and overwrite the file.</li>
+    <li><strong>Center Y left on.</strong> The wall mesh is authored from the bottom of the cell. With Center Y on, half the wall sinks under the floor and you can walk over the tops.</li>
+    <li><strong>Painted on floor 1.</strong> <kbd>Ctrl</kbd>+wheel changes the GridMap floor. Walls in the sky are that mistake. Erase them with the floor field set to the height where they actually are.</li>
+    <li><strong>Pitch written on the body.</strong> <code>rotate_x</code> on the CharacterBody3D tips the capsule. Only <code>rotate_y</code> belongs on the body. Pitch is <code>Head.rotation.x</code>.</li>
+    <li><strong>Pause node uses the default process mode.</strong> <code>_unhandled_input</code> stops while the tree is paused, so Escape can pause and never unpause. Process Mode Always is required on PauseMenu.</li>
+    <li><strong>Volumetric fog on the wrong renderer.</strong> Mobile and Compatibility ignore it. The distance fog can still show. The torch shaft in the air is the volumetric part.</li>
+    <li><strong>Shadow plus a moving light.</strong> Temporal reprojection on volumetric fog leaves trails behind lights that move quickly. The headlamp is parented to the camera, so it moves every frame. If the trail bothers you, select SpotLight3D and set <kbd class="ui">Light &gt; Volumetric Fog Energy</kbd> to <code>0.4</code>. The docs recommend lowering that value on short-lived or fast lights.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, about 25 min)</h2>
+  <div class="challenge">
+    <h3>Two wall sconces</h3>
+    <p>Add two <code>OmniLight3D</code> nodes under <code>Main</code>, named <code>SconceA</code> and <code>SconceB</code>. Place them at world (5, 1.4, 3) and (15, 1.4, 11). Warm color, energy 2, range 5, shadows off. Attach one script to both (or duplicate the node) that writes <code>light_energy</code> from a sine wave. Give SconceB a phase offset of <code>PI</code> so they do not pulse together.</p>
+    <p>Hint: <code>@export var phase: float = 0.0</code> and <code>sin(Time.get_ticks_msec() / 1000.0 * 3.0 + phase)</code>. Do not parent these lights to the player. They are part of the room. Re-read the volumetric-fog note about moving lights before you animate their positions. Energy flicker is enough.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>Where must a MeshLibrary item's material live so the GridMap export keeps it?</p>
+      <ul>
+        <li>On the MeshInstance3D, in Material Override</li>
+        <li>On the mesh resource (the BoxMesh Material slot)</li>
+        <li>On the StaticBody3D</li>
+        <li>On the GridMap node after painting</li>
+      </ul>
+      <p class="explain">Using GridMaps is explicit: the material belongs in the mesh's material slot. The MeshInstance3D material slots are not the ones the exporter reads.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>Which menu exports the library?</p>
+      <ul>
+        <li><kbd class="menu">Project &gt; Export</kbd></li>
+        <li><kbd class="menu">File &gt; Save As</kbd> and pick the tres extension</li>
+        <li><kbd class="menu">Scene &gt; Export As... &gt; MeshLibrary...</kbd></li>
+        <li>The GridMap panel's Tools dropdown</li>
+      </ul>
+      <p class="explain">The docs name that menu path. Saving the scene writes a <code>.tscn</code>. The MeshLibrary resource is a separate export.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>Why does pitch go on Head instead of on the CharacterBody3D?</p>
+      <ul>
+        <li>Rotating the body on X tips the capsule and the floor test</li>
+        <li>Camera3D cannot be a child of a Node3D</li>
+        <li>move_and_slide ignores rotation</li>
+        <li>SpotLight3D only works on a node with no rotation</li>
+      </ul>
+      <p class="explain">Yaw stays on the body so the collider faces the look direction. Pitch is a local X rotation on Head, clamped to about plus or minus 1.15 radians.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>W is bound to <code>move_up</code>, and the call is <code>get_vector("move_left", "move_right", "move_up", "move_down")</code>. What is <code>wish.y</code> while W is held?</p>
+      <ul>
+        <li>1, because W means forward</li>
+        <li>0, until you normalize</li>
+        <li>-1, because <code>move_up</code> was passed as the negative-Y action</li>
+        <li>It depends on the camera fov</li>
+      </ul>
+      <p class="explain">The third argument is negative Y. Negative Z is also "forward" on a Node3D, which is why the basis multiply does not need another sign flip.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>Volumetric fog is enabled, but the air around the torch stays clear. What is the first thing to check?</p>
+      <ul>
+        <li>The AudioStreamPlayer bus</li>
+        <li>Whether Center Y is unchecked</li>
+        <li>The pause process mode</li>
+        <li>That the project renderer is Forward+</li>
+      </ul>
+      <p class="explain">The volumetric fog page states the effect is Forward+ only. Mobile and Compatibility skip it. Distance fog is a separate Environment toggle and can still be on.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/3d/using_gridmaps.html" target="_blank" rel="noopener">Using GridMaps</a>: MeshLibrary format and <kbd class="menu">Scene &gt; Export As... &gt; MeshLibrary...</kbd>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/3d/introduction_to_3d.html" target="_blank" rel="noopener">Introduction to 3D</a>: scenes, camera, lights.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/3d/volumetric_fog.html" target="_blank" rel="noopener">Volumetric fog and fog volumes</a>: Forward+ only, density, and light ghosting.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/3d/environment_and_post_processing.html" target="_blank" rel="noopener">Environment and post-processing</a>: background, ambient, distance fog.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_gridmap.html" target="_blank" rel="noopener">GridMap</a>: cell size, center flags, bake navigation.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_characterbody3d.html" target="_blank" rel="noopener">CharacterBody3D</a>: move_and_slide, floor snap, grounded motion.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_spotlight3d.html" target="_blank" rel="noopener">SpotLight3D</a> and <a href="https://docs.godotengine.org/en/stable/classes/class_omnilight3d.html" target="_blank" rel="noopener">OmniLight3D</a>: range is not affected by scale.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li><code>C:\GodotProjects\g05-torchlight-dungeon</code> runs with <kbd>F5</kbd> on <code>main.tscn</code> and shows no errors.</li>
+    <li>The painted grid matches the ASCII map, including both door gaps as floor, not wall.</li>
+    <li>Mouse look, WASD, sprint, torch flicker, and footsteps all work.</li>
+    <li>Escape pauses, shows the cursor, and resumes without getting stuck paused.</li>
+    <li>Design page for this game: <a href="../games/g05-dungeon-crawler-3d.html">Torchlight Dungeon</a>.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> a hitscan pistol, two navigating enemies, keys and doors, an orthogonal minimap, and a best-time save. Same project. Do not start a new one.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

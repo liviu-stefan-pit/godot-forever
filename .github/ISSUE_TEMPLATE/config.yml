@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Godot Engine
+    url: https://github.com/godotengine/godot/issues
+    about: Bugs in the Godot editor or engine belong to the Godot project.
+  - name: Godot documentation
+    url: https://github.com/godotengine/godot-docs/issues
+    about: Corrections to the official docs belong to godot-docs.

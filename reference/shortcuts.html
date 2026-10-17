@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shortcuts | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="reference" data-id="shortcuts" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Reference · Editor</div>
+    <h1>Shortcuts</h1>
+    <p class="lead">The keyboard shortcuts and mouse controls you will use every day, grouped by where you are in the editor, with a Windows column and a macOS column. Every key on this page is stated in the official docs; the few standard keys that are not are listed separately and labelled.</p>
+    <div class="chips"><span class="chip blue">Reference</span><span class="chip green">Windows first</span><span class="chip">Top 25 box below</span></div>
+  </header>
+
+  <div class="callout tip"><span class="callout-title">Rebind everything in Editor &gt; Editor Settings &gt; Shortcuts</span>
+    <p>Open <kbd class="menu">Editor &gt; Editor Settings...</kbd> and switch to the <kbd class="ui">Shortcuts</kbd> tab. Every editor action lists its current binding there, and you can change or clear it. Buttons also show their shortcut in the tooltip when you hover for one second. Bottom-panel shortcuts live in the <em>Bottom Panels</em> category and the debugger "Debug with External Editor" key under <em>Debugger</em>.</p></div>
+
+  <div class="callout version"><span class="callout-title">About this list</span>
+    <p>The docs repository in this course has no standalone "default key mapping" page, so the keys below are collected from the tutorials and class reference. Defaults can change between 4.x versions: if a key does not work, check the <kbd class="ui">Shortcuts</kbd> tab. <strong>macOS column:</strong> an exact key means the docs state it; <code>same</code> means a plain key (no modifier) that is identical on macOS; <code>Cmd+X?</code> means the docs do not state the macOS key and it is normally the Cmd version of the Windows key, so confirm it in the Shortcuts tab.</p></div>
+
+  <h2 id="top25">Top 25: print this box</h2>
+  <p>Keep these 25 under your fingers and you will cover about 90% of daily editing. Use your browser's <kbd>Ctrl</kbd>+<kbd>P</kbd> to print this page, or just keep it on a second monitor.</p>
+  <div class="callout note"><span class="callout-title">Top 25 shortcuts</span>
+  <table>
+    <tr><th>#</th><th>Windows</th><th>macOS</th><th>Action</th></tr>
+    <tr><td>1</td><td><kbd>F5</kbd></td><td><kbd>Cmd</kbd>+<kbd>B</kbd></td><td>Run Project (main scene)</td></tr>
+    <tr><td>2</td><td><kbd>F6</kbd></td><td><kbd>Cmd</kbd>+<kbd>R</kbd></td><td>Run Current Scene</td></tr>
+    <tr><td>3</td><td><kbd>F8</kbd></td><td><kbd>Cmd</kbd>+<kbd>.</kbd></td><td>Stop the running game</td></tr>
+    <tr><td>4</td><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td><kbd>Cmd</kbd>+<kbd>S</kbd></td><td>Save scene</td></tr>
+    <tr><td>5</td><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td><kbd>Cmd</kbd>+<kbd>A</kbd></td><td>Add Child Node (Scene dock focused)</td></tr>
+    <tr><td>6</td><td><kbd>F2</kbd></td><td>same</td><td>Rename selected node</td></tr>
+    <tr><td>7</td><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td><kbd>Cmd</kbd>+<kbd>D</kbd></td><td>Duplicate selected node</td></tr>
+    <tr><td>8</td><td><kbd>F1</kbd></td><td><kbd>Opt</kbd>+<kbd>Space</kbd></td><td>Search Help (class reference)</td></tr>
+    <tr><td>9</td><td><kbd>Ctrl</kbd>+<kbd>F1</kbd></td><td><kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>1</kbd></td><td>Switch to the 2D workspace</td></tr>
+    <tr><td>10</td><td><kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd> <kbd>S</kbd></td><td>same</td><td>2D: Select, Move, Rotate, Scale</td></tr>
+    <tr><td>11</td><td><kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>Cmd+L?</td><td>Lock selected nodes (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> unlocks)</td></tr>
+    <tr><td>12</td><td><kbd>Ctrl</kbd>+<kbd>G</kbd></td><td><kbd>Cmd</kbd>+<kbd>G</kbd></td><td>Group selected nodes (editor grouping)</td></tr>
+    <tr><td>13</td><td><kbd>F</kbd></td><td>same</td><td>Center / focus the selection in the viewport</td></tr>
+    <tr><td>14</td><td><kbd>Shift</kbd>+<kbd>F</kbd></td><td>Shift+F</td><td>2D: Frame to Selection. 3D: toggle free-look</td></tr>
+    <tr><td>15</td><td>Middle mouse drag or <kbd>Space</kbd>+drag</td><td>same</td><td>Pan the 2D viewport</td></tr>
+    <tr><td>16</td><td>Mouse wheel</td><td>same</td><td>Zoom the viewport</td></tr>
+    <tr><td>17</td><td>Middle mouse drag</td><td>same</td><td>3D: orbit</td></tr>
+    <tr><td>18</td><td>Hold right mouse + <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td>same</td><td>3D: fly (free-look)</td></tr>
+    <tr><td>19</td><td><kbd>Keypad 5</kbd></td><td>same</td><td>3D: Perspective / Orthogonal</td></tr>
+    <tr><td>20</td><td><kbd>Ctrl</kbd> while dragging</td><td><kbd>Cmd</kbd> while dragging</td><td>Snap while moving, rotating, scaling</td></tr>
+    <tr><td>21</td><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Cmd+K?</td><td>Script editor: toggle comment on the selected lines</td></tr>
+    <tr><td>22</td><td><kbd>Ctrl</kbd>+<kbd>Space</kbd></td><td><kbd>Cmd</kbd>+<kbd>Space</kbd></td><td>Script editor: trigger code completion</td></tr>
+    <tr><td>23</td><td><kbd>Ctrl</kbd>+click a name</td><td><kbd>Cmd</kbd>+click</td><td>Script editor: look up the symbol in the class reference</td></tr>
+    <tr><td>24</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></td><td>Cmd+Shift+R?</td><td>Replace in Files (cannot be undone: commit first)</td></tr>
+    <tr><td>25</td><td><kbd>Ctrl</kbd>+drag a node into the script</td><td><kbd>Cmd</kbd>+drag</td><td>Insert an <code>@onready var</code> line for that node</td></tr>
+  </table>
+  </div>
+
+  <h2 id="general">1. General</h2>
+  <table>
+    <tr><th>Action</th><th>Windows</th><th>macOS</th><th>Notes</th></tr>
+    <tr><td>Save the current scene</td><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td><kbd>Cmd</kbd>+<kbd>S</kbd></td><td>Prompts for a file name when the scene has none.</td></tr>
+    <tr><td>Search Help (class reference)</td><td><kbd>F1</kbd></td><td><kbd>Opt</kbd>+<kbd>Space</kbd></td><td>Laptops with an <kbd>Fn</kbd> key may need <kbd>Fn</kbd>+<kbd>F1</kbd>. Works anywhere in the editor.</td></tr>
+    <tr><td>Switch to the 2D workspace</td><td><kbd>Ctrl</kbd>+<kbd>F1</kbd></td><td><kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>1</kbd></td><td>Stated in the Signals tutorial. The other workspaces have their own keys: look them up in the Shortcuts tab.</td></tr>
+    <tr><td>Quit to Project List</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd></td><td><kbd>Ctrl</kbd>+<kbd>Option</kbd>+<kbd>Cmd</kbd>+<kbd>Q</kbd></td><td>Menu: <kbd class="menu">Project &gt; Quit to Project List</kbd>.</td></tr>
+    <tr><td>Command palette</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></td><td>Cmd+Shift+P?</td><td>Search and run editor commands, including scripts that extend <code>EditorScript</code> and declare a <code>class_name</code>.</td></tr>
+    <tr><td>Run an <code>EditorScript</code> open in the script editor</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd></td><td>Cmd+Shift+X?</td><td>Or <kbd class="menu">File &gt; Run</kbd> in the script editor.</td></tr>
+    <tr><td>Close a floating dock or split-off script window</td><td><kbd>Alt</kbd>+<kbd>F4</kbd></td><td>Click the close button (top-left on macOS)</td><td>Focus the floating window first.</td></tr>
+    <tr><td>Copy / paste</td><td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd></td><td><kbd>Cmd</kbd>+<kbd>C</kbd> / Cmd+V?</td><td>Standard; also used in the TileMapLayer editor.</td></tr>
+    <tr><td>Delete selected keys, tiles, ...</td><td><kbd>Del</kbd></td><td>same</td><td>Stated for animation keys and tile selections. For nodes use the Scene dock right-click menu or the key shown in it.</td></tr>
+    <tr><td>Take a screenshot of the desktop (OS, not Godot)</td><td><kbd>PrtSc</kbd></td><td><kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>3</kbd> (full screen)</td><td>Handy for bug reports and store-page captures.</td></tr>
+    <tr><td>Toggle fullscreen in a <em>running</em> game</td><td><kbd>Alt</kbd>+<kbd>Enter</kbd></td><td>macOS has its own override (see the <code>ui_toggle_fullscreen</code> input action)</td><td>Controlled by the <code>ui_toggle_fullscreen</code> action and the project setting <code>display/window/size/enable_toggle_fullscreen_shortcut</code>.</td></tr>
+  </table>
+
+  <h2 id="scene-node">2. Scene dock and nodes</h2>
+  <table>
+    <tr><th>Action</th><th>Windows</th><th>macOS</th><th>Notes</th></tr>
+    <tr><td>Add Child Node (opens Create New Node)</td><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td><kbd>Cmd</kbd>+<kbd>A</kbd></td><td>Adds under the selected node.</td></tr>
+    <tr><td>Rename the selected node</td><td><kbd>F2</kbd></td><td>same</td><td>Also double-click the name, or right-click &rarr; Rename. Starting a name with <code>%</code> makes it a scene unique node.</td></tr>
+    <tr><td>Duplicate the selected node</td><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td><kbd>Cmd</kbd>+<kbd>D</kbd></td><td>Duplicates with children. Sub-resources stay shared until you use Make Unique.</td></tr>
+    <tr><td>Lock selected nodes</td><td><kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>Cmd+L?</td><td>Locked nodes show a padlock; they can only be selected in the Scene dock.</td></tr>
+    <tr><td>Unlock selected nodes</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd></td><td>Cmd+Shift+L?</td><td>Or click the padlock.</td></tr>
+    <tr><td>Group selected nodes (editor grouping)</td><td><kbd>Ctrl</kbd>+<kbd>G</kbd></td><td><kbd>Cmd</kbd>+<kbd>G</kbd></td><td>Clicking any child selects the group root in the viewport.</td></tr>
+    <tr><td>Ungroup</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></td><td>Cmd+Shift+G?</td><td>The 3D tutorial says <kbd>Ctrl</kbd>+<kbd>G</kbd> toggles; the 2D tutorial says <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>. Try both.</td></tr>
+    <tr><td>Drop a FileSystem item into the viewport</td><td>drop = sibling; <kbd>Shift</kbd>+drop = child of selected; <kbd>Alt</kbd>+drop = child of root; <kbd>Alt</kbd>+<kbd>Shift</kbd>+drop = pick node type</td><td>same keys</td><td>If the root is selected, a plain drop adds a child.</td></tr>
+    <tr><td>Drag a node from the Scene dock into the script editor</td><td>hold <kbd>Ctrl</kbd></td><td>hold <kbd>Cmd</kbd></td><td>Inserts an <code>@onready var</code> declaration for that node (stated in the EditorSettings class reference).</td></tr>
+    <tr><td>Drop a resource file into the script editor</td><td><kbd>Ctrl</kbd> (preload with UID) / <kbd>Ctrl</kbd>+<kbd>Shift</kbd> (reversed)</td><td>Cmd / Cmd+Shift</td><td>Behaviour depends on <code>text_editor/behavior/files/drop_preload_resources_as_uid</code>.</td></tr>
+  </table>
+
+  <h2 id="viewport-2d">3. 2D viewport</h2>
+  <table>
+    <tr><th>Action</th><th>Windows</th><th>macOS</th><th>Notes</th></tr>
+    <tr><td>Select Mode</td><td><kbd>Q</kbd></td><td>same</td><td>Drag a rectangle to multi-select. <kbd>Shift</kbd>+click toggles one node in the selection.</td></tr>
+    <tr><td>Move Mode</td><td><kbd>W</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Rotate Mode</td><td><kbd>E</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Scale Mode</td><td><kbd>S</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Pan Mode</td><td><kbd>G</kbd></td><td>same</td><td>Pan without selecting anything.</td></tr>
+    <tr><td>Ruler Mode</td><td><kbd>R</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Pan with the keyboard</td><td>hold <kbd>Space</kbd> + left mouse drag</td><td>same</td><td>With <code>Editors &gt; Panning &gt; Simple Panning</code> on, <kbd>Space</kbd> alone pans.</td></tr>
+    <tr><td>Pan with the mouse</td><td>Middle mouse drag</td><td>same</td><td>Also the viewport scrollbars.</td></tr>
+    <tr><td>Zoom</td><td>Mouse wheel</td><td>same</td><td>The percentage at the viewport's top-left resets to 100%.</td></tr>
+    <tr><td>Toggle guides visibility</td><td><kbd>Y</kbd></td><td>same</td><td>Drag from a ruler to create a guide.</td></tr>
+    <tr><td>Center Selection</td><td><kbd>F</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Frame to Selection (center + zoom)</td><td><kbd>Shift</kbd>+<kbd>F</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Temporarily rotate while in Select Mode</td><td>hold <kbd>Ctrl</kbd> and drag</td><td>hold Cmd?</td><td>Rotation and scaling in Select Mode ignore snapping.</td></tr>
+    <tr><td>Constrain a move to one axis</td><td>hold <kbd>Shift</kbd> while dragging in Select or Move mode</td><td>same</td><td></td></tr>
+    <tr><td>Set the pivot at the center of the selection</td><td><kbd>Shift</kbd>+click the Rotation pivot button</td><td>same</td><td>Cut-out animation tutorial: <kbd>V</kbd> moves the pivot to the cursor for the selected bone.</td></tr>
+    <tr><td>Lock / unlock, group / ungroup</td><td><kbd>Ctrl</kbd>+<kbd>L</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd>; <kbd>Ctrl</kbd>+<kbd>G</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></td><td>see section 2</td><td></td></tr>
+    <tr><td>Right-click in the viewport</td><td>mouse</td><td>same</td><td>Create a node or instantiate a scene at the position; with a node selected, "move here".</td></tr>
+  </table>
+
+  <h2 id="viewport-3d">4. 3D viewport (orbit, pan, zoom, fly)</h2>
+  <h3 id="tools-3d">Tools</h3>
+  <table>
+    <tr><th>Action</th><th>Windows</th><th>macOS</th><th>Notes</th></tr>
+    <tr><td>Transform Mode (move + rotate gizmo)</td><td><kbd>Q</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Move Mode</td><td><kbd>W</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Rotate Mode</td><td><kbd>E</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Scale Mode</td><td><kbd>R</kbd></td><td>same</td><td>Note: in 3D, <kbd>R</kbd> is Scale and <kbd>S</kbd> is not; in 2D it is the other way round.</td></tr>
+    <tr><td>Select Mode</td><td><kbd>V</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Ruler Mode (meters)</td><td><kbd>M</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Use Local Space</td><td><kbd>T</kbd></td><td>same</td><td>Gizmo follows the node's own rotation.</td></tr>
+    <tr><td>Use Snap</td><td><kbd>Y</kbd></td><td>same</td><td>Or hold <kbd>Ctrl</kbd> (<kbd>Cmd</kbd>) while transforming for temporary snapping.</td></tr>
+    <tr><td>Use Trackball</td><td><kbd>U</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Preserve Children Transform</td><td><kbd>P</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Lock / unlock selected</td><td><kbd>Ctrl</kbd>+<kbd>L</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd></td><td>see section 2</td><td></td></tr>
+    <tr><td>Group / ungroup selected</td><td><kbd>Ctrl</kbd>+<kbd>G</kbd></td><td><kbd>Cmd</kbd>+<kbd>G</kbd></td><td></td></tr>
+    <tr><td>Focus (center) the selected object</td><td><kbd>F</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Perspective / Orthogonal toggle</td><td><kbd>Keypad 5</kbd></td><td>same</td><td>No numpad? Enable <code>Editors &gt; 3D &gt; Navigation &gt; Emulate Numpad</code>.</td></tr>
+    <tr><td>Split the view into two (view layout)</td><td><kbd>Ctrl</kbd>+<kbd>2</kbd></td><td><kbd>Cmd</kbd>+<kbd>2</kbd></td><td>Only <kbd>Ctrl</kbd>+<kbd>2</kbd> is named in the docs; other layouts are in the viewport View menu.</td></tr>
+    <tr><td>Blender-style translate / rotate / scale</td><td><kbd>G</kbd> / <kbd>R</kbd> / <kbd>S</kbd> (<strong>not</strong> default)</td><td>same</td><td>Bind in the 3D editor category of the Shortcuts tab (Begin Translate/Rotate/Scale Transformation), then unbind Scale Mode. Example: <kbd>G</kbd> <kbd>Y</kbd> <kbd>2</kbd> <kbd>.</kbd> <kbd>5</kbd> <kbd>Enter</kbd>.</td></tr>
+  </table>
+  <h3 id="navigate-3d">Navigation (default "Godot" scheme)</h3>
+  <table>
+    <tr><th>Action</th><th>Windows</th><th>macOS</th><th>Notes</th></tr>
+    <tr><td>Orbit</td><td>Middle mouse drag</td><td>same</td><td>Or left-drag the little axis gizmo at the viewport's top-right. Click a colored circle there for an orthogonal view.</td></tr>
+    <tr><td>Pan</td><td><kbd>Shift</kbd>+middle mouse drag</td><td>same</td><td>In orthogonal mode, the right mouse button also pans.</td></tr>
+    <tr><td>Zoom</td><td>Mouse wheel; or <kbd>Ctrl</kbd>+middle mouse drag</td><td>same; Cmd?</td><td></td></tr>
+    <tr><td>Free-look (fly camera)</td><td>Hold the right mouse button, or toggle with <kbd>Shift</kbd>+<kbd>F</kbd></td><td>same</td><td>Perspective view only.</td></tr>
+    <tr><td>Fly: forward / left / back / right</td><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>same</td><td>While in free-look.</td></tr>
+    <tr><td>Fly: up / down</td><td><kbd>E</kbd> / <kbd>Q</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Fly: faster / slower</td><td>hold <kbd>Shift</kbd> / hold <kbd>Alt</kbd></td><td>same</td><td>Mouse wheel up/down changes and keeps the speed.</td></tr>
+    <tr><td>Maya scheme</td><td colspan="3">Set <code>Editors &gt; 3D &gt; Navigation &gt; Navigation Scheme</code>. Modo: <kbd>Alt</kbd>+left drag orbit, <kbd>Alt</kbd>+<kbd>Shift</kbd>+left pan, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+left zoom. Tablet/Trackpad: <kbd>Alt</kbd> orbit, <kbd>Shift</kbd> pan, <kbd>Ctrl</kbd> zoom (enables 3-button emulation).</td></tr>
+    <tr><td>GridMap: change grid floor</td><td><kbd>Ctrl</kbd>+mouse wheel</td><td>Cmd+wheel?</td><td>Or the arrows or value field of the GridMap panel.</td></tr>
+  </table>
+
+  <h2 id="script-editor">5. Script editor</h2>
+  <table>
+    <tr><th>Action</th><th>Windows</th><th>macOS</th><th>Notes</th></tr>
+    <tr><td>Toggle comment on selected lines</td><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Cmd+K?</td><td>Adds or removes a single <code>#</code> before the code on each line.</td></tr>
+    <tr><td>Code completion query</td><td><kbd>Ctrl</kbd>+<kbd>Space</kbd></td><td><kbd>Cmd</kbd>+<kbd>Space</kbd></td><td>Normally completion pops up automatically.</td></tr>
+    <tr><td>Accept completion</td><td><kbd>Enter</kbd> or <kbd>Tab</kbd></td><td>same</td><td><kbd>Tab</kbd> also replaces text to the right of the caret. <kbd>Up</kbd>/<kbd>Down</kbd> choose.</td></tr>
+    <tr><td>Look up the symbol under the cursor</td><td><kbd>Ctrl</kbd>+click</td><td><kbd>Cmd</kbd>+click</td><td>Or right-click &rarr; Lookup Symbol; <kbd>F1</kbd> for Search Help.</td></tr>
+    <tr><td>Multiple carets</td><td><kbd>Alt</kbd>+left click</td><td>Opt+click?</td><td></td></tr>
+    <tr><td>Select next occurrence / inline rename</td><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td><kbd>Cmd</kbd>+<kbd>D</kbd></td><td>Select a word, press repeatedly, then type. Also handy inside Replace with <em>Selection Only</em>.</td></tr>
+    <tr><td>Replace in Files</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></td><td>Cmd+Shift+R?</td><td>Cannot be undone; use version control.</td></tr>
+    <tr><td>Zoom the code</td><td><kbd>Ctrl</kbd>+mouse wheel</td><td><kbd>Cmd</kbd>+mouse wheel</td><td>Or click the percentage in the status bar.</td></tr>
+    <tr><td>Word navigation and deletion</td><td><kbd>Ctrl</kbd>+<kbd>Left</kbd> / <kbd>Right</kbd> / <kbd>Backspace</kbd> / <kbd>Delete</kbd></td><td><kbd>Cmd</kbd>+<kbd>Left</kbd> / Right / Backspace / Delete</td><td>Moves or deletes by word; stops at the separators in <code>text_editor/behavior/navigation/*word_separators</code>.</td></tr>
+    <tr><td>Search Help</td><td><kbd>F1</kbd></td><td><kbd>Opt</kbd>+<kbd>Space</kbd></td><td>Also the <kbd class="ui">Search Help</kbd> button at the top-right of the Script workspace.</td></tr>
+    <tr><td>Toggle breakpoint</td><td>click in the gutter left of the line number</td><td>same</td><td>Or the <code>breakpoint</code> keyword in code (survives version control). Not supported in <code>@tool</code> scripts.</td></tr>
+    <tr><td>Bookmark / Go to line / Go to function</td><td colspan="3">Script editor <kbd class="menu">Go To</kbd> menu; the key shown next to each item is your current binding.</td></tr>
+    <tr><td>Fold / unfold, indent / unindent, duplicate lines, move line</td><td colspan="3">Script editor <kbd class="menu">Edit</kbd> menu lists the key beside each entry (<em>Line</em>, <em>Folding</em>, <em>Indentation</em> sub-menus).</td></tr>
+  </table>
+
+  <h2 id="run-debug">6. Run, debug and the Game workspace</h2>
+  <table>
+    <tr><th>Action</th><th>Windows</th><th>macOS</th><th>Notes</th></tr>
+    <tr><td>Run Project (main scene)</td><td><kbd>F5</kbd></td><td><kbd>Cmd</kbd>+<kbd>B</kbd></td><td>Asks for a main scene the first time.</td></tr>
+    <tr><td>Run Current Scene</td><td><kbd>F6</kbd></td><td><kbd>Cmd</kbd>+<kbd>R</kbd></td><td>Save the scene first (default setting does this automatically).</td></tr>
+    <tr><td>Stop</td><td><kbd>F8</kbd></td><td><kbd>Cmd</kbd>+<kbd>.</kbd></td><td></td></tr>
+    <tr><td>Pause / Resume the game (Game bar)</td><td><kbd>F9</kbd></td><td>same</td><td>Stated for the Game workspace's Game bar. The editor's own Pause button shows its key in its tooltip.</td></tr>
+    <tr><td>Frame advance while paused (Game bar)</td><td><kbd>F10</kbd></td><td>same</td><td>Step one frame to examine short-lived collisions.</td></tr>
+    <tr><td>List selectable nodes under the cursor (Game bar select mode)</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+right mouse button</td><td>Cmd+Opt+right click?</td><td>Interaction mode 2D or 3D only.</td></tr>
+    <tr><td>Game camera override: pan 2D</td><td>Middle mouse or <kbd>Space</kbd>+left mouse</td><td>same</td><td>Wheel zooms.</td></tr>
+    <tr><td>Game camera override: 3D fly / orbit / pan</td><td>Right mouse + <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>; middle mouse orbit; <kbd>Shift</kbd>+middle pan</td><td>same</td><td>FOV: <kbd>Ctrl</kbd>+<kbd>Minus</kbd>, <kbd>Ctrl</kbd>+<kbd>Plus</kbd>, <kbd>Ctrl</kbd>+<kbd>0</kbd>.</td></tr>
+    <tr><td>Step Into / Step Over / Break / Continue (debugger)</td><td colspan="3">Buttons at the top-right of the Debugger panel and in the script editor's <kbd class="menu">Debug</kbd> menu; the key is shown beside each. Set <em>Debug with External Editor</em> under Shortcuts &gt; Debugger.</td></tr>
+    <tr><td>Quit a Movie Maker recording safely</td><td colspan="3">Do <strong>not</strong> stop it with <kbd>F8</kbd> (<kbd>Cmd</kbd>+<kbd>.</kbd>) or <kbd>Ctrl</kbd>+<kbd>C</kbd> in a terminal: the AVI ends up without duration information. Close the game window with its X button, call <code>get_tree().quit()</code>, or use the <code>--quit-after N</code> command-line argument.</td></tr>
+    <tr><td>Toggle fullscreen in the running game</td><td><kbd>Alt</kbd>+<kbd>Enter</kbd></td><td>see section 1</td><td>Default <code>ui_toggle_fullscreen</code>; can be disabled in project settings.</td></tr>
+  </table>
+  <div class="callout note"><span class="callout-title">Pause, Run Specific Scene</span>
+    <p>The docs do not state keys for the editor's <kbd class="ui">Pause</kbd> and <kbd class="ui">Run Specific Scene</kbd> buttons. Hover the button for its tooltip, or look under <kbd class="ui">Shortcuts</kbd> in Editor Settings.</p></div>
+
+  <h2 id="animation">7. Animation editor</h2>
+  <table>
+    <tr><th>Action</th><th>Windows</th><th>macOS</th><th>Notes</th></tr>
+    <tr><td>Play from beginning</td><td><kbd>Shift</kbd>+<kbd>D</kbd></td><td>same</td><td>The "Play from beginning" button.</td></tr>
+    <tr><td>Stop playback</td><td><kbd>S</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Preview the section between two markers</td><td><kbd>Shift</kbd>+click both markers</td><td>same</td><td>The space between them is highlighted red.</td></tr>
+    <tr><td>Delete selected key(s)</td><td><kbd>Del</kbd></td><td>same</td><td>Select the key first.</td></tr>
+    <tr><td>Zoom the time axis</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+mouse wheel</td><td>Cmd?</td><td>Or the slider at the bottom right.</td></tr>
+    <tr><td>Zoom the Y axis (Bezier curves)</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+mouse wheel</td><td>Cmd?</td><td></td></tr>
+    <tr><td>Edit a track path</td><td>double-click the track</td><td>same</td><td>Type the corrected property path.</td></tr>
+    <tr><td>Instanced scene's AnimationPlayer</td><td colspan="3">Not a key: enable <kbd class="ui">Editable Children</kbd> on the instance (right-click it in the Scene dock) to reach its AnimationPlayer.</td></tr>
+  </table>
+
+  <h2 id="tilemap">8. TileMapLayer editor (TileSet and TileMap bottom tabs)</h2>
+  <p>Shortcuts for painting tiles with the bottom panel open. The editor tab is labelled <em>TileMap</em> in the UI; the node is <code>TileMapLayer</code>.</p>
+  <table>
+    <tr><th>Action</th><th>Windows</th><th>macOS</th><th>Notes</th></tr>
+    <tr><td>Paint tile</td><td>Left mouse (hold and drag)</td><td>same</td><td>Paint mode.</td></tr>
+    <tr><td>Erase tile</td><td>Right mouse</td><td>same</td><td>Temporarily toggles the eraser in any mode.</td></tr>
+    <tr><td>Draw a line (temporary Line tool)</td><td>hold <kbd>Shift</kbd> <em>before</em> pressing the left mouse button</td><td>same</td><td>Also works with the Eraser.</td></tr>
+    <tr><td>Draw a rectangle (temporary Rectangle tool)</td><td>hold <kbd>Ctrl</kbd>+<kbd>Shift</kbd> before pressing the left mouse button</td><td>Cmd+Shift?</td><td></td></tr>
+    <tr><td>Pick an existing tile (temporary Picker)</td><td>hold <kbd>Ctrl</kbd> and click or drag</td><td>Cmd?</td><td>Only non-empty tiles.</td></tr>
+    <tr><td>Temporary selection while painting</td><td>hold <kbd>Ctrl</kbd> and drag a rectangle</td><td>Cmd?</td><td>In Paint mode.</td></tr>
+    <tr><td>Add to / remove from selection</td><td><kbd>Shift</kbd>+select / <kbd>Ctrl</kbd>+select</td><td>Cmd?</td><td>In Selection mode, and for picking several tiles in the TileSet list (hold <kbd>Shift</kbd>).</td></tr>
+    <tr><td>Copy / paste placed tiles</td><td><kbd>Ctrl</kbd>+<kbd>C</kbd>, then <kbd>Ctrl</kbd>+<kbd>V</kbd></td><td><kbd>Cmd</kbd>+<kbd>C</kbd> / Cmd+V?</td><td>Click to place; press <kbd>Ctrl</kbd>+<kbd>V</kbd> again for more copies. Right-click or <kbd>Esc</kbd> cancels.</td></tr>
+    <tr><td>Delete the selected tiles</td><td><kbd>Del</kbd></td><td>same</td><td></td></tr>
+    <tr><td>Quick rectangle collision shape (TileSet physics editor)</td><td><kbd>F</kbd></td><td>same</td><td>Press while hovering the tile in the physics layer editor.</td></tr>
+    <tr><td>Pan / zoom the tile panel</td><td>Middle or right mouse drag / wheel</td><td>same</td><td>Same as the 2D editor.</td></tr>
+  </table>
+
+  <h2 id="mouse">9. Mouse cheat sheet</h2>
+  <table>
+    <tr><th>Where</th><th>Left button</th><th>Middle button</th><th>Right button</th><th>Wheel</th></tr>
+    <tr><td>2D viewport</td><td>Primary tool action (select, move, ...)</td><td>Pan</td><td>Context menu: create node / instantiate scene / move here</td><td>Zoom</td></tr>
+    <tr><td>3D viewport</td><td>Primary tool action</td><td>Orbit (<kbd>Shift</kbd> pan, <kbd>Ctrl</kbd> zoom)</td><td>Hold: free-look fly (pans in orthogonal view)</td><td>Zoom (in free-look: fly speed)</td></tr>
+    <tr><td>Inspector number field</td><td>Click to type; hold and drag to scrub</td><td>-</td><td>Copy / paste / favorite menu on a property</td><td>-</td></tr>
+    <tr><td>Scene dock</td><td>Select; double-click renames</td><td>-</td><td>Node context menu</td><td>-</td></tr>
+    <tr><td>Script panel file list</td><td>Switch file</td><td>Close file</td><td>File menu</td><td>-</td></tr>
+    <tr><td>Script editor</td><td><kbd>Ctrl</kbd>+click = lookup; <kbd>Alt</kbd>+click = extra caret</td><td>-</td><td>Context menu (toggle bookmark, lookup symbol, ...)</td><td><kbd>Ctrl</kbd>+wheel zooms the code</td></tr>
+  </table>
+
+  <h2 id="unverified">10. Standard keys not stated in the docs</h2>
+  <div class="callout warn"><span class="callout-title">Unverified: confirm in the Shortcuts tab</span>
+    <p>These are the usual OS-style editing keys. They work in the editor by default in current versions, but the docs in this repository do not list them, so treat them as "check before you rely on it".</p>
+    <table>
+      <tr><th>Action</th><th>Windows</th><th>macOS</th></tr>
+      <tr><td>Undo</td><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Cmd+Z</td></tr>
+      <tr><td>Redo</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td><td>Cmd+Shift+Z</td></tr>
+      <tr><td>Find in the open script</td><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>Cmd+F</td></tr>
+      <tr><td>Cut</td><td><kbd>Ctrl</kbd>+<kbd>X</kbd></td><td>Cmd+X</td></tr>
+    </table>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/2d/introduction_to_2d.html" target="_blank" rel="noopener">Introduction to 2D</a>: toolbar and viewport keys.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/3d/introduction_to_3d.html" target="_blank" rel="noopener">Introduction to 3D</a>: gizmo, navigation and free-look keys.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/script_editor.html" target="_blank" rel="noopener">Script Editor</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/game_embedding.html" target="_blank" rel="noopener">Game embedding</a>: Game bar keys.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/2d/using_tilemaps.html" target="_blank" rel="noopener">Using TileMaps</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/2d/using_tilesets.html" target="_blank" rel="noopener">Using TileSets</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/animation/introduction.html" target="_blank" rel="noopener">Introduction to the animation features</a></li>
+  </ul>
+  <p>See also: <a href="editor-tour.html">Editor tour</a> for what every button does.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

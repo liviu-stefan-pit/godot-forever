@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 10 - 3D Brawler I: 3D basics and third-person controller | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day10" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 1 · Day 10 · Game 4: Arena Brawler 3D</div>
+    <h1>3D Brawler I: 3D basics and third-person controller</h1>
+    <p class="lead">Today you enter 3D for the first time. You will learn how Godot's 3D space works, drive the 3D editor with confidence, blockout a combat arena with CSG, light it, import the official starter character, and finish with a character you can run and jump around using a smooth third-person camera on mouse or gamepad.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:30</td><td><strong>Block 1: Concepts.</strong> The 3D coordinate system, <code>Node3D</code> transforms, the <code>Basis</code> and rotation caveats, and what changes from 2D.</td></tr>
+    <tr><td>0:30 – 1:10</td><td><strong>Block 2: Project, import, settings.</strong> Create the project, import the starter assets, name the physics layers, and create the Input Map.</td></tr>
+    <tr><td>1:10 – 2:00</td><td><strong>Block 3: Viewport drill and the arena.</strong> Navigate the 3D viewport, then build the arena with CSG nodes and materials.</td></tr>
+    <tr><td>2:00 – 2:15</td><td><strong>Break.</strong> Stand up, look at something far away.</td></tr>
+    <tr><td>2:15 – 2:45</td><td><strong>Block 4: Light and atmosphere.</strong> <code>DirectionalLight3D</code> with shadows and a <code>WorldEnvironment</code> (sky, tonemap, glow, SSAO, fog).</td></tr>
+    <tr><td>2:45 – 3:35</td><td><strong>Block 5: The player and the camera rig.</strong> <code>CharacterBody3D</code>, imported model, <code>SpringArm3D</code>, mouse and gamepad look, camera-relative movement, jump.</td></tr>
+    <tr><td>3:35 – 3:55</td><td><strong>Block 6: Challenge + quiz + wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>3 h 55 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Explain Godot's 3D conventions (right-handed, Y up, -Z forward, 1 unit = 1 m) and use them to compute directions in code.</li>
+    <li>Navigate the 3D viewport (orbit, pan, zoom, fly, orthogonal views) and use the move, rotate and scale gizmos with snapping and local/global space.</li>
+    <li>Build a walkable arena with <code>CSGCombiner3D</code>, union and subtraction, materials and <em>Use Collision</em>, and light it with a <code>DirectionalLight3D</code> and a <code>WorldEnvironment</code>.</li>
+    <li>Import a <code>.glb</code> model and wire it into a <code>CharacterBody3D</code> scene with a <code>Pivot</code> and an <code>Rig</code> node ready for animation.</li>
+    <li>Write a third-person controller: <code>SpringArm3D</code> camera with captured mouse and right-stick look, camera-relative movement with acceleration, gravity, jump, and smooth turning with <code>lerp_angle</code>.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Godot 4.x stable (standard build) installed from Day 1, and a game controller nearby <em>if you have one</em> (optional: everything also works with keyboard and mouse).</li>
+    <li>You can create nodes, save scenes, attach scripts and edit the Input Map from Days 1-2. Today's steps still say where every button is, but they are shorter for things you have done before.</li>
+    <li>Internet access for one download: the official starter zip <code>3d_squash_the_creeps_starter.zip</code> (a PowerShell command is given in step 1).</li>
+    <li>Days 1-9 projects are <em>not</em> needed. Game 4 is a brand-new project, <code>C:\GodotProjects\g04-arena-brawler-3d</code>. If you skipped earlier days, nothing is missing.</li>
+    <li>A mouse with a middle button helps for the 3D viewport. On a laptop without one, see the tip in Block 3.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+
+  <h3>The 3D coordinate system</h3>
+  <p>Godot uses a <strong>right-handed, Y-up</strong> coordinate system, and <strong>1 unit equals 1 meter</strong>. Physics and lighting are tuned for that scale, so a human-sized character is roughly 1.7 units tall and a jump of 1.5 units is a normal jump. The axes are always colored the same way: <span style="color:#e5484d">X red</span> (sideways, +X is right), <span style="color:#30a46c">Y green</span> (up), <span style="color:#3e63dd">Z blue</span> (front/back).</p>
+  <p>The one rule to memorize: <strong>forward is <code>-Z</code></strong>. A <code>Camera3D</code>, a light and anything you call <code>look_at()</code> on points along its own <code>-Z</code>. In code, <code>Vector3.FORWARD</code> is <code>(0, 0, -1)</code>, <code>Vector3.UP</code> is <code>(0, 1, 0)</code>, and the ground plane is <strong>XZ</strong> (not XY as in 2D).</p>
+  <div class="callout tip"><span class="callout-title">Coming from Unity or Unreal?</span>
+    <p>Unity is left-handed with +Z forward; Unreal is Z-up. Godot's <code>-Z</code> forward matches Blender's glTF export convention and OpenGL. If your movement code from another engine "goes backward", negate Z. Imported glTF models already follow Godot's convention.</p></div>
+
+  <h3>2D to 3D mapping</h3>
+  <table>
+    <thead><tr><th>You know (2D)</th><th>3D equivalent</th><th>What changes</th></tr></thead>
+    <tbody>
+      <tr><td><code>Node2D</code></td><td><code>Node3D</code></td><td><code>position</code>, <code>rotation</code> and <code>scale</code> become <code>Vector3</code>s. Rotation is three Euler angles, not one float.</td></tr>
+      <tr><td><code>CharacterBody2D</code></td><td><code>CharacterBody3D</code></td><td>Same <code>velocity</code> + <code>move_and_slide()</code>. Gravity pulls along <code>-Y</code>; you move on X and Z.</td></tr>
+      <tr><td><code>Area2D</code>, <code>CollisionShape2D</code></td><td><code>Area3D</code>, <code>CollisionShape3D</code></td><td>Shapes are volumes (box, sphere, capsule...). Same layer and mask bits.</td></tr>
+      <tr><td><code>Camera2D</code></td><td><code>Camera3D</code></td><td>A scene with no camera renders nothing. Perspective by default, with a <code>fov</code>.</td></tr>
+      <tr><td><code>Sprite2D</code></td><td><code>MeshInstance3D</code></td><td>A mesh plus a material. Lights and shadows are real, so you need a light.</td></tr>
+      <tr><td>Y points down</td><td>Y points up</td><td>Jump velocity is positive, gravity subtracts.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Node3D transforms and the Basis</h3>
+  <p>Every <code>Node3D</code> has a <code>Transform3D</code>: an <code>origin</code> (position) and a <code>basis</code> (a 3x3 matrix holding rotation and scale). The three columns of the basis are the node's local X, Y and Z axes expressed in the parent's space. That is why <code>-transform.basis.z</code> is "where this node is facing", and why <code>some_basis * Vector3(1, 0, 0)</code> means "rotate this vector into that orientation". We use exactly that trick today: build a basis from the camera's yaw and multiply the stick input by it to get camera-relative movement.</p>
+  <p>The Inspector shows <strong>Position / Rotation / Scale</strong> because that is easier to read. In code those are <code>position</code>, <code>rotation</code> (radians) and <code>rotation_degrees</code>, and <code>scale</code>. Plus the <code>global_</code> variants (<code>global_position</code>, <code>global_basis</code>, <code>global_transform</code>) which are relative to the world rather than the parent.</p>
+  <div class="callout warn"><span class="callout-title">Rotation caveats that bite everyone once</span>
+    <ul>
+      <li><strong>Euler angles are order-dependent.</strong> <code>rotation</code> applies Y, then X, then Z (order YXZ). Setting yaw on one node and pitch on a child node (what our camera does) avoids gimbal lock entirely, because each node only rotates around one axis.</li>
+      <li><strong>Never <code>lerp()</code> an angle.</strong> Blending 350° to 10° with <code>lerp</code> spins the long way around. Use <code>lerp_angle(from, to, weight)</code> for a single angle (shortest path), and a <code>Quaternion</code> or <code>Basis.slerp()</code> for full orientations.</li>
+      <li><strong>Do not scale nodes you move or collide with.</strong> Scale the visual child instead, and change <em>shape sizes</em> for collision. Non-uniform scale on a physics body leads to warnings and strange collisions.</li>
+      <li><strong>Precision drift.</strong> Repeatedly multiplying transforms accumulates floating-point error; if you do that, call <code>orthonormalized()</code> now and then. Setting angles directly (what we do) never drifts.</li>
+      <li><strong>Rotating the body vs rotating a pivot.</strong> Rotating the physics body also rotates the camera if the camera is its child. We rotate a child <code>Pivot</code> (and the visible model inside it) so the camera and collision capsule keep their orientation.</li>
+    </ul>
+    <p>Read the official <a href="https://docs.godotengine.org/en/stable/tutorials/3d/using_transforms.html" target="_blank" rel="noopener">Using 3D transforms</a> page later; it is the best explanation of why Godot prefers transforms to Euler angles.</p></div>
+
+  <h3>Today's building blocks in one paragraph each</h3>
+  <ul>
+    <li><strong>CSG (Constructive Solid Geometry).</strong> Nodes like <code>CSGBox3D</code> and <code>CSGCylinder3D</code> that you combine with boolean operations (union, subtraction, intersection) inside a <code>CSGCombiner3D</code>. They are for <em>prototyping</em>: fast to build and walkable with <em>Use Collision</em>, slower than baked meshes at runtime. Perfect for an arena.</li>
+    <li><strong>glTF / <code>.glb</code>.</strong> Godot's preferred 3D format. When a <code>.glb</code> lands in <code>res://</code>, Godot imports it as a <em>scene</em> you can drag into your own scenes. You cannot edit the file itself (Godot never overwrites sources); you wrap it in your own scene and tweak there.</li>
+    <li><strong><code>CharacterBody3D</code> + <code>SpringArm3D</code>.</strong> The body moves with <code>velocity</code> and <code>move_and_slide()</code>. A <code>SpringArm3D</code> sweeps a shape backward from a pivot and slides its child camera forward when something is in the way, so the camera never clips through walls.</li>
+    <li><strong>Environment.</strong> A <code>WorldEnvironment</code> node holds an <code>Environment</code> resource: sky, ambient light, tonemapping, glow, ambient occlusion and fog. 3D without it looks flat.</li>
+  </ul>
+
+  <div class="callout version"><span class="callout-title">Version note</span>
+    <p>Everything today works on Godot 4.3+. Two small things are newer: <code>InputEventMouseMotion.screen_relative</code> (4.3, we use it for resolution-independent mouse look) and the <strong>CSG &gt; Bake Mesh Instance</strong> toolbar action (4.4, only mentioned for later). The editor menu names below match recent 4.x releases; if one differs slightly in your version, the same function is nearby.</p></div>
+
+  <h2 id="build-1">Block 2: Create the project, import the starter, set up layers and input</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Download and unpack the starter zip.</strong> Open PowerShell (<kbd>Win</kbd>+<kbd>X</kbd>, then <kbd class="ui">Terminal</kbd>) and run the block below. It downloads the official <em>Squash the Creeps</em> starter used by the Godot docs' first 3D game, and unpacks it into a scratch folder. The last command shows you what is inside; you should see an <code>art</code> folder (with <code>player.glb</code>, <code>mob.glb</code>, some materials and a music track) and a <code>fonts</code> folder.
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+New-Item -ItemType Directory -Force C:\GodotProjects\_downloads | Out-Null
+Invoke-WebRequest -Uri "https://github.com/godotengine/godot-docs-project-starters/releases/download/latest-4.x/3d_squash_the_creeps_starter.zip" -OutFile C:\GodotProjects\_downloads\starter.zip
+Expand-Archive C:\GodotProjects\_downloads\starter.zip -DestinationPath C:\GodotProjects\_downloads\starter -Force
+Get-ChildItem C:\GodotProjects\_downloads\starter -Recurse -Depth 2 | Select-Object FullName
+      </script>
+      If the download fails (corporate proxy, no PowerShell), open the same URL in your browser, save the zip anywhere and extract it with Explorer's <kbd class="ui">Extract All...</kbd>.
+    </li>
+    <li><strong>Create the project.</strong> Start Godot. In the Project Manager, click <kbd class="ui">Create</kbd> (top-left). Set <kbd class="ui">Project Name</kbd> to <code>g04-arena-brawler-3d</code>. Click <kbd class="ui">Browse</kbd> next to <kbd class="ui">Project Path</kbd> and choose <code>C:\GodotProjects</code>, then click <kbd class="ui">Create Folder</kbd> so the project gets its own folder. Under <kbd class="ui">Renderer</kbd> choose <kbd class="ui">Forward+</kbd> (we want the full desktop 3D feature set: SSAO, glow, volumetric effects). Leave version control as it is, then click <kbd class="ui">Create</kbd>. The editor opens.</li>
+    <li><strong>Copy the art and fonts into the project.</strong> Back in PowerShell, copy the two folders. This command finds them wherever the zip put them:
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+$src = (Get-ChildItem C:\GodotProjects\_downloads\starter -Directory -Recurse | Where-Object Name -eq "art" | Select-Object -First 1).Parent.FullName
+Copy-Item "$src\art" C:\GodotProjects\g04-arena-brawler-3d\art -Recurse
+Copy-Item "$src\fonts" C:\GodotProjects\g04-arena-brawler-3d\fonts -Recurse
+      </script>
+    </li>
+    <li><strong>Let Godot import them.</strong> Switch to the Godot editor window. A progress bar appears at the top-right of the editor ("Importing..."/"Reimport") while Godot converts the assets. Wait until it disappears. In the <kbd class="ui">FileSystem</kbd> dock (bottom-left), you now see <code>art/</code> and <code>fonts/</code> under <code>res://</code>. Double-click <code>art</code> to expand it.</li>
+    <li><strong>Look at how a <code>.glb</code> is imported.</strong> Single-click <code>player.glb</code> in the FileSystem dock. Next to the <kbd class="ui">Scene</kbd> tab at the top of the left dock group there is an <kbd class="ui">Import</kbd> tab; it shows <kbd class="ui">Root Type</kbd> (<code>Node3D</code>), <kbd class="ui">Root Name</kbd>, <kbd class="ui">Root Scale</kbd> and mesh/animation options. We keep the defaults. Then double-click <code>player.glb</code> to open <kbd class="ui">Advanced Import Settings</kbd>: a 3D preview where dragging rotates the model and the wheel zooms. Notice the left tree (the node hierarchy Godot will create) and the tabs for scene/animations. Click <kbd class="ui">Cancel</kbd> to close it without changes.
+      <div class="callout note"><span class="callout-title">Why we never edit the .glb</span>
+        <p>Godot cannot save back to <code>.glb</code> (that would corrupt the source). The workflow is: drag the <code>.glb</code> into <em>your</em> scene as a child, and add everything else (collision, scripts, animations) as sibling or parent nodes in your own scene. If you want to change the imported scene itself (rename nodes, add physics, extract animations) use the Import dock or <em>Advanced Import Settings</em>; see <a href="https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/importing_3d_scenes/index.html" target="_blank" rel="noopener">Importing 3D scenes</a>.</p></div></li>
+    <li><strong>Create the folder structure.</strong> In the FileSystem dock, right-click an empty area below <code>fonts</code> (or right-click <code>res://</code>), choose <kbd class="ui">Create New &gt; Folder...</kbd>, type a name and press <kbd>Enter</kbd>. Create these eight folders: <code>autoload</code>, <code>components</code>, <code>data</code>, <code>enemies</code>, <code>fx</code>, <code>game</code>, <code>player</code>, <code>ui</code>. (Tomorrow's scripts and scenes all have a home already.)</li>
+    <li><strong>Name the 3D physics layers.</strong> In the menu bar choose <kbd class="menu">Project &gt; Project Settings</kbd>. In the left tree of the <kbd class="ui">General</kbd> tab, scroll to <kbd class="ui">Layer Names</kbd> and expand it, then click <kbd class="ui">3D Physics</kbd>. Click the text field next to each layer number and type the names below (press <kbd>Enter</kbd> after each). These are the same seven names used in the 2D games, so they also read correctly in the collision checkboxes of every <code>CollisionObject3D</code> later.
+      <table>
+        <thead><tr><th>Layer</th><th>Name</th><th>Used for</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><code>world</code></td><td>Arena geometry (CSG), floors, walls</td></tr>
+          <tr><td>2</td><td><code>player</code></td><td>The player's body and hurtbox</td></tr>
+          <tr><td>3</td><td><code>enemies</code></td><td>Enemy bodies and hurtboxes</td></tr>
+          <tr><td>4</td><td><code>player_attacks</code></td><td>The player's attack hitbox</td></tr>
+          <tr><td>5</td><td><code>enemy_attacks</code></td><td>Enemy hitboxes and projectiles</td></tr>
+          <tr><td>6</td><td><code>pickups</code></td><td>Reserved (health pickups in the Day 11 challenge)</td></tr>
+          <tr><td>7</td><td><code>triggers</code></td><td>Reserved</td></tr>
+        </tbody>
+      </table>
+      Keep the Project Settings window open for the next steps.
+    </li>
+    <li><strong>Create the movement actions.</strong> Click the <kbd class="ui">Input Map</kbd> tab at the top of the Project Settings window. In the <kbd class="ui">Add New Action</kbd> field type <code>move_left</code> and press <kbd>Enter</kbd> (or click <kbd class="ui">Add</kbd>). The action appears in the list below. Repeat for <code>move_right</code>, <code>move_up</code>, <code>move_down</code>. Leave <kbd class="ui">Show Built-in Actions</kbd> off. <em>Here <code>move_up</code> means "walk forward" and <code>move_down</code> means "walk backward": we use the course-wide action names, and <code>Input.get_vector()</code> maps "up" to negative Y, which we convert to forward <code>-Z</code> in code.</em></li>
+    <li><strong>Bind keys and the left stick to them.</strong> Click the <kbd class="ui">+</kbd> at the right end of the <code>move_left</code> row. A <kbd class="ui">Event Configuration</kbd> dialog opens with a "Listening for input..." area: press <kbd>A</kbd>, then click <kbd class="ui">OK</kbd>. Click <kbd class="ui">+</kbd> again, press <kbd>Left</kbd> (arrow), <kbd class="ui">OK</kbd>. Click <kbd class="ui">+</kbd> a third time; this time select the event yourself from the tree in the dialog: expand <kbd class="ui">Joypad Axes</kbd> and choose the left-stick entry for the negative X axis (its name shows "Left Stick Left" or "Axis 0 -"). <kbd class="ui">OK</kbd>. Repeat for the other three directions using the table below.</li>
+    <li><strong>Create the remaining actions.</strong> Add actions <code>jump</code>, <code>dash</code>, <code>attack</code>, <code>heavy_attack</code>, <code>look_left</code>, <code>look_right</code>, <code>look_up</code>, <code>look_down</code> and <code>pause</code>, and bind each as in the table. For mouse buttons, click the <kbd class="ui">+</kbd>, then click inside the listening area with the wanted mouse button, or pick it from the <kbd class="ui">Mouse Buttons</kbd> group in the tree. For gamepad buttons, expand <kbd class="ui">Joypad Buttons</kbd> and pick the entry whose label mentions the right button name; button numbers follow Godot's layout (0 = bottom face button).
+      <table>
+        <thead><tr><th>Action</th><th>Keyboard / mouse</th><th>Gamepad</th></tr></thead>
+        <tbody>
+          <tr><td><code>move_left</code></td><td><kbd>A</kbd>, <kbd>Left</kbd></td><td>Left stick, X axis negative</td></tr>
+          <tr><td><code>move_right</code></td><td><kbd>D</kbd>, <kbd>Right</kbd></td><td>Left stick, X axis positive</td></tr>
+          <tr><td><code>move_up</code> (forward)</td><td><kbd>W</kbd>, <kbd>Up</kbd></td><td>Left stick, Y axis negative (up)</td></tr>
+          <tr><td><code>move_down</code> (back)</td><td><kbd>S</kbd>, <kbd>Down</kbd></td><td>Left stick, Y axis positive (down)</td></tr>
+          <tr><td><code>jump</code></td><td><kbd>Space</kbd></td><td>Joypad Button 0 (A / Cross)</td></tr>
+          <tr><td><code>dash</code> (this is our dodge roll)</td><td><kbd>Shift</kbd> (Left Shift)</td><td>Joypad Button 1 (B / Circle)</td></tr>
+          <tr><td><code>attack</code> (light)</td><td>Mouse Left Button</td><td>Joypad Button 2 (X / Square)</td></tr>
+          <tr><td><code>heavy_attack</code></td><td>Mouse Right Button</td><td>Joypad Button 3 (Y / Triangle)</td></tr>
+          <tr><td><code>look_left</code>, <code>look_right</code></td><td>(none: the mouse uses motion events)</td><td>Right stick, X axis negative / positive</td></tr>
+          <tr><td><code>look_up</code>, <code>look_down</code></td><td>(none)</td><td>Right stick, Y axis negative / positive</td></tr>
+          <tr><td><code>pause</code></td><td><kbd>Esc</kbd></td><td>Joypad Button 6 (Start)</td></tr>
+        </tbody>
+      </table>
+      Close the Project Settings window when done. There is no "Save" button; changes apply immediately.
+    </li>
+  </ol>
+
+  <div class="checkpoint"><p>Open <kbd class="menu">Project &gt; Project Settings &gt; Input Map</kbd> again: you should see 13 actions of yours (<code>move_left</code> through <code>pause</code>), each with at least one binding (the four <code>look_*</code> actions have only a stick axis). In <kbd class="menu">Layer Names &gt; 3D Physics</kbd> layers 1-7 carry the names above. In the FileSystem dock you see <code>art/</code>, <code>fonts/</code> and your eight folders. If <code>player.glb</code> shows a white "missing" icon instead of a model thumbnail, the import has not finished or the copy failed: check <code>C:\GodotProjects\g04-arena-brawler-3d\art</code> in Explorer.</p></div>
+
+  <div class="callout external"><span class="callout-title">Starter asset license (verify before you ship)</span>
+    <p>The official docs only say "we prepared some game assets" for the <em>Squash the Creeps</em> tutorial; they do <strong>not</strong> state a license for them. The assets are published by the Godot project in the <code>godot-docs-project-starters</code> repository and the matching demo project <code>godot-demo-projects/3d/squash_the_creeps</code> on GitHub. Before you publish anything that contains <code>player.glb</code>, <code>mob.glb</code> or the music, open those repositories' README / license files and copy the credit line they require into your credits. This is a training game, so you are fine locally; the Game 4 page lists the credit placeholder we use.</p></div>
+
+  <h2 id="build-2">Block 3: Drive the 3D viewport, then build the arena with CSG</h2>
+
+  <p>3D editing is mostly navigation. We start a scene, then learn the viewport <em>by using it</em> while building the arena: every node you add is a chance to practice.</p>
+
+  <table>
+    <thead><tr><th>You want to…</th><th>Do this in the 3D viewport (default navigation scheme)</th></tr></thead>
+    <tbody>
+      <tr><td>Orbit around the view center</td><td>Hold the <strong>middle mouse button</strong> and drag. Or left-drag the colored <strong>view gizmo</strong> at the top-right of the viewport.</td></tr>
+      <tr><td>Pan</td><td><kbd>Shift</kbd> + middle mouse drag.</td></tr>
+      <tr><td>Zoom</td><td>Mouse wheel.</td></tr>
+      <tr><td>Fly like in a 3D game</td><td>Hold the <strong>right mouse button</strong> and move the mouse to look; <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> move, <kbd>E</kbd> up, <kbd>Q</kbd> down; <kbd>Shift</kbd> = faster, <kbd>Alt</kbd> = slower; mouse wheel while flying changes the speed. <kbd>Shift</kbd>+<kbd>F</kbd> toggles fly mode without holding the button. (Only in <em>Perspective</em> view.)</td></tr>
+      <tr><td>Frame the selected node</td><td><kbd>F</kbd> (hover the viewport first).</td></tr>
+      <tr><td>Look straight down/along an axis</td><td>Left-click one of the colored circles on the view gizmo (the label of the view menu changes to "Top Orthogonal" etc.). Keypad <kbd>1</kbd> = front, <kbd>3</kbd> = right, <kbd>7</kbd> = top.</td></tr>
+      <tr><td>Switch Perspective / Orthogonal</td><td>Keypad <kbd>5</kbd>, or the <strong>view menu</strong> (the three dots near the top-left of the viewport).</td></tr>
+      <tr><td>See two views at once</td><td>The <kbd class="ui">View</kbd> menu in the toolbar above the viewport &gt; <kbd class="ui">2 Viewports</kbd> (or <kbd>Ctrl</kbd>+<kbd>2</kbd>). Great for "what does the camera see" vs "where is it".</td></tr>
+      <tr><td>Move, Rotate, Scale gizmos</td><td>Toolbar buttons or <kbd>W</kbd> (move), <kbd>E</kbd> (rotate), <kbd>R</kbd> (scale), <kbd>V</kbd> (select), <kbd>Q</kbd> (combined transform). Drag an <strong>arrow</strong> to move on one axis, a colored <strong>square</strong> to move on a plane, an <strong>arc</strong> to rotate.</td></tr>
+      <tr><td>Snap to a grid</td><td>Toolbar <kbd class="ui">Use Snap</kbd> (<kbd>Y</kbd>) or hold <kbd>Ctrl</kbd> while dragging. Step sizes: toolbar <kbd class="ui">Transform</kbd> menu &gt; <kbd class="ui">Snap Settings</kbd>.</td></tr>
+      <tr><td>Local vs global gizmo</td><td>Toolbar <kbd class="ui">Use Local Space</kbd> (<kbd>T</kbd>): on = the gizmo follows the node's own rotated axes, off = world axes.</td></tr>
+      <tr><td>Measure</td><td>Ruler mode (<kbd>M</kbd>), then click and drag: shows meters.</td></tr>
+    </tbody>
+  </table>
+  <div class="callout tip"><span class="callout-title">No middle mouse button?</span>
+    <p>Open <kbd class="menu">Editor &gt; Editor Settings</kbd>, search for <code>emulate 3 button</code> (setting <code>Editors &gt; 3D &gt; Navigation &gt; Emulate 3 Button Mouse</code>) and enable it: you can then hold <kbd>Alt</kbd> while dragging with the left button to orbit. In the same section the <kbd class="ui">Navigation Scheme</kbd> setting switches to Maya- or Modo-style controls if you prefer them.</p></div>
+
+  <ol class="steps">
+    <li><strong>Start the main scene.</strong> In the menu bar choose <kbd class="menu">Scene &gt; New Scene</kbd>. In the <kbd class="ui">Scene</kbd> dock (top-left) click <kbd class="ui">3D Scene</kbd>. A <code>Node3D</code> root appears and the editor jumps to the <kbd class="ui">3D</kbd> workspace: a grid with red (X) and blue (Z) lines and a green (Y) line you see when looking from the side. Press <kbd>F2</kbd>, rename the root <code>Main</code>, press <kbd>Ctrl</kbd>+<kbd>S</kbd> and save it as <code>res://game/main.tscn</code>.</li>
+    <li><strong>Add the arena root.</strong> Select <code>Main</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, type <code>CSGCombiner3D</code>, select it and click <kbd class="ui">Create</kbd>. Rename it <code>Arena</code>. A <code>CSGCombiner3D</code> is an empty "container" whose children are merged with boolean operations, in tree order. <em>Everything we build today is a child of <code>Arena</code>, and the <code>Arena</code> node is the single "CSG root" that will carry the collision.</em></li>
+    <li><strong>Add the arena floor and wall block (<code>Base</code>).</strong> Select <code>Arena</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>CSGCylinder3D</code>, <kbd class="ui">Create</kbd>, rename it <code>Base</code>. In the <kbd class="ui">Inspector</kbd> (right side) set <kbd class="ui">Radius</kbd> <code>21</code>, <kbd class="ui">Height</kbd> <code>6</code>, <kbd class="ui">Sides</kbd> <code>48</code> (more sides = rounder). Expand <kbd class="ui">Transform</kbd> (it is a section lower in the Inspector, under <kbd class="ui">Node3D</kbd>) and set <kbd class="ui">Position</kbd> to <code>(0, 2, 0)</code>. A big grey drum appears: it spans from y = -1 to y = 5, so its <em>top</em> is not the floor yet.</li>
+    <li><strong>Practice orbit, zoom and focus.</strong> With <code>Base</code> selected, hover the viewport and press <kbd>F</kbd> to frame it. Orbit with the middle mouse button to look from above, then from the side, then from underneath. Click the green circle on the view gizmo for a side view and the blue circle for a front view. Press keypad <kbd>5</kbd> to flip between perspective and orthogonal projection, then back. Orthogonal is the best view for aligning CSG shapes.</li>
+    <li><strong>Hollow it out with a subtraction.</strong> Select <code>Arena</code>, add another <code>CSGCylinder3D</code>, rename it <code>Hollow</code>. Set <kbd class="ui">Radius</kbd> <code>20</code>, <kbd class="ui">Height</kbd> <code>6</code>, <kbd class="ui">Sides</kbd> <code>48</code>, <kbd class="ui">Position</kbd> <code>(0, 3, 0)</code>. Then, under the <kbd class="ui">CSGShape3D</kbd> section of the Inspector, set <kbd class="ui">Operation</kbd> to <kbd class="ui">Subtraction</kbd> (script name <code>operation</code>). The drum becomes a bowl: a 1 m thick floor (top at y = 0) and a wall ring from radius 20 to 21. The result is the first shape <em>minus</em> the second, so <code>Hollow</code> must stay <strong>below</strong> <code>Base</code> in the Scene dock.</li>
+    <li><strong>Add the four pillars.</strong> Select <code>Arena</code>, add a <code>CSGCylinder3D</code> named <code>Pillar1</code> with <kbd class="ui">Radius</kbd> <code>1.2</code>, <kbd class="ui">Height</kbd> <code>5.2</code>, <kbd class="ui">Sides</kbd> <code>16</code>, <kbd class="ui">Position</kbd> <code>(8, 2.5, 8)</code>, <kbd class="ui">Operation</kbd> left on <kbd class="ui">Union</kbd>. Select <code>Pillar1</code> and press <kbd>Ctrl</kbd>+<kbd>D</kbd> (duplicate) three times; rename the copies <code>Pillar2</code>, <code>Pillar3</code>, <code>Pillar4</code> and set their positions to <code>(-8, 2.5, 8)</code>, <code>(8, 2.5, -8)</code> and <code>(-8, 2.5, -8)</code>. Pillars start 0.1 m below the floor on purpose so they fuse with it and leave no seam.</li>
+    <li><strong>Add the dais.</strong> Select <code>Arena</code>, add a <code>CSGBox3D</code> named <code>Dais</code>: <kbd class="ui">Size</kbd> <code>(10, 1, 6)</code>, <kbd class="ui">Position</kbd> <code>(0, 0.4, -10)</code>. Its top sits at y = 0.9, a raised platform at the north side of the arena.</li>
+    <li><strong>Add the ramp and learn the rotate gizmo.</strong> Add a <code>CSGBox3D</code> named <code>Ramp</code>: <kbd class="ui">Size</kbd> <code>(4, 0.4, 6.2)</code>, <kbd class="ui">Position</kbd> <code>(0, 0.22, -4)</code>. Now rotate it with the gizmo, as practice: press <kbd>E</kbd> (rotate mode), hover the viewport, drag the <span style="color:#e5484d">red arc</span> a little, then hold <kbd>Ctrl</kbd> while dragging to feel the snapping (the angle appears in the bottom-left of the viewport). Press <kbd>Ctrl</kbd>+<kbd>Z</kbd> until the rotation is back at 0, then type the exact value: in the Inspector set <kbd class="ui">Transform &gt; Rotation</kbd> to <code>(9, 0, 0)</code>. The far end lifts to meet the dais (9° over 6 m is a 0.9 m rise), and the near end sinks slightly below the floor, which is hidden.</li>
+    <li><strong>Add two cover blocks.</strong> Add a <code>CSGBox3D</code> named <code>Block1</code>: <kbd class="ui">Size</kbd> <code>(2.5, 1.2, 2.5)</code>, <kbd class="ui">Position</kbd> <code>(-10, 0.5, 4)</code>, <kbd class="ui">Rotation</kbd> <code>(0, 30, 0)</code>. Duplicate it (<kbd>Ctrl</kbd>+<kbd>D</kbd>), name the copy <code>Block2</code> and set <kbd class="ui">Position</kbd> <code>(11, 0.5, 2)</code>, <kbd class="ui">Rotation</kbd> <code>(0, -20, 0)</code>. Try the <kbd>T</kbd> key (<kbd class="ui">Use Local Space</kbd>) with the move gizmo on <code>Block1</code>: with it on, the arrows follow the block's rotated axes; off, they are the world axes. Leave it off afterwards.</li>
+    <li><strong>Make it solid.</strong> Select the <code>Arena</code> node (the <code>CSGCombiner3D</code> root) and tick <kbd class="ui">Use Collision</kbd> in the Inspector (script name <code>use_collision</code>). <em>This only works on the root of a CSG tree</em>; it generates a static collision shape for the whole merged geometry. Collision layer stays on 1 (<code>world</code>) and the mask on 1. Never tick it on the children.</li>
+  </ol>
+
+  <pre class="scene-tree">Main (Node3D)
+└── Arena (CSGCombiner3D)            use_collision = true
+    ├── Base (CSGCylinder3D)         union
+    ├── Hollow (CSGCylinder3D)       subtraction
+    ├── Pillar1..Pillar4 (CSGCylinder3D)
+    ├── Dais (CSGBox3D)
+    ├── Ramp (CSGBox3D)              rotated 9° on X
+    ├── Block1 (CSGBox3D)
+    └── Block2 (CSGBox3D)</pre>
+
+  <div class="checkpoint"><p>Press keypad <kbd>7</kbd> (top view) and then keypad <kbd>5</kbd> for orthogonal: you should see a ring of radius 21 with a hollow interior, four round pillars at the diagonals, a rectangle (the dais) at the top of the view (north is -Z), the ramp coming down from the dais toward the center, and two small rotated blocks. Orbit to a perspective view: the floor is flat, with the wall ring all around. If the <em>whole drum</em> is solid and filled, <code>Hollow</code> is not set to <kbd class="ui">Subtraction</kbd> or sits above <code>Base</code> in the tree. If the arena is a mess of overlapping surfaces, check that you only set <kbd class="ui">Operation</kbd> on <code>Hollow</code>.</p></div>
+
+  <h3>Materials: three looks, no textures needed</h3>
+  <ol class="steps">
+    <li><strong>Create the stone material.</strong> Select <code>Base</code>. In the Inspector, click the empty <kbd class="ui">Material</kbd> field of the <kbd class="ui">CSGCylinder3D</kbd> section and choose <kbd class="ui">New StandardMaterial3D</kbd>. Click the new material to expand it. Expand <kbd class="ui">Albedo</kbd> and click the <kbd class="ui">Color</kbd> swatch; in the picker, type <code>6b7380</code> into the hex field. Expand <kbd class="ui">Metallic</kbd> and set <kbd class="ui">Roughness</kbd> to <code>0.9</code> (matte). <em>Albedo is the base surface color; roughness controls how sharp reflections are.</em></li>
+    <li><strong>Save it so you can reuse it.</strong> Click the small drop-down arrow at the right end of the <kbd class="ui">Material</kbd> field and choose <kbd class="ui">Save</kbd>. Save it as <code>res://game/mat_stone.tres</code>. Select <code>Hollow</code> and drag <code>mat_stone.tres</code> from the FileSystem dock onto its <kbd class="ui">Material</kbd> field. (On a subtractive node, this is the material of the inner faces it carves, so it becomes the inside of the wall.)</li>
+    <li><strong>Accent and dais materials.</strong> Select <code>Pillar1</code>, create a <kbd class="ui">New StandardMaterial3D</kbd> with <kbd class="ui">Albedo &gt; Color</kbd> <code>b5733c</code>, <kbd class="ui">Roughness</kbd> <code>0.7</code>, and save it as <code>res://game/mat_accent.tres</code>. Drag that file onto the <kbd class="ui">Material</kbd> field of <code>Pillar2</code>, <code>Pillar3</code>, <code>Pillar4</code>, <code>Block1</code> and <code>Block2</code>. Select <code>Dais</code>, create another material with <kbd class="ui">Albedo &gt; Color</kbd> <code>7c8dae</code>, <kbd class="ui">Roughness</kbd> <code>0.8</code>, save it as <code>res://game/mat_dais.tres</code>, and drag it onto <code>Ramp</code>'s <kbd class="ui">Material</kbd> too. You now have a stone-grey bowl, copper pillars and blocks, and a blue-grey platform that reads clearly as a raised area.</li>
+  </ol>
+  <div class="callout tip"><span class="callout-title">Optional: a stone texture without any asset (triplanar)</span>
+    <p>CSG nodes have no UV maps, so textures normally smear. <strong>Triplanar mapping</strong> projects the texture from three axes and fixes that. Try it on <code>mat_stone.tres</code>: expand <kbd class="ui">Albedo</kbd>, click the empty <kbd class="ui">Texture</kbd> field and choose <kbd class="ui">New NoiseTexture2D</kbd>; click it, set <kbd class="ui">Noise</kbd> to <kbd class="ui">New FastNoiseLite</kbd> and enable <kbd class="ui">Seamless</kbd>. Then expand <kbd class="ui">UV1</kbd>, tick <kbd class="ui">Triplanar</kbd> and set <kbd class="ui">Scale</kbd> to <code>(0.15, 0.15, 0.15)</code>. You get a subtle mottled stone look. Triplanar is a bit slower than normal mapping, so it is fine for a prototype arena but would be baked or replaced in a shipping game. (Kenney offers CC0 prototype textures if you want grids: <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a>, search "prototype textures"; verify on the page.)</p></div>
+
+  <div class="callout docs"><span class="callout-title">Docs</span>
+    <p>CSG is documented in <a href="https://docs.godotengine.org/en/stable/tutorials/3d/csg_tools.html" target="_blank" rel="noopener">Prototyping levels with CSG</a>, including the processing-order rule we used (children are merged in tree order) and how to bake a CSG root to a <code>MeshInstance3D</code> later for performance.</p></div>
+
+  <h2 id="build-3">Block 4: Light the arena</h2>
+  <p>The editor draws a preview sun and a preview sky whenever a scene has no real light or environment. Those previews exist only in the editor. A running game with neither a <code>DirectionalLight3D</code> nor a <code>WorldEnvironment</code> is a flat grey void. You are about to replace both previews with nodes you own.</p>
+  <ol class="steps">
+    <li><strong>Open <code>main.tscn</code> if it is not already open.</strong> In the <kbd class="ui">FileSystem</kbd> dock, double-click <code>game/main.tscn</code>. The <kbd class="ui">3D</kbd> workspace should show the arena. The two preview buttons on the viewport toolbar are <kbd class="ui">Toggle preview sunlight</kbd> and <kbd class="ui">Toggle preview environment</kbd>. Leave them as they are for now; they switch themselves off once the real nodes exist.</li>
+    <li><strong>Add the environment.</strong> Select <code>Main</code> in the <kbd class="ui">Scene</kbd> dock, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>WorldEnvironment</code>, and click <kbd class="ui">Create</kbd>. Keep the name <code>WorldEnvironment</code>. One of these per scene is the rule: it supplies the default sky, ambient light, tonemap, and post effects for every camera.</li>
+    <li><strong>Create the Environment resource.</strong> In the <kbd class="ui">Inspector</kbd>, click the empty <kbd class="ui">Environment</kbd> field and choose <kbd class="ui">New Environment</kbd>. Click the new resource to expand it.</li>
+    <li><strong>Give it a sky.</strong> Expand <kbd class="ui">Background</kbd>. Set <kbd class="ui">Mode</kbd> to <kbd class="ui">Sky</kbd> (script name <code>background_mode</code>, value Sky). Click the empty <kbd class="ui">Sky</kbd> field and choose <kbd class="ui">New Sky</kbd>. Click that Sky resource, click the empty <kbd class="ui">Sky Material</kbd> field, and choose <kbd class="ui">New ProceduralSkyMaterial</kbd>. Click the material and set <kbd class="ui">Sky Top Color</kbd> to <code>4a6fa5</code>, <kbd class="ui">Sky Horizon Color</kbd> to <code>c4d4e4</code>, and <kbd class="ui">Ground Bottom Color</kbd> to <code>6b7380</code>. The viewport background should become a blue sky instead of the default grey.</li>
+    <li><strong>Ambient, tonemap, glow, SSAO, fog.</strong> Still inside the Environment resource, set the fields in this table. Sections are collapsed groups in the Inspector; expand each one before editing.
+      <table>
+        <thead><tr><th>Section</th><th>Property (Inspector)</th><th>Value</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Ambient Light</td><td>Source</td><td>Sky</td><td>Shadows stay visible but are not pure black.</td></tr>
+          <tr><td>Ambient Light</td><td>Sky Contribution</td><td><code>0.45</code></td><td>Lets the sun direction read. At <code>1.0</code> the sky washes the sun out.</td></tr>
+          <tr><td>Tonemap</td><td>Mode</td><td>Filmic</td><td>Keeps the sky from clipping to white.</td></tr>
+          <tr><td>Glow</td><td>Enabled</td><td>on</td><td>A little bloom on the sky horizon.</td></tr>
+          <tr><td>Glow</td><td>Intensity</td><td><code>0.25</code></td><td></td></tr>
+          <tr><td>Glow</td><td>Bloom</td><td><code>0.05</code></td><td></td></tr>
+          <tr><td>SSAO</td><td>Enabled</td><td>on</td><td>Contact shadows where the pillars meet the floor. Forward+ only.</td></tr>
+          <tr><td>Fog</td><td>Enabled</td><td>on</td><td></td></tr>
+          <tr><td>Fog</td><td>Mode</td><td>Depth</td><td>Distance fog, so the player stays crisp.</td></tr>
+          <tr><td>Fog</td><td>Depth Begin</td><td><code>14</code></td><td></td></tr>
+          <tr><td>Fog</td><td>Depth End</td><td><code>42</code></td><td>The far wall softens; the arena is 42 m across.</td></tr>
+          <tr><td>Fog</td><td>Light Color</td><td><code>c5d0dc</code></td><td></td></tr>
+          <tr><td>Fog</td><td>Aerial Perspective</td><td><code>0.4</code></td><td>Mixes fog toward the sky color.</td></tr>
+        </tbody>
+      </table>
+    </li>
+    <li><strong>Add the sun.</strong> Select <code>Main</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>DirectionalLight3D</code>, and rename it <code>Sun</code>. A directional light is an infinite sun: only its rotation matters, not its position. Set <kbd class="ui">Transform &gt; Rotation</kbd> to <code>(-50, -35, 0)</code> so the light comes from the south-east and shadows fall across the floor. Set <kbd class="ui">Light &gt; Color</kbd> to <code>f3e6c8</code> and <kbd class="ui">Light Energy</kbd> to <code>1.15</code>.</li>
+    <li><strong>Turn shadows on.</strong> On <code>Sun</code>, expand <kbd class="ui">Shadow</kbd> and tick <kbd class="ui">Enabled</kbd> (script name <code>shadow_enabled</code>). Leave <kbd class="ui">Directional Shadow &gt; Mode</kbd> on <kbd class="ui">Parallel 4 Splits</kbd>. Set <kbd class="ui">Directional Shadow Max Distance</kbd> to <code>40</code> (the arena fits inside that, and a shorter distance means sharper shadows). If the pillar bases show a bright gap (peter-panning), set <kbd class="ui">Bias</kbd> to <code>0.05</code> and <kbd class="ui">Normal Bias</kbd> to <code>1.0</code>. If the shadow crawls onto the pillar instead, raise Bias slightly, never above <code>0.2</code>.</li>
+  </ol>
+  <div class="callout version"><span class="callout-title">SSAO and the renderer</span>
+    <p>SSAO is a Forward+ feature (Mobile has a cheaper variant; Compatibility has none). You chose Forward+ when the project was created. If the Inspector has no <kbd class="ui">SSAO</kbd> section, open <kbd class="menu">Project &gt; Project Settings &gt; Rendering &gt; Renderer</kbd> and check the renderer. Do not switch away from Forward+ for this game.</p></div>
+  <div class="checkpoint"><p>Orbit the editor viewport (middle mouse). You should see a blue sky, a warm light, and dark shadows under the pillars and the dais. The far side of the ring should fade slightly into fog. The preview-sun toolbar buttons no longer change the view, because a real sun and environment exist. Do not press <kbd>F5</kbd> yet: there is no <code>Camera3D</code>, so the game window would be blank. If the arena is silhouetted black, Sky Contribution is <code>0</code>. If there are no shadows, <kbd class="ui">Shadow &gt; Enabled</kbd> is off on <code>Sun</code>.</p></div>
+
+  <h2 id="build-4">Block 5: The player and the third-person camera</h2>
+  <p>Block 2 already imported <code>art/player.glb</code> and <code>art/mob.glb</code>, named the seven 3D physics layers, and created the Input Map (<code>move_left</code>, <code>move_right</code>, <code>move_up</code>, <code>move_down</code>, <code>jump</code>, <code>dash</code>, <code>attack</code>, <code>heavy_attack</code>, <code>look_left</code>, <code>look_right</code>, <code>look_up</code>, <code>look_down</code>, <code>pause</code>). This block only consumes that setup. <code>dash</code>, <code>attack</code>, and <code>heavy_attack</code> stay quiet until Day 11. If any of those actions or either <code>.glb</code> is missing, go back to Block 2 before continuing.</p>
+  <p>The official <em>Squash the Creeps</em> lesson wraps <code>player.glb</code> in a sphere of about <code>0.8</code> m radius. We use a capsule instead, so the brawler does not roll, and we orbit a <code>SpringArm3D</code> instead of a fixed camera. A <code>SpringArm3D</code> casts along its own Z axis (Godot's "back" is <code>+Z</code>, and a camera looks down <code>-Z</code>, so an unrotated arm sits the camera behind a character that faces <code>-Z</code>) and pulls its children in when the cast hits. Leave its <kbd class="ui">Shape</kbd> empty: a direct child <code>Camera3D</code> then uses the camera's near-plane pyramid, which is the setup the spring-arm tutorial recommends.</p>
+
+  <h3>Build the player scene</h3>
+  <ol class="steps">
+    <li><strong>Start a new scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>. In the <kbd class="ui">Scene</kbd> dock click <kbd class="ui">Other Node</kbd>, search <code>CharacterBody3D</code>, select it, and click <kbd class="ui">Create</kbd>. Press <kbd>F2</kbd>, rename it <code>Player</code>. Press <kbd>Ctrl</kbd>+<kbd>S</kbd> and save as <code>res://player/player.tscn</code>.</li>
+    <li><strong>Add the capsule.</strong> Select <code>Player</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>CollisionShape3D</code>. In the Inspector click the empty <kbd class="ui">Shape</kbd> field and choose <kbd class="ui">New CapsuleShape3D</kbd>. Click the shape to expand it. Set <kbd class="ui">Radius</kbd> to <code>0.55</code> and <kbd class="ui">Height</kbd> to <code>1.6</code> (height includes the two hemispheres, and it must be at least twice the radius). Set the <code>CollisionShape3D</code> node's <kbd class="ui">Position</kbd> to <code>(0, 0.8, 0)</code> so the bottom of the capsule sits on local y = 0, which will be the floor.</li>
+    <li><strong>Collision layers.</strong> Select <code>Player</code>. In the Inspector, under <kbd class="ui">Collision</kbd>, set <kbd class="ui">Layer</kbd> to only <code>player</code> (layer 2: turn layer 1 off). Set <kbd class="ui">Mask</kbd> to <code>world</code> and <code>enemies</code> (layers 1 and 3). The body walks on the arena and bumps into enemies. It does not scan its own attack layer. Under the same node, enable <kbd class="ui">Floor Constant Speed</kbd> and set <kbd class="ui">Floor Snap Length</kbd> to <code>0.4</code> so the 9° ramp does not slow you or launch you off the lip. The script sets those two again, so a missed click is not fatal, but the Inspector should still match.</li>
+    <li><strong>Put the player in the group <code>player</code>.</strong> With <code>Player</code> selected, click the <kbd class="ui">Node</kbd> tab (the tab next to <kbd class="ui">Inspector</kbd>). Open the <kbd class="ui">Groups</kbd> sub-tab. In the field, type <code>player</code> and click <kbd class="ui">Add</kbd>. Day 11 finds the player with this group.</li>
+    <li><strong>Add Pivot and Rig.</strong> Select <code>Player</code>, add a <code>Node3D</code>, rename it <code>Pivot</code>. Select <code>Pivot</code>, add another <code>Node3D</code>, rename it <code>Rig</code>. <code>Pivot</code> is what the script yaws toward the movement direction, and what Day 11 keyframes for attacks. <code>Rig</code> is only for fitting the imported mesh. Never scale <code>Player</code> itself.</li>
+    <li><strong>Instance the model.</strong> From the <kbd class="ui">FileSystem</kbd> dock, drag <code>art/player.glb</code> onto <code>Rig</code> in the Scene dock. A child appears (its name comes from the file). Press <kbd>F2</kbd> and rename that instance <code>Model</code>. Hover the viewport and press <kbd>F</kbd> with <code>Model</code> selected. The official model is a small rounded creature, roughly the size of the capsule. If the feet float or sink, move <code>Rig</code>'s <kbd class="ui">Position Y</kbd> until the feet meet the bottom of the capsule. If the mesh is much larger or smaller than the capsule, change only <code>Rig</code>'s <kbd class="ui">Scale</kbd> (start from <code>(1, 1, 1)</code> and nudge). If, once you can walk, the face travels backward, set <code>Rig</code>'s <kbd class="ui">Rotation Y</kbd> to <code>180</code>.</li>
+    <li><strong>Build the camera rig.</strong> Select <code>Player</code> and add a <code>Node3D</code> named <code>CameraYaw</code>. Set its <kbd class="ui">Position</kbd> to <code>(0, 1.0, 0)</code> (about chest height). Select <code>CameraYaw</code> and add a <code>Node3D</code> named <code>CameraPitch</code>. Leave its transform at identity. Yaw lives only on <code>CameraYaw</code>, pitch only on <code>CameraPitch</code>, which is the gimbal-lock avoidance from the concepts section. Select <code>CameraPitch</code> and add a <code>SpringArm3D</code>. Set <kbd class="ui">Spring Length</kbd> to <code>4</code> and <kbd class="ui">Margin</kbd> to <code>0.2</code>. Leave <kbd class="ui">Shape</kbd> empty. Under <kbd class="ui">Collision</kbd>, set the spring arm's <kbd class="ui">Mask</kbd> to only <code>world</code> (layer 1), so enemies walking past the lens do not yank the camera in.</li>
+    <li><strong>Add the camera.</strong> Select <code>SpringArm3D</code> and add a <code>Camera3D</code> as its <em>direct</em> child (the pyramid cast only works for a direct child). Turn on <kbd class="ui">Current</kbd> so this camera is the one the game uses. Set <kbd class="ui">Fov</kbd> to <code>70</code>. Leave the camera's position at <code>(0, 0, 0)</code>: the spring arm writes that position every physics frame.</li>
+  </ol>
+
+  <pre class="scene-tree">Player (CharacterBody3D)          [player.gd]  group "player"
+├── CollisionShape3D              CapsuleShape3D r=0.55 h=1.6, position y=0.8
+├── Pivot (Node3D)                script yaws this; Day 11 animates it
+│   └── Rig (Node3D)              scale/offset the mesh here only
+│       └── Model                instance of art/player.glb
+└── CameraYaw (Node3D)            position y=1, rotation.y = yaw
+    └── CameraPitch (Node3D)      rotation.x = pitch, clamped
+        └── SpringArm3D           spring_length 4, margin 0.2, mask = world
+            └── Camera3D          current, fov 70</pre>
+
+  <div class="callout docs"><span class="callout-title">Why the arm excludes the player</span>
+    <p>The capsule is a physics body on a layer the arm might still see if the mask is wrong, and even a mask of <code>world</code> is not the whole story: the cast starts at the arm origin, inside the character. <code>add_excluded_object(get_rid())</code> in <code>_ready</code> removes the player's own body from the cast. Without it the camera locks inside the mesh.</p></div>
+
+  <h3>The controller script</h3>
+  <ol class="steps">
+    <li><strong>Attach the script.</strong> Right-click <code>Player</code> in the Scene dock and choose <kbd class="ui">Attach Script</kbd>. Set <kbd class="ui">Path</kbd> to <code>res://player/player.gd</code>, leave the template empty if you are offered one, and click <kbd class="ui">Create</kbd>. The Script workspace opens. Press <kbd>Ctrl</kbd>+<kbd>A</kbd> and replace the whole file with the listing, then <kbd>Ctrl</kbd>+<kbd>S</kbd>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://player/player.gd">
+extends CharacterBody3D
+
+const SPEED: float = 6.0
+const ACCELERATION: float = 28.0
+const FRICTION: float = 36.0
+const JUMP_VELOCITY: float = 6.0
+const TURN_SPEED: float = 12.0
+const MOUSE_SENSITIVITY: float = 0.0025
+const STICK_LOOK_SPEED: float = 2.2
+const PITCH_MIN: float = deg_to_rad(-50.0)
+const PITCH_MAX: float = deg_to_rad(35.0)
+
+@onready var _pivot: Node3D = $Pivot
+@onready var _camera_yaw: Node3D = $CameraYaw
+@onready var _camera_pitch: Node3D = $CameraYaw/CameraPitch
+@onready var _spring_arm: SpringArm3D = $CameraYaw/CameraPitch/SpringArm3D
+
+var _yaw: float = 0.0
+var _pitch: float = deg_to_rad(-12.0)
+
+
+func _ready() -> void:
+    add_to_group("player")
+    floor_snap_length = 0.4
+    floor_constant_speed = true
+    _spring_arm.add_excluded_object(get_rid())
+    _spring_arm.collision_mask = 1
+    Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+    _apply_look()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+    if event.is_action_pressed("pause"):
+        Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+        get_viewport().set_input_as_handled()
+        return
+    if event is InputEventMouseButton:
+        var button := event as InputEventMouseButton
+        if button.pressed and button.button_index == MOUSE_BUTTON_LEFT:
+            if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+                Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+                get_viewport().set_input_as_handled()
+    if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+        var motion := event as InputEventMouseMotion
+        _yaw -= motion.screen_relative.x * MOUSE_SENSITIVITY
+        _pitch -= motion.screen_relative.y * MOUSE_SENSITIVITY
+        _pitch = clampf(_pitch, PITCH_MIN, PITCH_MAX)
+        _apply_look()
+
+
+func _process(delta: float) -> void:
+    var look := Input.get_vector("look_left", "look_right", "look_up", "look_down")
+    if look.length_squared() > 0.0001:
+        _yaw -= look.x * STICK_LOOK_SPEED * delta
+        _pitch -= look.y * STICK_LOOK_SPEED * delta
+        _pitch = clampf(_pitch, PITCH_MIN, PITCH_MAX)
+        _apply_look()
+
+
+func _physics_process(delta: float) -> void:
+    var input_2d := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+    var wish := Vector3.ZERO
+    if input_2d.length_squared() > 0.0001:
+        var cam_basis := Basis.from_euler(Vector3(0.0, _yaw, 0.0))
+        wish = (cam_basis * Vector3(input_2d.x, 0.0, input_2d.y)).normalized()
+    var horizontal := Vector3(velocity.x, 0.0, velocity.z)
+    var rate: float = ACCELERATION if wish.length_squared() > 0.0 else FRICTION
+    horizontal = horizontal.move_toward(wish * SPEED, rate * delta)
+    velocity.x = horizontal.x
+    velocity.z = horizontal.z
+    if not is_on_floor():
+        velocity += get_gravity() * delta
+    elif velocity.y < 0.0:
+        velocity.y = 0.0
+    if Input.is_action_just_pressed("jump") and is_on_floor():
+        velocity.y = JUMP_VELOCITY
+    if wish.length_squared() > 0.0001:
+        var target_yaw := atan2(-wish.x, -wish.z)
+        var weight := 1.0 - exp(-TURN_SPEED * delta)
+        _pivot.rotation.y = lerp_angle(_pivot.rotation.y, target_yaw, weight)
+    move_and_slide()
+
+
+func _apply_look() -> void:
+    _camera_yaw.rotation.y = _yaw
+    _camera_pitch.rotation.x = _pitch
+      </script>
+      <p><code>get_vector("move_left", "move_right", "move_up", "move_down")</code> puts <kbd>W</kbd> at y = -1. <code>Vector3(x, 0, y)</code> is then <code>(0, 0, -1)</code>, which is <code>Vector3.FORWARD</code>. Multiplying by a basis built from the camera yaw turns that into "forward on the XZ plane from the camera". <code>lerp_angle</code> turns <code>Pivot</code> the short way. <code>screen_relative</code> is the unscaled mouse delta, so look speed does not change when the window size changes. Positive pitch looks up, and the clamp is tighter upward (<code>+35°</code>) than downward (<code>-50°</code>) because looking up swings the camera down toward the floor. Jump speed <code>6</code> against gravity <code>9.8</code> is about a <code>1.8</code> m hop. Walk speed is <code>6</code> m/s.</p>
+    </li>
+    <li><strong>Drop the player into the arena.</strong> Open <code>res://game/main.tscn</code> (click the scene tab, or double-click it in FileSystem; if Godot asks to save <code>player.tscn</code>, save it). Drag <code>player/player.tscn</code> from FileSystem onto <code>Main</code>. Select the new <code>Player</code> instance and set <kbd class="ui">Position</kbd> to <code>(0, 0.2, 6)</code>, just above the floor, south of the center, facing the dais.</li>
+    <li><strong>Make <code>main.tscn</code> the main scene.</strong> Press <kbd>F5</kbd>. If a dialog asks you to pick the main scene, choose <code>res://game/main.tscn</code> and confirm. (The same slot is <kbd class="menu">Project &gt; Project Settings &gt; Application &gt; Run &gt; Main Scene</kbd>.) The game window opens, the mouse cursor disappears, and you are looking at the arena from behind the creature.</li>
+  </ol>
+
+  <div class="checkpoint"><p>In the game window: <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> move relative to where the camera looks, not relative to the world axes. Moving the mouse orbits; you cannot flip under the floor or straight over the top. <kbd>Space</kbd> jumps and you land on the floor, the ramp, and the dais. Walk at a pillar: the camera slides forward instead of entering the stone. The model turns to face the move direction. Press <kbd>Esc</kbd> and the cursor comes back (the game does not pause yet). Click the game window to capture again. Press <kbd>F8</kbd> to stop. If you fall forever, <code>Arena</code>'s <kbd class="ui">Use Collision</kbd> is off or the player's mask does not include <code>world</code>. If the camera is inside the mesh, <code>SpringArm3D</code> is not a child of <code>CameraPitch</code>, or its rotation is not <code>(0, 0, 0)</code>. If the Output panel says an InputMap action does not exist, that action from Block 2 was never created. If <kbd>F6</kbd> on <code>player.tscn</code> alone falls forever, that is expected: the player scene has no floor. Test with <kbd>F5</kbd>.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Captured mouse, and you cannot click Stop.</strong> <kbd>F8</kbd> still stops the project from the editor. <kbd>Esc</kbd> in today's build only shows the cursor; it does not pause physics. Day 11's HUD takes over <code>pause</code>.</li>
+    <li><strong>Blank game window.</strong> <code>Camera3D</code> is missing, is not a child of the spring arm, or <kbd class="ui">Current</kbd> is off. The editor viewport can look fine while the running game has no current camera.</li>
+    <li><strong>Camera stuck in the character's head.</strong> The spring arm is casting against the capsule. Confirm <code>_ready</code> calls <code>add_excluded_object(get_rid())</code> and the arm's mask is only layer 1.</li>
+    <li><strong>Movement is backward when the camera looks north.</strong> <code>move_up</code> must be the negative Y argument of <code>get_vector</code>, which the script already does. If you edited the call and swapped the last two action names, forward and back flip.</li>
+    <li><strong>The body slides down the ramp or launches off the lip.</strong> <kbd class="ui">Floor Snap Length</kbd> is still the default <code>0.1</code>, or <kbd class="ui">Floor Constant Speed</kbd> is off. The script sets both; if you deleted those lines, put them back.</li>
+    <li><strong>You scaled <code>Player</code> to fit the mesh.</strong> Scale <code>Rig</code> only. A scaled physics body warns and collides wrong.</li>
+    <li><strong>Shadows missing in game, present in the editor.</strong> You were looking at the preview sun. The preview is editor-only. <code>Sun</code> needs <kbd class="ui">Shadow &gt; Enabled</kbd>.</li>
+    <li><strong><code>move_and_slide</code> with an argument.</strong> Godot 4 reads the <code>velocity</code> property. Passing a vector is a Godot 3 call and will not parse.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, about 25 min)</h2>
+  <div class="challenge">
+    <h3>Mouse-wheel camera distance</h3>
+    <p>While the mouse is captured, the wheel should change <code>SpringArm3D.spring_length</code>, clamped between <code>2.0</code> and <code>6.0</code>, in steps of <code>0.4</code>. Wheel up moves closer.</p>
+    <details><summary>Hints</summary>
+      <p>Handle it in <code>_unhandled_input</code>. The event type is <code>InputEventMouseButton</code>. Wheel ticks use <code>MOUSE_BUTTON_WHEEL_UP</code> and <code>MOUSE_BUTTON_WHEEL_DOWN</code>, and <code>button.pressed</code> is true for a tick. Write the result back to <code>_spring_arm.spring_length</code>. Do not put the camera on a second node between the arm and the <code>Camera3D</code>: the arm only uses the camera pyramid when the camera is a direct child.</p>
+    </details>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>Which way does a Godot <code>Camera3D</code> look, in its own local axes?</p>
+      <ul>
+        <li>Along <code>+Z</code>.</li>
+        <li>Along <code>-Z</code>. <code>Vector3.FORWARD</code> is <code>(0, 0, -1)</code>.</li>
+        <li>Along <code>+Y</code>.</li>
+        <li>Along <code>+X</code>.</li>
+      </ul>
+      <p class="explain">Godot is Y-up and <code>-Z</code> forward. An unrotated <code>SpringArm3D</code> casts along <code>+Z</code>, which places the camera behind a character that faces <code>-Z</code>.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>What does <code>SpringArm3D</code> actually do with its children?</p>
+      <ul>
+        <li>It copies the parent's velocity onto the camera.</li>
+        <li>It casts along its Z axis and moves its direct children to the hit, shortened by <code>margin</code>.</li>
+        <li>It is a <code>Camera3D</code> with a smoothing property.</li>
+        <li>It bakes a navigation mesh behind the player.</li>
+      </ul>
+      <p class="explain">Length is <code>spring_length</code>. With <kbd class="ui">Shape</kbd> empty and a direct child camera, the cast uses the camera's near-plane pyramid. Exclude the player's RID or the cast hits the capsule immediately.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>Why does the look code read <code>InputEventMouseMotion.screen_relative</code> instead of <code>relative</code>?</p>
+      <ul>
+        <li><code>relative</code> is scaled by the stretch factor, so sensitivity would change with the window size. <code>screen_relative</code> is the raw screen delta.</li>
+        <li><code>screen_relative</code> is in radians already.</li>
+        <li><code>relative</code> only exists for gamepads.</li>
+        <li>They are the same value under a different name.</li>
+      </ul>
+      <p class="explain"><code>screen_relative</code> has been on the event since Godot 4.3, which is why the version note at the top calls it out. Captured mode also needs <code>Input.mouse_mode = Input.MOUSE_MODE_CAPTURED</code>, or the cursor never locks.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>How do you move a <code>CharacterBody3D</code> in Godot 4?</p>
+      <ul>
+        <li>Pass the velocity vector into <code>move_and_slide</code>.</li>
+        <li>Write the <code>velocity</code> property (meters per second, not multiplied by <code>delta</code>), then call <code>move_and_slide()</code> with no arguments.</li>
+        <li>Add <code>velocity * delta</code> to <code>position</code> yourself.</li>
+        <li>Call <code>look_at</code> on the collision shape.</li>
+      </ul>
+      <p class="explain"><code>move_and_slide()</code> uses the body's <code>velocity</code>, slides on walls, and updates <code>is_on_floor()</code>. Gravity comes from <code>get_gravity()</code>, which already includes the project default of <code>9.8</code> along <code>-Y</code>.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Where do you enable <kbd class="ui">Use Collision</kbd> on the arena?</p>
+      <ul>
+        <li>On every <code>CSGBox3D</code> and <code>CSGCylinder3D</code>.</li>
+        <li>Only on the <code>CSGCombiner3D</code> root (<code>Arena</code>).</li>
+        <li>On the <code>WorldEnvironment</code>.</li>
+        <li>On the player's capsule, set to layer <code>world</code>.</li>
+      </ul>
+      <p class="explain">Collision is generated for the merged solid, and only the root of a CSG tree honors <code>use_collision</code>. Children stay on their boolean operation. The player's mask then includes layer <code>world</code> so <code>move_and_slide()</code> stands on that solid.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/3d/introduction_to_3d.html" target="_blank" rel="noopener">Introduction to 3D</a>: viewport navigation, gizmos, and the preview sun buttons.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/3d/using_transforms.html" target="_blank" rel="noopener">Using 3D transforms</a>: basis, <code>-Z</code> forward, and why Euler angles are a last resort.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/3d/csg_tools.html" target="_blank" rel="noopener">Prototyping levels with CSG</a>: operation order and <code>use_collision</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/3d/environment_and_post_processing.html" target="_blank" rel="noopener">Environment and post-processing</a>: sky, tonemap, glow, SSAO, fog, and the editor-only preview.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/3d/spring_arm.html" target="_blank" rel="noopener">Third-person camera with SpringArm3D</a>: length, empty shape, direct child camera, <code>screen_relative</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/physics/using_character_body_2d.html" target="_blank" rel="noopener">Using CharacterBody2D/3D</a>: <code>velocity</code> and <code>move_and_slide()</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/getting_started/first_3d_game/02.player_input.html" target="_blank" rel="noopener">First 3D game: player scene</a>: how the docs instance <code>player.glb</code> under a <code>Pivot</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_springarm3d.html" target="_blank" rel="noopener">SpringArm3D</a>, <a href="https://docs.godotengine.org/en/stable/classes/class_characterbody3d.html" target="_blank" rel="noopener">CharacterBody3D</a>, and <a href="https://docs.godotengine.org/en/stable/classes/class_worldenvironment.html" target="_blank" rel="noopener">WorldEnvironment</a> class references.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li><kbd>F5</kbd> opens the arena with a sky, a shadow-casting sun, and fog on the far wall.</li>
+    <li>Mouse-look orbits within the pitch clamp, the camera pulls in at pillars, and <kbd>Esc</kbd> releases the cursor.</li>
+    <li>WASD (or the left stick) moves relative to the camera, the model yaws with <code>lerp_angle</code>, and <kbd>Space</kbd> jumps onto the dais via the ramp.</li>
+    <li><code>res://player/player.tscn</code> and <code>res://player/player.gd</code> match the scene tree above. <code>res://game/main.tscn</code> is the main scene.</li>
+    <li>The Input Map still has the combat actions (<code>dash</code>, <code>attack</code>, <code>heavy_attack</code>). They do nothing until tomorrow, on purpose.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> Day 11 stays in this project and adds health, attack hitboxes, an <code>AnimationTree</code>, a dodge with i-frames, navigation enemies, a projectile enemy, hit-stop, screen shake, waves, and a pause / game-over HUD.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+# Notices
+
+The course pages, scripts, and styles in this repository are dedicated to the public domain under CC0 1.0 Universal. See `LICENSE`.
+
+There is no fee, no paid tier, and no donation ask. Copy the course, change it, sell a game you built while following it, or teach from it. You do not need to pay the author, and you do not need permission.
+
+## What CC0 does not cover
+
+CC0 waives copyright in this course. It does not transfer other people's rights.
+
+- **Godot Engine** is a separate project, licensed under the MIT license by its contributors. This repository does not contain the engine, export templates, or a GodotSteam checkout. A game you export still has to ship Godot's copyright and license notices. The course page `publishing/licenses.html` explains that. It is teaching material, not legal advice.
+- **Godot** is a trademark of the Godot Foundation. This course is not an official Godot project, and CC0 does not grant the right to use that trademark as your own brand.
+- **Documentation** linked from the lessons stays on https://docs.godotengine.org. Those pages have their own license. This repository does not republish them.
+- **Project starters and art packs** are downloaded by the reader from the links in `README.md`. They are not vendored here, and each pack keeps the license printed on its own page.
+- **Steamworks, GodotSteam, Google Play Console, and ads** are third-party services. The course marks those sections. This repository contains no API keys and no billing plugin.
+
+Code samples inside the lessons are part of the course and are covered by the same CC0 dedication. Godot's own engine code is not.

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game 5 - Torchlight Dungeon | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="game" data-id="g05" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Training game 5 · 3D · First-person dungeon crawler</div>
+    <h1>Torchlight Dungeon</h1>
+    <p class="lead">A one-floor GridMap dungeon, lit by the lamp on your head. Shoot two guards, find a brass key and an iron key, open the matching doors, and step on the green exit. Your best time is kept between runs.</p>
+    <div class="chips"><span class="chip blue">Built on Days 12–13</span><span class="chip green">GridMap, RayCast3D, NavigationAgent3D, SubViewport, volumetric fog</span></div>
+  </header>
+
+  <h2 id="design">Game design</h2>
+  <p>You spawn in a closed stone room with a warm spotlight and a short omni fill. The rest of the level is almost black: distance fog plus a thin volumetric fog so the beam shows in the air. Movement is first person. The body yaws, the head pitches, the mouse is captured until you pause or the run ends. Walk is 4.2 m/s. Sprint is 7.0 m/s. There is no jump.</p>
+  <p>The pistol is hitscan. Each click sends one ray, 28 m, from the camera, excluding the player body. Damage is 14. The magazine holds 8. Reserve ammo is 24. A shot cannot fire again for 0.32 s. Reload takes 1.15 s and pulls from the reserve until the magazine is full or the reserve is empty. An empty click starts a reload. Shots hit the world layer and the enemies layer, so a closed door stops a bullet.</p>
+  <p>Two enemies, 40 health each, move at 2.6 m/s on the floor navigation mesh. They chase only while a sight ray of 12 m hits you. A door or wall on the world layer breaks that ray, so they do not path through a locked door even though the baked mesh still connects the cells. Touch damage is 12, then a 0.9 s cooldown. Your health is 100, so standing still on an enemy is death in about eight seconds. Three hits kill a guard (42 damage).</p>
+  <p>Two keys, ids <code>brass</code> and <code>iron</code>. Walk into the sphere or press E while the 2.2 m interact ray touches it. Each door stores the same id and opens only when your key list contains it. Opening disables the collision shape on a deferred call and hides the mesh. The exit at the south-east corner fires only when you hold both keys. Fewer than two keys shows a prompt and does not end the run.</p>
+  <p>The clock runs in <code>_process</code> on Main, so pause freezes it. Death and escape pause the tree, release the mouse, and show a panel with Play again. Escape reloads the current scene. A faster escape overwrites <code>user://torchlight_best.json</code> (<code>best_msec</code>, cast back with <code>int()</code> because JSON returns floats). A slower escape leaves the file alone.</p>
+  <h3>Controls</h3>
+  <table>
+    <tr><th>Action</th><th>Default</th></tr>
+    <tr><td><code>move_left</code> / <code>move_right</code> / <code>move_up</code> / <code>move_down</code></td><td>A D W S</td></tr>
+    <tr><td><code>sprint</code></td><td>Shift</td></tr>
+    <tr><td><code>attack</code></td><td>Left mouse button</td></tr>
+    <tr><td><code>reload</code></td><td>R</td></tr>
+    <tr><td><code>interact</code></td><td>E</td></tr>
+    <tr><td><code>pause</code></td><td>Escape</td></tr>
+  </table>
+  <p>Look is mouse motion while the cursor is captured. No gamepad and no touch controls in this training build.</p>
+
+  <h3>Map</h3>
+  <p>Cell size is 2 m. Center X and Center Z stay on. Center Y is off, so a cell's origin is its floor. Cell <code>(x, 0, z)</code> sits at world <code>(2x + 1, 0, 2z + 1)</code>. Floor slabs occupy y 0 to 0.2. Walls fill y 0 to 2. Letters are floor cells with a prop on top. <code>#</code> is a wall item. <code>d</code> is the brass door (thin on X). <code>D</code> is the iron door, rotated 90 degrees on Y so it is thin on Z.</p>
+  <pre class="plain">        x: 0 1 2 3 4 5 6 7 8
+z 0:       # # # # # # # # #
+z 1:       # S . . # . . B #
+z 2:       # . . . d . # . #
+z 3:       # . E . # . # . #
+z 4:       # # # # # . # . #
+z 5:       # . . . # . E . #
+z 6:       # . I . # # D # #
+z 7:       # . . . . . . X #
+z 8:       # # # # # # # # #
+
+S spawn (1,1)     world (3, 1, 3)     player yaw -90 deg so -Z faces +X
+E enemy A (3,3)   world (7, 1, 7)
+E enemy B (6,5)   world (13, 1, 11)
+d door brass (4,2) world (9, 1, 5)    key id brass
+D door iron (6,6) world (13, 1, 13)   rotation Y 90, key id iron
+B key brass (7,1) world (15, 0.5, 3)
+I key iron (2,6)  world (5, 0.5, 13)
+X exit (7,7)      world (15, 1, 15)</pre>
+  <p>Route: clear or slip past the start-room guard, fail the brass door, take the brass key in the north-east room, open <code>d</code>, deal with the hall guard, take the iron key in the west room off row z = 5, open <code>D</code>, stand on the green disc.</p>
+
+  <h2 id="scope">Scope: what "done" means</h2>
+  <p>This is a training game. Done means the list below, played in one <kbd>F5</kbd> session from <code>main.tscn</code>. It does not mean menus, localization, or a store build. Those start with the Ship Kit on Day 15.</p>
+  <ul class="checklist">
+    <li>Project <code>C:\GodotProjects\g05-torchlight-dungeon</code> uses the Forward+ renderer.</li>
+    <li>Window size is 1280 by 720. Main scene is <code>res://main.tscn</code>.</li>
+    <li>3D physics layers are named world, player, enemies, player_attacks, enemy_attacks, pickups, triggers.</li>
+    <li>MeshLibrary exports Floor and Wall from primitive BoxMeshes, materials on the mesh resources.</li>
+    <li>Floor item has a StaticBody3D and a baked NavigationMesh (agent radius 0.4, height 1.6).</li>
+    <li>Wall item has collision and no navigation region.</li>
+    <li>GridMap cell size is 2, 2, 2, Center Y is off, Bake Navigation is on, and the ASCII map above is painted.</li>
+    <li>WorldEnvironment uses a custom background color, low ambient light, distance fog, and volumetric fog.</li>
+    <li>First-person body: yaw on the CharacterBody3D, pitch on Head, mouse captured, sprint at 7.0 m/s, walk at 4.2 m/s.</li>
+    <li>SpotLight3D (range 14, angle 26, shadows on) and OmniLight3D (range 3.2, shadows off) flicker on the head.</li>
+    <li>Footsteps play from a generated click while you move on the floor. Walk step 0.48 s, sprint step 0.32 s.</li>
+    <li>Escape pauses, shows the cursor, and resumes. The run timer does not advance while paused.</li>
+    <li>Hitscan damage is 14, magazine 8, reserve 24, reload 1.15 s, ray length 28 m, mask world plus enemies.</li>
+    <li>Two enemies, 40 health, speed 2.6, aggro 12 m with line of sight, touch damage 12 every 0.9 s.</li>
+    <li>Brass and iron keys can be taken by walking into them or by pressing E on the interact ray.</li>
+    <li>Each door opens only for its key id, then its collision is disabled and the mesh hides.</li>
+    <li>HUD shows health, ammo, keys out of 2, time, best time, a crosshair, and the interact prompt.</li>
+    <li>Minimap is a 256 SubViewport, Own World 3D off, Update Mode Always, orthogonal Camera3D size 18, drawn on a TextureRect.</li>
+    <li>At 0 health the run ends, the cursor returns, and Play again reloads the scene.</li>
+    <li>The exit requires both keys, writes <code>user://torchlight_best.json</code> when the time is better, and shows that best time.</li>
+  </ul>
+
+  <h2 id="architecture">Architecture</h2>
+  <pre class="scene-tree">Main (Node3D)                     [main.gd]  keys, timer, best time
+├── WorldEnvironment
+├── GridMap                       mesh_library.tres, bake navigation
+├── Player (instance)             group player
+├── EnemyA / EnemyB               group enemies
+├── DoorBrass / DoorIron          group doors, exported key_id
+├── KeyBrass / KeyIron            group pickups
+├── ExitZone                      signal reached
+├── MinimapViewport (SubViewport)
+│   └── MinimapCamera             orthogonal, follows player XZ
+├── HUD (CanvasLayer)             [hud.gd] class_name DungeonHUD
+└── PauseMenu (CanvasLayer)       process mode Always</pre>
+  <p>There is no autoload. The run state lives on Main. Bodies carry a <code>Health</code> child (<code>class_name Health</code>). The HUD is <code>class_name DungeonHUD</code> and only displays. Groups used at runtime: <code>player</code>, <code>enemies</code>, <code>pickups</code>, <code>doors</code>.</p>
+  <table>
+    <tr><th>Script</th><th>Responsibility</th></tr>
+    <tr><td><code>player.gd</code></td><td>Move, look, torch flicker, footsteps, hitscan, interact ray, ammo signals</td></tr>
+    <tr><td><code>health.gd</code></td><td><code>take_damage</code>, <code>died</code>, <code>health_changed</code></td></tr>
+    <tr><td><code>enemy.gd</code></td><td>Wait one physics frame, sight ray, <code>get_next_path_position</code>, touch damage</td></tr>
+    <tr><td><code>door.gd</code></td><td><code>try_open(held_keys)</code>, deferred shape disable</td></tr>
+    <tr><td><code>key.gd</code></td><td><code>collected</code> on overlap or <code>take()</code></td></tr>
+    <tr><td><code>exit_zone.gd</code></td><td><code>reached</code> when the player enters</td></tr>
+    <tr><td><code>main.gd</code></td><td>Key list, win/lose, <code>user://</code> best time</td></tr>
+    <tr><td><code>hud.gd</code></td><td>Labels, end panel, <code>SubViewport.get_texture()</code></td></tr>
+    <tr><td><code>pause_menu.gd</code></td><td><code>get_tree().paused</code> and mouse mode. Ignores Escape while the end panel is visible</td></tr>
+    <tr><td><code>minimap_camera.gd</code></td><td>Height 22, orthogonal size 18, rotation X -90</td></tr>
+  </table>
+  <h3>File map</h3>
+  <table>
+    <tr><th>Path</th><th>Role</th></tr>
+    <tr><td><code>res://main.tscn</code>, <code>main.gd</code></td><td>Level root</td></tr>
+    <tr><td><code>res://library/mesh_library.tscn</code>, <code>mesh_library.tres</code></td><td>Exported library. Re-export after any mesh or nav bake edit</td></tr>
+    <tr><td><code>res://player/player.tscn</code>, <code>player.gd</code></td><td>Pawn</td></tr>
+    <tr><td><code>res://components/health.gd</code></td><td>Shared component</td></tr>
+    <tr><td><code>res://enemies/enemy.tscn</code>, <code>enemy.gd</code></td><td>Both guards</td></tr>
+    <tr><td><code>res://props/door.tscn</code>, <code>door.gd</code></td><td>Both doors</td></tr>
+    <tr><td><code>res://props/key.tscn</code>, <code>key.gd</code></td><td>Both keys</td></tr>
+    <tr><td><code>res://props/exit_zone.tscn</code>, <code>exit_zone.gd</code></td><td>Win volume</td></tr>
+    <tr><td><code>res://ui/hud.gd</code></td><td>HUD script on the CanvasLayer in main</td></tr>
+    <tr><td><code>res://ui/pause_menu.gd</code></td><td>Pause layer in main</td></tr>
+    <tr><td><code>res://ui/minimap_camera.gd</code></td><td>Map camera</td></tr>
+    <tr><td><code>user://torchlight_best.json</code></td><td>Not in the project folder</td></tr>
+  </table>
+  <h3>Collision</h3>
+  <table>
+    <tr><th>Body</th><th>Layer</th><th>Mask</th></tr>
+    <tr><td>GridMap and doors</td><td>world (1)</td><td>empty on the door body</td></tr>
+    <tr><td>Player</td><td>player (2)</td><td>world, enemies</td></tr>
+    <tr><td>Enemy</td><td>enemies (3)</td><td>world, player</td></tr>
+    <tr><td>Key (Area3D)</td><td>pickups (6)</td><td>player</td></tr>
+    <tr><td>Exit (Area3D)</td><td>triggers (7)</td><td>player</td></tr>
+    <tr><td>Gun ray</td><td></td><td>value 5 (world | enemies), exclude player RID</td></tr>
+    <tr><td>Interact ray</td><td></td><td>value 33 (world | pickups), areas enabled</td></tr>
+    <tr><td>Sight ray</td><td></td><td>value 3 (world | player), exclude enemy RID</td></tr>
+  </table>
+
+  <h2 id="assets">Assets and credits</h2>
+  <p>No art pack and no audio file. Floors, walls, the player blip, enemies, keys, doors, and the exit disc are BoxMesh, CapsuleMesh, SphereMesh, or CylinderMesh with StandardMaterial3D colors set on the mesh resource. Footsteps are an AudioStreamWAV built in code (8-bit, 22050 Hz, a short decaying sine). The only credit line this game needs, if you add a credits label later:</p>
+  <pre class="plain">Built with Godot Engine
+https://godotengine.org</pre>
+  <p>Godot's own license ships with the editor. You did not download a third-party asset, so there is no Kenney line and no font line.</p>
+
+  <h2 id="days">Where you build it</h2>
+  <ul>
+    <li><a href="../days/day12.html">Day 12</a>: new Forward+ project, MeshLibrary export, painted grid, fog, first-person controller, torch, footsteps, pause.</li>
+    <li><a href="../days/day13.html">Day 13</a>: hitscan pistol, enemies, keys, doors, minimap, death, escape, best time.</li>
+    <li><a href="../days/day14.html">Day 14</a>: debugger, profiler, and a git commit of this folder. No new gameplay.</li>
+  </ul>
+
+  <h2 id="stretch">Stretch goals</h2>
+  <ul>
+    <li>A third enemy that patrols two Marker3D points until the sight ray hits the player. The Day 13 challenge is this, with damage left at 12.</li>
+    <li>Two OmniLight3D sconces with a phase offset, energy flicker only, so volumetric fog does not trail a moving light. The Day 12 challenge places them.</li>
+    <li>A second floor: another GridMap at y = 2, a ramp cell you author as a third library item, and a second exit that does not count until floor 1 is cleared. Rebake navigation and re-export the library.</li>
+    <li>Replace the generated footstep with a CC0 click you record yourself. Keep the player on the AudioStreamPlayer you already have. Do not add an autoload just for one sound.</li>
+    <li>A gamepad look using the right stick inside <code>_physics_process</code>, added as extra events on the existing actions. Do not rename the actions.</li>
+    <li>Muzzle flash: a 0.05 s energy spike on the SpotLight3D inside <code>_fire</code>. Skip a second shadow-casting light.</li>
+  </ul>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

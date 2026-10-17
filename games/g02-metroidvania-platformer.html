@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game 2 - Cave Runner | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="game" data-id="g02" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Training game 2 · 2D · Metroidvania platformer</div>
+    <h1>Cave Runner</h1>
+    <p class="lead">A two-room cave in one sitting. You run, jump, and later dash and double-jump, but only after the cave hands you those moves. Slimes and spike tiles take hearts. Coins and the last checkpoint are written to disk. The exit of room 1 is room 2, and room 2 ends when you touch the goal.</p>
+    <div class="chips"><span class="chip blue">Built on Days 5–7</span><span class="chip green">TileMapLayer, CharacterBody2D, AnimationPlayer, Parallax2D, PointLight2D</span></div>
+  </header>
+
+  <h2 id="design">Game design</h2>
+  <p>Cave Runner is a small Metroidvania: the map is short, but two moves are locked behind pickups, and the rooms assume you have them. It is not an open world. It is the smallest game that still has ability gates, a checkpoint, and a save file.</p>
+  <h3>Core loop</h3>
+  <ol>
+    <li>Cross room 1 with the base jump (coyote time, jump buffer, variable height).</li>
+    <li>Take the cyan orb (<code>dash</code>) on the big block, then the gold orb (<code>double_jump</code>) past the pit.</li>
+    <li>Walk through the opening in the right wall into room 2.</li>
+    <li>Climb the two platforms. The green goal ends the run and shows the coin total.</li>
+  </ol>
+  <p>Dying at zero hearts is not a game-over screen. <code>GameState</code> refills health and the game reloads the checkpoint room at the checkpoint position. Quit and relaunch does the same, because that fact is in <code>user://cave_runner.json</code>.</p>
+  <h3>Controls</h3>
+  <table>
+    <tr><th>Action</th><th>Keyboard</th><th>Gamepad</th></tr>
+    <tr><td><code>move_left</code> / <code>move_right</code></td><td><kbd>A</kbd> <kbd>D</kbd> or arrows</td><td>D-pad, left stick</td></tr>
+    <tr><td><code>jump</code></td><td><kbd>Space</kbd>, <kbd>W</kbd>, <kbd>Up</kbd></td><td>bottom face button</td></tr>
+    <tr><td><code>dash</code></td><td><kbd>Shift</kbd>, <kbd>K</kbd></td><td>left face button</td></tr>
+    <tr><td><code>pause</code></td><td><kbd>Esc</kbd>, <kbd>P</kbd></td><td>Start</td></tr>
+  </table>
+  <p>There is no attack button. Touch damage comes from the slime's hitbox and from spike tiles. The optional Day 6 challenge (stomp) is the only attack, and it is not part of "done".</p>
+  <h3>Numbers the rooms are built for</h3>
+  <p>Tiles are 32 px. Do not retune these after the rooms are painted; the pits and platforms assume them.</p>
+  <table>
+    <tr><th>Constant</th><th>Value</th></tr>
+    <tr><td>Viewport</td><td>1152 x 648, stretch <code>canvas_items</code>, aspect <code>keep</code>, Mobile renderer</td></tr>
+    <tr><td>Run speed</td><td>280 px/s, ground accel 2200, ground friction 2600</td></tr>
+    <tr><td>Jump</td><td>height 112 px (3.5 tiles), time to apex 0.4 s, so gravity 1400 and jump velocity -560</td></tr>
+    <tr><td>Fall</td><td>1.6x gravity while falling, jump-cut 0.4, max fall 900</td></tr>
+    <tr><td>Forgiveness</td><td>coyote 0.1 s, jump buffer 0.12 s</td></tr>
+    <tr><td>Dash</td><td>620 px/s for 0.16 s, cooldown 0.45 s, no gravity during the dash</td></tr>
+    <tr><td>Health</td><td>3 hearts, 1 damage per hit, invulnerable 0.85 s, knockback (260, -220)</td></tr>
+    <tr><td>Slime</td><td>50 px/s, gravity 1400, rays on mask <code>world</code> only</td></tr>
+    <tr><td>Room 1 camera</td><td>limits (0, 0, 1536, 672), smoothing speed 8</td></tr>
+    <tr><td>Room 2 camera</td><td>limits (0, 0, 1280, 512), smoothing speed 12</td></tr>
+  </table>
+  <h3>Win, fail, score</h3>
+  <ul>
+    <li><strong>Win:</strong> the player body overlaps <code>Goal</code> in room 2. The tree pauses. The win screen shows <code>Coins: N</code>.</li>
+    <li><strong>Fail a room:</strong> health hits 0. Respawn at the checkpoint, health back to 3. Abilities and coins stay.</li>
+    <li><strong>Score:</strong> coin count only. No timer. Restart from the win screen calls <code>GameState.reset_run()</code>, which writes a fresh save.</li>
+  </ul>
+
+  <h2 id="scope">Scope: what "done" means</h2>
+  <p>Training-game done is this list, not a store build. Day 7's wrap-up is the same list in playable form. Tick these only when you have seen them in a running project.</p>
+  <ul class="checklist">
+    <li>Project <code>C:\GodotProjects\g02-cave-runner</code> is 1152x648, stretch mode <code>canvas_items</code>, aspect <code>keep</code>, Mobile renderer, default texture filter Nearest</li>
+    <li>2D physics layers are named <code>world</code>, <code>player</code>, <code>enemies</code>, <code>player_attacks</code>, <code>enemy_attacks</code>, <code>pickups</code>, <code>triggers</code></li>
+    <li>Input actions exist: <code>move_left</code>, <code>move_right</code>, <code>jump</code>, <code>dash</code>, <code>pause</code></li>
+    <li><code>res://tiles/cave_tileset.tres</code> has a 32 px atlas, physics on rock, the one-way plank and the spikes, terrain set <code>Rock</code> (Match Sides), and custom data <code>damage</code> = 1 on the spike tile</li>
+    <li><code>room_01.tscn</code> root is <code>Room01</code> with <code>TileMapLayer</code> nodes <code>Background</code>, <code>Decor</code>, <code>Ground</code>, <code>Hazards</code> (Hazards quadrant size 1)</li>
+    <li>The player is a <code>CharacterBody2D</code> in group <code>player</code>, mask <code>world</code> only, with coyote time, jump buffer, variable jump height and a heavier fall</li>
+    <li>Movement is one <code>enum</code> + <code>match</code> state machine: <code>IDLE</code>, <code>RUN</code>, <code>JUMP</code>, <code>FALL</code>, <code>DASH</code>, <code>HURT</code>. One <code>move_and_slide()</code> per physics frame</li>
+    <li><code>AnimationPlayer</code> plays <code>idle</code>, <code>run</code>, <code>jump</code>, <code>fall</code>, <code>dash</code>, <code>hurt</code> from <code>player_sheet.png</code> (10 frames of 32x40)</li>
+    <li>Dash runs only when <code>GameState.has_dash</code> is true, granted by the orb whose <code>ability_id</code> is <code>dash</code></li>
+    <li>The extra air jump runs only when <code>GameState.has_double_jump</code> is true, granted by <code>ability_id</code> <code>double_jump</code></li>
+    <li>The player's <code>Hurtbox</code> (mask <code>enemy_attacks</code>) takes damage from a slime <code>Hitbox</code> (layer <code>enemy_attacks</code>): knockback plus an invulnerability flicker</li>
+    <li>Spike tiles deal damage through <code>TileData.get_custom_data("damage")</code> after <code>move_and_slide()</code></li>
+    <li>The slime patrols with <code>FloorRay</code> and <code>WallRay</code>, both masked to <code>world</code>, and turns at ledges and walls</li>
+    <li>Coins add to the counter and stay collected across room loads because each instance has a unique <code>pickup_id</code></li>
+    <li>Three hearts and the coin label sit on <code>HeartsHud</code> (<code>CanvasLayer</code>), nodes <code>Heart1</code>, <code>Heart2</code>, <code>Heart3</code>, <code>CoinLabel</code></li>
+    <li><code>CaveRoom</code> sets camera limits and smoothing: room 1 is 1536x672 at speed 8, room 2 is 1280x512 at speed 12</li>
+    <li><code>ParallaxFar</code> and <code>ParallaxMid</code> are <code>Parallax2D</code> nodes (scroll scales 0.2 and 0.45, repeat 1152x720). No <code>ParallaxBackground</code></li>
+    <li><code>CanvasModulate</code> darkens the cave, the player's <code>Lantern</code> is a <code>PointLight2D</code> using <code>light.png</code> with shadows on, and at least one <code>LightOccluder2D</code> casts a shadow</li>
+    <li>The <code>Exit</code> in room 1 loads <code>res://rooms/room_02.tscn</code> at spawn <code>(128, 396)</code> without dropping coins or abilities</li>
+    <li>Autoload node name <code>GameState</code> saves coins, health, abilities, collected ids and the checkpoint to <code>user://cave_runner.json</code>, and <code>load_game</code> casts <code>coins</code> and <code>health</code> with <code>int()</code></li>
+    <li>A <code>Checkpoint</code> updates that spawn. Dying reloads the checkpoint room there and refills health</li>
+    <li><kbd>Esc</kbd> opens <code>PauseMenu</code> (Process Mode Always). Resume unpauses. Quit saves and closes</li>
+    <li><code>Goal</code> in room 2 shows <code>WinScreen</code> (group <code>win_screen</code>) with the coin total. Restart calls <code>reset_run()</code> and reloads <code>game.tscn</code></li>
+  </ul>
+
+  <h2 id="architecture">Architecture</h2>
+  <p>The main scene owns everything that must survive a room swap. Rooms are instanced under <code>World</code> and freed on the way out. <code>GameState</code> is an autoload, so it is not freed when <code>game.tscn</code> reloads either; <code>reset_run()</code> clears it on purpose.</p>
+  <pre class="scene-tree">Game (Node)                          [game.gd]
+├── ParallaxFar (Parallax2D)
+│   └── FarSprite (Sprite2D)
+├── ParallaxMid (Parallax2D)
+│   └── MidSprite (Sprite2D)
+├── World (Node2D)
+│   ├── Player (CharacterBody2D)     [player.gd]  group player
+│   │   ├── Sprite2D
+│   │   ├── CollisionShape2D
+│   │   ├── Camera2D
+│   │   ├── AnimationPlayer
+│   │   ├── Hurtbox (Area2D)         [hurtbox.gd]
+│   │   └── Lantern (PointLight2D)
+│   └── Room (CaveRoom)              instance of room_01 or room_02
+├── CanvasModulate
+├── FadeLayer (CanvasLayer)
+│   └── Fade (ColorRect)
+├── HeartsHud (CanvasLayer)          [hearts_hud.gd]
+├── PauseMenu (CanvasLayer)          process mode Always
+└── WinScreen (CanvasLayer)          group win_screen, process mode Always</pre>
+  <table>
+    <tr><th>Piece</th><th>Responsibility</th></tr>
+    <tr><td><code>Player</code></td><td>State machine, gravity, abilities read from <code>GameState</code>, hazard slide checks, camera limits applied by the room, <code>died</code> signal</td></tr>
+    <tr><td><code>Hurtbox</code> / <code>Hitbox</code></td><td>Overlap damage. Bodies do not collide with each other: player mask is <code>world</code>, slime mask is <code>world</code></td></tr>
+    <tr><td><code>CaveRoom</code></td><td>Exports limits, smoothing speed and <code>scene_path</code>. On <code>_ready</code>, pushes limits into the player camera</td></tr>
+    <tr><td><code>game.gd</code></td><td>Fades, instances the room, moves the player, listens to <code>died</code> and <code>room_requested</code>. Defers the load so the exit area is not freed inside its own callback</td></tr>
+    <tr><td><code>GameState</code></td><td>Coins, health, <code>has_dash</code>, <code>has_double_jump</code>, <code>collected</code>, checkpoint room and position. Save and load. Signals for the HUD and the win screen</td></tr>
+    <tr><td><code>coin.gd</code> / <code>ability_orb.gd</code></td><td>If <code>pickup_id</code> is already in <code>collected</code>, free themselves in <code>_ready</code></td></tr>
+  </table>
+  <p>Collision plan, fixed on Day 5 and used everywhere after:</p>
+  <table>
+    <tr><th>Layer</th><th>Who</th><th>Mask</th></tr>
+    <tr><td><code>world</code></td><td>Tile collision</td><td>bit 1 on the tile physics layer</td></tr>
+    <tr><td><code>player</code></td><td>Player body and Hurtbox</td><td>body: <code>world</code>. Hurtbox: <code>enemy_attacks</code></td></tr>
+    <tr><td><code>enemies</code></td><td>Slime body</td><td><code>world</code></td></tr>
+    <tr><td><code>player_attacks</code></td><td>unused (stomp challenge may use it)</td><td></td></tr>
+    <tr><td><code>enemy_attacks</code></td><td>Hitbox</td><td>empty; the hurtbox is the detector</td></tr>
+    <tr><td><code>pickups</code></td><td>Coins and orbs</td><td><code>player</code></td></tr>
+    <tr><td><code>triggers</code></td><td>Checkpoint, Exit, Goal</td><td><code>player</code></td></tr>
+  </table>
+
+  <h2 id="assets">Assets and credits</h2>
+  <p>Day 5 generates every texture with <code>C:\GodotProjects\make_cave_assets.ps1</code> (Windows <code>System.Drawing</code>, no download). The pictures are original to this course. Drop this paragraph into a credits screen if you add one later:</p>
+  <pre class="plain">Cave Runner
+Art: generated by the course script make_cave_assets.ps1 (original).
+Engine: Godot Engine, https://godotengine.org, MIT license.</pre>
+  <p>Files in <code>res://assets/art/</code>:</p>
+  <table>
+    <tr><th>File</th><th>Layout</th></tr>
+    <tr><td><code>cave_tiles.png</code></td><td>8 x 4 tiles of 32 px. Rock block (0..3, 0..3), plank (4,0), spikes (5,0), walls (6,0) and (7,0), crystals, stalactite, torch, mushroom on row 1</td></tr>
+    <tr><td><code>player_sheet.png</code></td><td>10 frames, 32 x 40. 0-1 idle, 2-5 run, 6 jump, 7 fall, 8 dash, 9 hurt</td></tr>
+    <tr><td><code>slime_sheet.png</code></td><td>3 frames, 32 x 28. 0 tall, 1 squash, 2 flat</td></tr>
+    <tr><td><code>coin_sheet.png</code></td><td>4 frames, 24 x 24</td></tr>
+    <tr><td><code>orb.png</code></td><td>24 x 24 white, tinted with Sprite2D modulate (cyan dash, gold double jump, green goal)</td></tr>
+    <tr><td><code>heart_full.png</code> / <code>heart_empty.png</code></td><td>24 x 24</td></tr>
+    <tr><td><code>checkpoint_sheet.png</code></td><td>2 frames, 32 x 48. Frame 0 unlit, frame 1 lit</td></tr>
+    <tr><td><code>bg_far.png</code> / <code>bg_mid.png</code></td><td>1152 x 720, wrapped by Parallax2D</td></tr>
+    <tr><td><code>light.png</code></td><td>256 x 256 radial gradient for PointLight2D. The lantern sets Texture Filter to Linear</td></tr>
+  </table>
+  <div class="callout external"><span class="callout-title">External resource: Kenney swap (verify on the official page, steps change)</span>
+    <p>A polished replacement is Kenney's "Pixel Platformer" pack, CC0, from <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a> (search "Pixel Platformer"). Pick the packed tilesheet in the Tilemap folder by description, not by a guessed filename: pack versions rename files. That sheet is about 18x18 px, so <code>cave_tileset.tres</code> and every peering bit have to be rebuilt. Do that only after the generated art has cleared the checklist. Credit line if you switch: "Art: Kenney (www.kenney.nl), CC0."</p></div>
+
+  <h2 id="days">Where you build it</h2>
+  <ul>
+    <li><a href="../days/day05.html">Day 5</a>: project, viewport, layer names, Input Map, generated art, <code>cave_tileset.tres</code>, room 1's four <code>TileMapLayer</code> nodes, the player controller (coyote, buffer, variable jump) and a <code>Camera2D</code> limited to room 1.</li>
+    <li><a href="../days/day06.html">Day 6</a>: <code>AnimationPlayer</code>, the enum state machine, dash and double jump behind flags, <code>Hurtbox</code> / <code>Hitbox</code>, knockback and flicker, spike custom data, the patrolling slime, coins, orbs, hearts HUD.</li>
+    <li><a href="../days/day07.html">Day 7</a>: <code>game.tscn</code> as the main scene, per-room camera limits, <code>Parallax2D</code>, <code>CanvasModulate</code> + <code>PointLight2D</code> + <code>LightOccluder2D</code>, room 2, <code>GameState</code> JSON save with <code>int()</code> casts, checkpoint, pause, win screen.</li>
+  </ul>
+
+  <h2 id="stretch">Stretch goals</h2>
+  <ul>
+    <li><strong>Stomp.</strong> The Day 6 challenge: falling on a slime bounces you and frees the slime, using frame 2 of <code>slime_sheet.png</code>. Keep the hurtbox from also applying damage on that path.</li>
+    <li><strong>Dash i-frames.</strong> Set <code>_invuln_timer</code> for the dash duration so a spike strip becomes a dash gate. The rooms still completable without it; this only changes the feel.</li>
+    <li><strong>Tile occluders.</strong> Add an occlusion layer to <code>cave_tileset.tres</code> and paint a full-tile polygon on the 16 rock tiles (same <kbd>F</kbd> shortcut as collision, under Rendering). Then delete the hand-placed <code>LightOccluder2D</code> nodes. The Day 7 docs link covers the editor.</li>
+    <li><strong>Kenney art swap.</strong> See Assets. Do it last; coordinates in Days 5-7 match the generated sheet only.</li>
+    <li><strong>A third room</strong> behind a floor that is only crossable with both abilities. Copy <code>room_02.tscn</code>, give it a new <code>scene_path</code>, and point a second <code>Exit</code> at it. Reuse <code>CaveRoom</code>; do not fork the camera code.</li>
+    <li><strong>Collected-id audit.</strong> Print <code>GameState.collected</code> from the pause menu so a missed <code>pickup_id</code> (two coins sharing one id) shows up before you trust the save.</li>
+  </ul>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

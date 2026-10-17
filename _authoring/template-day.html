@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<!-- COPY THIS FILE for every day page: days/dayNN.html. Change data-id, <title>, and all content.
+     Keep: the <head>, the <body> data-* attributes, the two <script> tags at the bottom, and the section order. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 99 - Template day | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day99" data-root="../">
+<main>
+
+  <!-- 1. HEADER -->
+  <header class="lesson-head">
+    <div class="eyebrow">Part 1 · Day 99</div>
+    <h1>Template day: what every page looks like</h1>
+    <p class="lead">One or two sentences: what you will build today and why it matters.</p>
+    <div class="chips" id="auto-chips"></div><!-- filled automatically from course-data.js; leave empty -->
+  </header>
+
+  <!-- 2. TIME BOX: blocks must sum to 180-240 minutes; last row is the total -->
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:30</td><td><strong>Block 1: Concepts.</strong> Read the concept notes (no editor needed).</td></tr>
+    <tr><td>0:30 – 1:45</td><td><strong>Block 2: Build part one.</strong> Scene setup and the player.</td></tr>
+    <tr><td>1:45 – 2:00</td><td><strong>Break.</strong> Stand up, drink water.</td></tr>
+    <tr><td>2:00 – 3:15</td><td><strong>Block 3: Build part two.</strong> Enemies and game flow.</td></tr>
+    <tr><td>3:15 – 3:30</td><td><strong>Block 4: Challenge + quiz + wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>3 h 30 min</td></tr>
+  </table>
+
+  <!-- 3. OBJECTIVES -->
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Create a CharacterBody2D scene and move it with the keyboard.</li>
+    <li>Explain the difference between <code>_process</code> and <code>_physics_process</code>.</li>
+  </ul>
+
+  <!-- 4. BEFORE YOU START (optional): prerequisites, assets to download -->
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 98 is complete and its project opens without errors.</li>
+    <li>Downloaded the asset pack: <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a> (CC0 license, free).</li>
+  </ul>
+
+  <!-- 5. CONCEPTS: short, for an experienced programmer. Map to concepts they already know. -->
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>Physics bodies in one minute</h3>
+  <p>A <code>CharacterBody2D</code> is a body <em>you</em> move from code (like a kinematic controller in other engines). You set <code>velocity</code> and call <code>move_and_slide()</code>.</p>
+  <div class="callout tip"><span class="callout-title">Coming from Unity/Unreal?</span>
+    <p>A Godot <em>scene</em> is both a prefab and a level; a <em>node</em> is a component and a game object in one.</p></div>
+  <div class="callout version"><span class="callout-title">Version note</span>
+    <p>Use only for features that need a newer Godot 4.x than 4.3. State the version.</p></div>
+
+  <!-- 6. BUILD: numbered click-by-click steps. Put code right after the step that creates the script. -->
+  <h2 id="build-1">Block 2: Build the player</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Create the project.</strong> In the Project Manager window, click <kbd class="ui">Create</kbd> (top-left). Set <kbd class="ui">Project Name</kbd> to <code>g99-template</code>, choose an empty folder, pick <kbd class="ui">Forward+</kbd> (or <kbd class="ui">Mobile</kbd> for phone-only), then click <kbd class="ui">Create</kbd>.</li>
+    <li><strong>Add the root node.</strong> In the <kbd class="ui">Scene</kbd> dock (top-left), click <kbd class="ui">Other Node</kbd>, type <code>CharacterBody2D</code>, select it and click <kbd class="ui">Create</kbd>. Rename it <code>Player</code> by pressing <kbd>F2</kbd>.</li>
+    <li><strong>Add a collision shape.</strong> Select <code>Player</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>CollisionShape2D</code>, click <kbd class="ui">Create</kbd>. In the <kbd class="ui">Inspector</kbd> (right side), click the empty <kbd class="ui">Shape</kbd> field and choose <kbd class="ui">New CapsuleShape2D</kbd>.</li>
+    <li><strong>Save the scene.</strong> Press <kbd>Ctrl</kbd>+<kbd>S</kbd>, name it <code>player.tscn</code>, click <kbd class="ui">Save</kbd>. In the menu bar, <kbd class="menu">Project &gt; Project Settings &gt; Input Map</kbd> is where you will add actions later.</li>
+  </ol>
+
+  <pre class="scene-tree">Player (CharacterBody2D)        [player.gd]
+├── Sprite2D
+└── CollisionShape2D</pre>
+
+  <ol class="steps">
+    <li><strong>Attach a script.</strong> Right-click <code>Player</code> in the Scene dock → <kbd class="ui">Attach Script</kbd>. In the dialog set <kbd class="ui">Path</kbd> to <code>res://player.gd</code> and click <kbd class="ui">Create</kbd>. Replace the whole file with:
+      <script type="text/x-code" data-lang="gdscript" data-file="player.gd">
+extends CharacterBody2D
+
+@export var speed: float = 300.0
+
+func _physics_process(_delta: float) -> void:
+    var dir: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+    velocity = dir * speed
+    move_and_slide()
+      </script>
+    </li>
+  </ol>
+
+  <div class="checkpoint"><p>Press <kbd>F6</kbd> (Run Current Scene). A window opens. You should see an empty window and no errors in the <kbd class="ui">Output</kbd> panel at the bottom. Close it with the window's X or <kbd>F8</kbd>.</p></div>
+
+  <div class="callout warn"><span class="callout-title">Common mistake</span>
+    <p>If you get <code>The InputMap action "move_left" doesn't exist</code>, you have not created the action yet. Open <kbd class="menu">Project &gt; Project Settings &gt; Input Map</kbd>.</p></div>
+
+  <details><summary>Stuck? Show the finished player scene as text</summary>
+    <pre class="plain">[node name="Player" type="CharacterBody2D"]
+script = ExtResource("1_abcde")</pre>
+  </details>
+
+  <div class="callout external"><span class="callout-title">External resource (not in the Godot docs)</span>
+    <p>Use for Steam, Google Play, GodotSteam, Kenney and anything else outside the official docs. Always say "verify on the official page, steps change".</p></div>
+
+  <!-- 7. PITFALLS -->
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Moving with <code>position +=</code> instead of <code>move_and_slide()</code></strong> makes the body tunnel through walls.</li>
+  </ul>
+
+  <!-- 8. CHALLENGE -->
+  <h2 id="challenge">Challenge (optional, 20-30 min)</h2>
+  <div class="challenge">
+    <h3>Add a sprint</h3>
+    <p>Hold <kbd>Shift</kbd> to move twice as fast. Hint: add a <code>sprint</code> action.</p>
+  </div>
+
+  <!-- 9. QUIZ: data-correct is the 0-based index of the right answer. 3-5 questions. -->
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>Which method must you call after setting <code>velocity</code> on a CharacterBody2D?</p>
+      <ul><li><code>move_and_collide()</code> only</li><li><code>move_and_slide()</code></li><li><code>translate()</code></li></ul>
+      <p class="explain">In Godot 4 <code>move_and_slide()</code> takes no arguments and uses the body's own <code>velocity</code>.</p>
+    </div>
+  </div>
+
+  <!-- 10. DOCS -->
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/physics/using_character_body_2d.html" target="_blank" rel="noopener">Using CharacterBody2D/3D</a>: the reference for today's movement code.</li>
+  </ul>
+
+  <!-- 11. WRAP-UP: end-of-day checklist (the "Mark day complete" button + prev/next are added automatically after this) -->
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li>The project runs with <kbd>F5</kbd> without errors.</li>
+    <li>I committed or zipped my project folder as a backup.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> one sentence preview of the next day.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

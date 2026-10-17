@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Troubleshooting | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="reference" data-id="troubleshooting" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Reference · When it breaks</div>
+    <h1>Troubleshooting</h1>
+    <p class="lead">Symptom, the line you are likely to see, why it happens, and the fix. Read the <strong>Output</strong> panel first (bottom panel). The Debugger tab is the one that pauses; the Output tab is the log.</p>
+    <div class="chips"><span class="chip blue">Reference</span><span class="chip">Godot 4.x</span></div>
+  </header>
+
+  <div class="callout warn"><span class="callout-title">Which error strings are quoted from the docs</span>
+    <p>Cells marked <strong>Unverified wording</strong> are the kind of line the engine prints. The docs repo does not freeze that sentence, and a patch can rephrase it. Trust the Output panel in front of you. Cells marked <strong>Docs</strong> paraphrase a behaviour the class reference or a tutorial states, not a log line.</p></div>
+
+  <h2 id="script">Scripts and the parser</h2>
+  <table>
+    <tr><th>Symptom</th><th>Error</th><th>Cause</th><th>Fix</th></tr>
+    <tr>
+      <td>The game dies the moment a node is missing or a lookup failed.</td>
+      <td>Unverified wording: invalid access or invalid call on a base object of type Nil, often naming the property or method.</td>
+      <td><code>null</code> (shown as Nil) has no properties. A <code>$Path</code> that failed, a freed node, or an <code>@export</code> left empty.</td>
+      <td>Print the value before use. Guard with <code>if node == null: return</code>. For objects that may have been freed, use <code>is_instance_valid</code>. Prefer <code>get_node_or_null</code> when absence is legal.</td>
+    </tr>
+    <tr>
+      <td><kbd>F6</kbd> errors immediately, naming a path.</td>
+      <td>Unverified wording: node not found, quoting the path and the node it was relative to.</td>
+      <td>The node was renamed, reparented, or never created. <code>$</code> and <code>%</code> run from <em>this</em> node. <code>_init</code> is too early: children are not in the tree yet.</td>
+      <td>Read the path in the error against the Scene dock. Put lookups in <code>@onready</code> or <code>_ready</code>. For UI, right-click the node and choose Access as Unique Name, then use <code>%Name</code>.</td>
+    </tr>
+    <tr>
+      <td>A connected method never runs. No error.</td>
+      <td>None. The signal is simply not emitted, or it is connected to a different object.</td>
+      <td>The usual causes: the emitter's <code>monitoring</code> is off, the mask does not include the other layer, a <code>RigidBody2D</code> has <code>contact_monitor</code> false, the Timer was never <code>start()</code>ed, the button's <code>mouse_filter</code> is Ignore, or you connected the signal twice to a method that returns early. A signal connected in <code>_ready</code> of a node that is not in the tree yet never attaches.</td>
+      <td>In the debugger, select the node and confirm the connection exists (Node tab, Signals). Temporarily <code>print</code> on the line that should <code>emit</code>. Check layer, mask, and <code>monitoring</code> before rewriting the callback.</td>
+    </tr>
+    <tr>
+      <td>The script will not parse. The error points at a line that looks fine.</td>
+      <td>Unverified wording: mixed tabs and spaces, or an unexpected indent.</td>
+      <td>Part of the file is tabs, part is spaces. Godot cannot mix them. The official style guide says tabs. This course sets the editor to spaces, size 4, on day 1. A paste from the web often brings tabs.</td>
+      <td><kbd class="menu">Editor &gt; Editor Settings &gt; Text Editor &gt; Behavior &gt; Indent &gt; Type</kbd> = Spaces, size 4. Then in the script editor use the convert-indent command from the Edit menu, or select all and re-paste the course listing. Do not mix in one file.</td>
+    </tr>
+    <tr>
+      <td>A callback crashes one frame after <code>queue_free</code>.</td>
+      <td>Unverified wording: previously freed instance, or a call on a null instance that had been freed.</td>
+      <td>A signal, a tween, or an <code>await</code> resumed and touched the node. <code>queue_free</code> frees at end of frame, so the same frame can still see the object; the next resume cannot.</td>
+      <td>After every <code>await</code>, return if <code>not is_instance_valid(self)</code> or <code>not is_inside_tree()</code>. Disconnect signals before freeing if something outside holds the callable. Do not store a node in an autoload without clearing it in <code>tree_exiting</code>.</td>
+    </tr>
+    <tr>
+      <td>Disabling a shape, changing a layer, or freeing a body inside <code>body_entered</code> throws.</td>
+      <td>Unverified wording: the line mentions flushing queries, or tells you the function is blocked during an in/out signal. Docs: the first 2D game says disabling a shape during collision processing causes an error, and <code>set_deferred</code> waits until it is safe.</td>
+      <td>The physics server is iterating contacts. Adding, removing, or toggling shapes in that callback mutates the list being flushed.</td>
+      <td><code>collision_shape.set_deferred("disabled", true)</code>. For a method, <code>call_deferred("queue_free")</code>. <code>CONNECT_DEFERRED</code> on the signal connection is the other legal delay.</td>
+    </tr>
+    <tr>
+      <td>The parser underlines a whole function with a return-type error.</td>
+      <td>Unverified wording: a path does not return a value, or a void function returns one.</td>
+      <td>A typed function must return on every branch. <code>-&gt; void</code> may <code>return</code> but must not return a value. <code>match</code> arms are branches too.</td>
+      <td>Add the missing <code>return</code>, or change the declared type to <code>void</code> if the value is unused.</td>
+    </tr>
+    <tr>
+      <td>Integer maths is "off by half".</td>
+      <td>None. <code>5 / 2</code> is <code>2</code>.</td>
+      <td>Docs: if both operands of <code>/</code> are <code>int</code>, the division truncates toward zero.</td>
+      <td>Write <code>5 / 2.0</code> or <code>float(health) / float(maximum)</code>. Remainder on ints is <code>%</code>; on floats it is <code>fmod</code>. Negative remainders: <code>posmod</code> / <code>fposmod</code>.</td>
+    </tr>
+    <tr>
+      <td><code>match</code> falls into the wrong arm.</td>
+      <td>None.</td>
+      <td>Docs: <code>match</code> is stricter than <code>==</code>. <code>1</code> does not match <code>1.0</code>. There is no fall-through.</td>
+      <td>Match on <code>typeof(value)</code> or cast before matching. Put the wildcard <code>_</code> last.</td>
+    </tr>
+    <tr>
+      <td>Assigning one typed array to another is an error even though the element type is a subclass.</td>
+      <td>Unverified wording: cannot assign an array of one element type to another.</td>
+      <td>Docs: an <code>Array[Node2D]</code> is not an <code>Array[Node]</code>. The element type is part of the runtime value. Typed arrays are invariant.</td>
+      <td>Build a new array, or call <code>target.assign(source)</code>, which copies elements instead of sharing the reference.</td>
+    </tr>
+    <tr>
+      <td>The editor says a native method cannot be overridden.</td>
+      <td>Docs: warning <code>NATIVE_METHOD_OVERRIDE</code>, treated as an error by default.</td>
+      <td>You declared <code>get_class</code>, <code>queue_free</code>, or another non-virtual engine method. Godot 4 does not reliably shadow those.</td>
+      <td>Override a virtual callback (<code>_ready</code>, <code>_process</code>, <code>_physics_process</code>) or connect a signal. Do not silence the warning.</td>
+    </tr>
+    <tr>
+      <td>An exported value shows in the Inspector and then snaps back when the scene runs.</td>
+      <td>Docs: warning <code>ONREADY_WITH_EXPORT</code>.</td>
+      <td><code>@onready</code> and <code>@export</code> on the same variable. The onready initializer runs after the exported value is applied and replaces it.</td>
+      <td>Keep the export, and assign the node path in <code>_ready</code> only when the export was left empty. Do not put both annotations on one line.</td>
+    </tr>
+  </table>
+
+  <h2 id="scenes">Scenes, signals, pause</h2>
+  <table>
+    <tr><th>Symptom</th><th>Error</th><th>Cause</th><th>Fix</th></tr>
+    <tr>
+      <td><kbd>F6</kbd> runs a scene that does not contain your edits.</td>
+      <td>None.</td>
+      <td>The scene was not saved. <kbd>F6</kbd> runs the file on disk. An unsaved tab has a dot on its name.</td>
+      <td><kbd>Ctrl</kbd>+<kbd>S</kbd> before <kbd>F6</kbd>. If the script and the scene both changed, save both.</td>
+    </tr>
+    <tr>
+      <td>The script runs on the wrong node. <code>$Sprite</code> fails, or the player never moves.</td>
+      <td>Often the node-not-found line above.</td>
+      <td>Attach Script was used on the parent or a sibling. The Inspector title is the node that owns the script.</td>
+      <td>Select the node you meant, confirm the script path in the Inspector, detach the stray one. The root of a scene is the usual owner of that scene's script.</td>
+    </tr>
+    <tr>
+      <td>Pausing freezes the pause menu too.</td>
+      <td>None.</td>
+      <td><code>get_tree().paused = true</code> stops every node whose <code>process_mode</code> is the default <code>PROCESS_MODE_PAUSABLE</code>. The menu is in that set.</td>
+      <td>On the pause <code>CanvasLayer</code>, set Process &gt; Mode to Always (<code>PROCESS_MODE_ALWAYS</code>). Children inherit it unless they override.</td>
+    </tr>
+    <tr>
+      <td>Changing scene leaves the old music, or a timer from the previous scene still fires.</td>
+      <td>None, or a freed-instance error on the next tick.</td>
+      <td><code>change_scene_to_file</code> frees the current scene. Autoloads survive. A tween or a one-shot signal on an autoload may still point at a dead node.</td>
+      <td>Keep music on the Audio autoload. Disconnect per-scene signals in <code>_exit_tree</code>. Do not store scene nodes on an autoload without clearing them.</td>
+    </tr>
+    <tr>
+      <td>Two clicks happen for one press.</td>
+      <td>None.</td>
+      <td><code>connect</code> in <code>_ready</code> runs again if you <code>request_ready</code>, or you connected in the editor and again in code.</td>
+      <td>Connect once. <code>if not pressed.is_connected(_on_pressed): pressed.connect(_on_pressed)</code>. Editor connections are stored in the <code>.tscn</code>.</td>
+    </tr>
+    <tr>
+      <td><code>await</code> seems to skip the rest of the function.</td>
+      <td>Unverified wording: the caller used the return value of a coroutine without awaiting it.</td>
+      <td>Docs: a function that awaits becomes a coroutine. Reading its result without <code>await</code> is an error. Calling it and ignoring the result is legal and does not wait.</td>
+      <td>If you need the value, <code>var ok: bool = await confirm()</code>. If you do not, call it and do not read the result.</td>
+    </tr>
+  </table>
+
+  <h2 id="physics">Physics</h2>
+  <table>
+    <tr><th>Symptom</th><th>Error</th><th>Cause</th><th>Fix</th></tr>
+    <tr>
+      <td>The player walks through walls, or a hitbox never lands.</td>
+      <td>None.</td>
+      <td>Layer and mask do not overlap, or there is no shape. Docs: a body ignores any object that is not on a layer included in its mask. Defaults are layer 1 and mask 1. This course puts walls on <code>world</code> (bit 1) and expects the player to scan that bit.</td>
+      <td>Inspector, Collision &gt; Layer and Mask. Name the bits in Project Settings &gt; Layer Names &gt; 2D Physics. Confirm a <code>CollisionShape2D</code> child exists and its Shape property is not empty. See the <a href="node-cheatsheet.html#layers">layer table</a>.</td>
+    </tr>
+    <tr>
+      <td>The character falls through the floor at the peak of a slope, or hovers.</td>
+      <td>None.</td>
+      <td><code>floor_snap_length</code> is 0, <code>safe_margin</code> was raised, or the floor shape was scaled in the editor. Docs: do not scale collision shapes; edit the shape resource. Scale on the shape node should stay <code>(1, 1)</code>.</td>
+      <td>Reset the shape node's scale. Raise <code>floor_snap_length</code> slightly for steep slopes. Keep movement in <code>_physics_process</code>, and apply gravity to <code>velocity.y</code> before <code>move_and_slide()</code>.</td>
+    </tr>
+    <tr>
+      <td>A <code>RigidBody2D</code> never moves, or never sleeps.</td>
+      <td>None.</td>
+      <td><code>freeze</code> is on, <code>gravity_scale</code> is 0, or a script writes <code>position</code> every frame and fights the solver. A sleeping body is resting, which is normal.</td>
+      <td>Clear Freeze. Use <code>apply_impulse</code> or set <code>linear_velocity</code> once. Do not assign <code>position</code> from <code>_process</code>.</td>
+    </tr>
+    <tr>
+      <td><code>body_entered</code> on a rigid body never fires, while an area next to it works.</td>
+      <td>None.</td>
+      <td>Docs: <code>RigidBody2D.body_entered</code> requires <code>contact_monitor</code> and a <code>max_contacts_reported</code> high enough to count the contacts.</td>
+      <td>Turn Contact Monitor on and set Max Contacts Reported to at least 1, more if several bodies touch at once.</td>
+    </tr>
+    <tr>
+      <td>Tiles draw, and the player falls through them.</td>
+      <td>None.</td>
+      <td><code>TileMapLayer.collision_enabled</code> is off, or the <code>TileSet</code> physics layer has no polygons, or that physics layer is on a different collision layer than the player's mask.</td>
+      <td>Select the tile in the TileSet editor, paint the collision polygon, and match the TileSet physics layer to <code>world</code>. Leave <code>collision_enabled</code> true on the layer node.</td>
+    </tr>
+    <tr>
+      <td>An enemy <code>NavigationAgent2D</code> stands still.</td>
+      <td>None, or a navigation-map warning in Output.</td>
+      <td>The <code>NavigationRegion2D</code> was never baked, the agent is not inside the tree yet when <code>target_position</code> is set, or avoidance is on and nothing is connected to <code>velocity_computed</code>.</td>
+      <td>Bake the region from the editor toolbar. Set the target after <code>_ready</code>. If <code>avoidance_enabled</code> is true, connect <code>velocity_computed</code> and apply <code>safe_velocity</code> from that signal.</td>
+    </tr>
+    <tr>
+      <td>A ray always misses, or always hits the caster.</td>
+      <td>None.</td>
+      <td><code>collision_mask</code> is empty, <code>collide_with_bodies</code> is off, or <code>hit_from_inside</code> is wrong for a ray that starts inside a shape. <code>target_position</code> is local, not global.</td>
+      <td>Point <code>target_position</code> in the ray's local axes. Enable Collide With Bodies or Areas to match the target. Exclude the parent by mask, not by hoping.</td>
+    </tr>
+  </table>
+
+  <h2 id="drawing">Drawing, UI, pixels</h2>
+  <table>
+    <tr><th>Symptom</th><th>Error</th><th>Cause</th><th>Fix</th></tr>
+    <tr>
+      <td>UI stays in the top-left corner when the window grows, or stretches into a smear.</td>
+      <td>None.</td>
+      <td>Docs: stretch mode <code>canvas_items</code> scales the base size to the window, and there is no longer a 1:1 pixel mapping. A <code>Control</code> with all anchors at the top-left keeps a fixed rect. Course games set stretch mode <code>canvas_items</code>. Part 1 uses aspect <code>keep</code>. Part 2 uses <code>expand</code>.</td>
+      <td>For a full-screen HUD, set the root <code>Control</code> anchors to full rect (all four anchors at the parent edges, offsets 0). Put rows in an <code>HBoxContainer</code> or <code>VBoxContainer</code> and set the flexible child's size flags to Fill and Expand. Do not mix anchors on a child of a container; the container overwrites them.</td>
+    </tr>
+    <tr>
+      <td>Pixel art is blurry.</td>
+      <td>None.</td>
+      <td>The default canvas texture filter is linear. Docs: <code>rendering/textures/canvas_textures/default_texture_filter</code> defaults to linear (the viewport enum value <code>DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_LINEAR</code>). Stretch mode <code>canvas_items</code> also scales sprites to the window, which softens edges. The project setting page points at <code>rendering/2d/snap/snap_2d_vertices_to_pixel</code> and <code>snap_2d_transforms_to_pixel</code> for pixel-art snapping.</td>
+      <td>In Project Settings, set the canvas textures default filter to Nearest, or set the sprite's Texture &gt; Filter to Nearest (<code>CanvasItem.TEXTURE_FILTER_NEAREST</code>). Turn on the two snap settings above. If you need hard pixels at any window size, stretch mode <code>viewport</code> renders at the base size and scales the result; <code>canvas_items</code> will still filter when the scale is not an integer.</td>
+    </tr>
+    <tr>
+      <td>A button does nothing, and the click hits the game underneath or nothing at all.</td>
+      <td>None.</td>
+      <td><code>mouse_filter</code> is Ignore on the button, or Stop on a full-screen <code>ColorRect</code> or <code>Control</code> drawn later in the tree. Later siblings draw on top and receive the click first.</td>
+      <td>Button: Mouse &gt; Filter = Stop. Decorative rects: Ignore. Pause menus belong on a higher <code>CanvasLayer.layer</code> than the HUD.</td>
+    </tr>
+    <tr>
+      <td>A <code>PointLight2D</code> does not light the player.</td>
+      <td>None.</td>
+      <td><code>enabled</code> is off, <code>energy</code> is 0, or the light's range mask and the sprite's <code>CanvasItem</code> light mask do not overlap. A <code>CanvasModulate</code> that is pure white hides the effect because the unlit canvas is already bright.</td>
+      <td>Darken <code>CanvasModulate.color</code>. Confirm Light2D &gt; Enabled and Energy. Match the light mask bits.</td>
+    </tr>
+    <tr>
+      <td>Particles emit in the editor and not in the game, or the opposite.</td>
+      <td>None.</td>
+      <td><code>emitting</code> is off at runtime, <code>visibility_rect</code> does not cover the particles so they are culled, or <code>amount</code> is 0. <code>one_shot</code> finished before you looked.</td>
+      <td>Turn Emitting on when the effect should start. Enlarge Visibility Rect. For a burst, set <code>one_shot</code>, set <code>emitting</code> true, and restart by toggling it.</td>
+    </tr>
+    <tr>
+      <td><code>Parallax2D</code> ignores the position you set in <code>_ready</code>.</td>
+      <td>None.</td>
+      <td>Docs: after the node enters the tree, position changes are overwritten when <code>ignore_camera_scroll</code> is false or <code>screen_offset</code> is modified.</td>
+      <td>Drive <code>scroll_offset</code>, <code>scroll_scale</code>, and <code>autoscroll</code>. Set <code>ignore_camera_scroll</code> only when you want to move it yourself.</td>
+    </tr>
+    <tr>
+      <td>No sound, and the player node looks correct.</td>
+      <td>None.</td>
+      <td><code>stream</code> is empty, the bus is muted, <code>volume_db</code> is a large negative number, or <code>playing</code> was set before the stream was assigned. 2D audio with a tiny <code>max_distance</code> is silent at the camera.</td>
+      <td>Assign the stream, check the Audio panel bus volumes, and call <code>play()</code> after the stream is set. For <code>AudioStreamPlayer2D</code>, raise <code>max_distance</code> or move the listener.</td>
+    </tr>
+  </table>
+
+  <h2 id="save">Saves, imports, export</h2>
+  <table>
+    <tr><th>Symptom</th><th>Error</th><th>Cause</th><th>Fix</th></tr>
+    <tr>
+      <td>A saved integer comes back as <code>10.0</code>, and a typed <code>int</code> assignment fails or a dictionary key misses.</td>
+      <td>Unverified wording: a type error assigning a float to an int. Docs: JSON has a single number type, and <code>JSON.stringify</code> writes every number as a float.</td>
+      <td>The file is correct JSON. Godot parses numbers with <code>String.to_float</code>.</td>
+      <td>On load, <code>int(data["coins"])</code> for counters. Store <code>Vector2</code> as a two-element array and <code>Color</code> as an HTML hex string. Idle-clicker magnitudes past 2^53 must be strings.</td>
+    </tr>
+    <tr>
+      <td><code>JSON.parse_string</code> returns null.</td>
+      <td><code>parse_string</code> does not report the error. Use <code>var json := JSON.new()</code>, then <code>json.parse(text)</code>, then <code>json.get_error_message()</code> and <code>json.get_error_line()</code>.</td>
+      <td>Truncated file or a hand-edited save. Trailing commas in arrays and objects are ignored, so they are not the cause. <code>parse_string</code> returns null on failure.</td>
+      <td>Keep the previous good save. Write to <code>user://saves/slot.json.tmp</code> and rename over the real file, which is what the Ship Kit save manager does. Do not <code>print</code> the whole file into a widget and edit it by hand.</td>
+    </tr>
+    <tr>
+      <td>Exporting does nothing, or the preset shows a template error.</td>
+      <td>Unverified wording: missing export template, or the template version does not match the editor.</td>
+      <td>Templates are installed per editor version. A project last saved in 4.3 and opened in 4.4 still needs the 4.4 templates.</td>
+      <td><kbd class="menu">Editor &gt; Manage Export Templates</kbd> and download the pack that matches <kbd class="menu">Help &gt; About</kbd>. Then <kbd class="menu">Project &gt; Export</kbd>.</td>
+    </tr>
+    <tr>
+      <td>The Android build installs and then Play or the phone rejects the update. Or the export dialog will not sign.</td>
+      <td>Unverified wording: a keystore password error, or an <code>adb</code> install failure about signatures. Docs: create the store with <code>keytool -v -genkey -keystore mygame.keystore -alias mygame -keyalg RSA -validity 10000</code>. The keystore password and the key password currently have to be the same.</td>
+      <td>Debug exports use the editor's debug keystore. Release exports use the path, alias, and passwords on the Android preset. A second release signed with a different key cannot update the first install.</td>
+      <td>For a local phone test, export a debug build. For Play, generate the keystore once, store the passwords, and point the Release keystore fields at that file. Uninstall the debug build before installing a release build if the signatures differ.</td>
+    </tr>
+    <tr>
+      <td>The editor says resources are missing, imports are stale, or a texture is a blank box after a git pull.</td>
+      <td>Unverified wording: a failed import, or a missing <code>.import</code> sidecar.</td>
+      <td>Docs: imported data lives in <code>res://.godot/imported/</code>. That folder is a cache. It should not be committed. If it is half-written or from another machine, the editor shows broken resources even though the source PNG is fine.</td>
+      <td>Close the editor. Delete the <code>.godot</code> folder inside the project. Do not delete <code>project.godot</code>. Reopen the project and let it reimport. Commit <code>.import</code> files and the source assets; leave <code>.godot/</code> out of version control.</td>
+    </tr>
+    <tr>
+      <td>A script change does nothing, and the class list still shows the old type.</td>
+      <td>Unverified wording: class name conflict, or failed to load script.</td>
+      <td>Two files declare the same <code>class_name</code>, or a parse error unloaded the script and the editor is still holding the previous global class.</td>
+      <td>Search the project for the class name. Fix the parse error shown in Output. <kbd class="menu">Project &gt; Reload Current Project</kbd> if the global class list stays stale after the script is valid.</td>
+    </tr>
+    <tr>
+      <td>Writing a save throws, but the path looks right.</td>
+      <td>Unverified wording: cannot open the file, or the path is read-only.</td>
+      <td>An exported game cannot write <code>res://</code>. <code>FileAccess.open</code> returns null on failure; the error is on <code>FileAccess.get_open_error()</code>.</td>
+      <td>Write under <code>user://</code>. Check the error code instead of assuming <code>open</code> succeeded. Create parent folders with <code>DirAccess.make_dir_recursive_absolute</code> before the first save.</td>
+    </tr>
+  </table>
+
+  <h2 id="editor">Editor and project recovery</h2>
+  <table>
+    <tr><th>Symptom</th><th>Error</th><th>Cause</th><th>Fix</th></tr>
+    <tr>
+      <td>The project opens on a blank scene, or the editor layout is nonsense after a crash.</td>
+      <td>Unverified wording: a recovery prompt, or a project-settings parse failure.</td>
+      <td>Editor layout and the import cache live in <code>.godot/</code>. <code>project.godot</code> is the project. A crash can leave the editor metadata half-written. The scenes and scripts are still the <code>.tscn</code> and <code>.gd</code> files.</td>
+      <td>If Godot offers to restore, accept it once and then save. If the editor will not open the project, move <code>.godot</code> aside (do not delete <code>project.godot</code>) and reopen. Your scenes are untouched. Commit early so a bad <code>.tscn</code> merge is a git checkout, not a reconstruction.</td>
+    </tr>
+    <tr>
+      <td><kbd>F5</kbd> runs the wrong scene.</td>
+      <td>None.</td>
+      <td>The main scene is whatever was saved in Project Settings &gt; Application &gt; Run. <kbd>F6</kbd> is the open scene. <kbd>F5</kbd> is the main scene.</td>
+      <td>Set the main scene in the project settings, or use <kbd>F6</kbd> while you are testing one scene.</td>
+    </tr>
+    <tr>
+      <td>The game window is black in 3D.</td>
+      <td>None.</td>
+      <td>No <code>Camera3D</code> with <code>current</code> set, no light, or the camera's <code>near</code> / <code>far</code> clip the whole level. A <code>WorldEnvironment</code> with a black ambient and no lights looks the same.</td>
+      <td>Select the camera and turn Current on (the editor can preview it). Add a <code>DirectionalLight3D</code>. Check Near and Far.</td>
+    </tr>
+    <tr>
+      <td>A breakpoint never hits.</td>
+      <td>None.</td>
+      <td>The game was exported as a release build, or you are looking at Output instead of Debugger. <code>assert</code> is stripped from non-debug exports. Docs: assertions are ignored in non-debug builds, and a failed assert pauses the game when you run from the editor.</td>
+      <td>Run with <kbd>F5</kbd> or <kbd>F6</kbd> from the editor. Open the Debugger tab. Release exports drop <code>assert</code> and most debugger hooks on purpose.</td>
+    </tr>
+    <tr>
+      <td>The remote scene tree is empty while the game runs.</td>
+      <td>None.</td>
+      <td>The Scene dock shows the edited scene until you switch it to Remote. That switch appears while a game launched from the editor is running.</td>
+      <td>Run the game, then in the Scene dock choose Remote. You can inspect live properties. Switch back to Local before editing.</td>
+    </tr>
+    <tr>
+      <td>An old tutorial's code will not parse.</td>
+      <td>Unverified wording: unexpected identifier, often on a line that used to be legal.</td>
+      <td>The tutorial is Godot 3. The coroutine keyword, the old export keyword, <code>instance()</code> on a packed scene, and kinematic body types are not the Godot 4 API. This course does not use them.</td>
+      <td>Use <code>await</code>, <code>@export</code>, <code>instantiate()</code>, and <code>CharacterBody2D</code> / <code>CharacterBody3D</code>. Translate the node, then the call. Do not install Godot 3 to follow this course.</td>
+    </tr>
+  </table>
+
+  <h2 id="docs">Docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/troubleshooting.html" target="_blank" rel="noopener">Troubleshooting</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/physics/troubleshooting_physics_issues.html" target="_blank" rel="noopener">Troubleshooting physics issues</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/physics/physics_introduction.html" target="_blank" rel="noopener">Physics introduction</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/rendering/multiple_resolutions.html" target="_blank" rel="noopener">Multiple resolutions</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_android.html" target="_blank" rel="noopener">Exporting for Android</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_json.html" target="_blank" rel="noopener">JSON</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/import_process.html" target="_blank" rel="noopener">Import process</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/getting_started/first_2d_game/03.coding_the_player.html" target="_blank" rel="noopener">First 2D game: deferred collision disable</a></li>
+  </ul>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

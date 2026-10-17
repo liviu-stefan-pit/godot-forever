@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 30 - Publishing on Google Play + final launch checklist | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day30" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 30</div>
+    <h1>Publishing on Google Play + final launch checklist</h1>
+    <p class="lead">You take the signed App Bundle from Day 16 and finish the Play Console forms that actually gate a release: App Signing, target API, data safety, content rating, the store listing, and a testing track. Billing and ads stay optional. The last hour is the go / no-go list.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Concepts.</strong> Upload key versus app signing key.</td></tr>
+    <tr><td>0:20 – 1:20</td><td><strong>Godot preset.</strong> Target SDK, version code, a fresh release AAB.</td></tr>
+    <tr><td>1:20 – 1:35</td><td><strong>Break.</strong></td></tr>
+    <tr><td>1:35 – 2:45</td><td><strong>Console forms.</strong> Data safety, rating, listing, tracks. External.</td></tr>
+    <tr><td>2:45 – 3:20</td><td><strong>Billing and ads.</strong> Optional. Off unless you mean it.</td></tr>
+    <tr><td>3:20 – 4:00</td><td><strong>Launch checklist, quiz.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>4 h</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Export a new AAB with a higher version code, Gradle, a release keystore, and Export With Debug off.</li>
+    <li>Set Target SDK from the number Play Console shows, not from memory.</li>
+    <li>Complete data safety, content rating, and a store listing draft for that build.</li>
+    <li>Walk <a href="../publishing/launch-checklist.html">the launch checklist</a> and know which box blocks an upload.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 16's Android preset still exports. JDK 17 and the Android SDK paths are set. <code>res://android/build</code> exists.</li>
+    <li>The keystore file from Day 16 is where you left it, and you know the password. If you cannot find it, create a new one only if you have never uploaded this package name.</li>
+    <li>A Play Console account exists, or you will open <a href="https://play.google.com/console" target="_blank" rel="noopener">play.google.com/console</a> in the external section. The reference page is <a href="../publishing/google-play.html">Google Play</a>.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <p>Play App Signing splits two keys. The app signing key is what players' phones use to recognize an update. Google can hold that key. The upload key is what you use to sign the AAB you send them. In this course the Godot release keystore is that upload key. You still back it up. Enrolling in Play App Signing does not make the keystore disposable.</p>
+  <p>Target API is a Play rule that moves every year, written into the preset as <code>gradle_build/target_sdk</code>. The Godot field is real. The number you type is whatever the console requires this month. Version code is an integer that only goes up. The visible version string is a different field. Players see the string. Play rejects a code that is not higher than the last upload.</p>
+  <div class="callout version"><span class="callout-title">Version note</span>
+    <p>Godot 4.8 and later can install the JDK and Android SDK from the editor. The export page's manual section is for older 4.x. Match the docs site's version selector to your editor before you copy an SDK install command. The AAB requirement itself is older: new apps after August 2021.</p></div>
+
+  <h2 id="build-1">Preset, target API, version code</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Open the Android preset.</strong> <kbd class="menu">Project &gt; Export...</kbd>. Select Android. Confirm <kbd class="ui">Gradle Build &gt; Use Gradle Build</kbd> is on and <kbd class="ui">Export Format</kbd> is the <code>aab</code> option.</li>
+    <li><strong>Read the target API from Play, then type it.</strong> This number is not in the Godot docs as a permanent value. In the console, search "target API". Note the level they require for new releases. Back in the preset, set <kbd class="ui">Gradle Build &gt; Target SDK</kbd> to that level. The class reference calls the property <code>gradle_build/target_sdk</code>. If Min SDK is lower than Target SDK, leave Min SDK at the default unless the console also names a minimum you fail.</li>
+    <li><strong>Bump the version code.</strong> Find <kbd class="ui">Version &gt; Code</kbd> (<code>version/code</code>). If this package has never been uploaded, <code>1</code> is fine. If it has, add 1 to the highest code Play has accepted. The version name string can stay <code>1.0.0</code> or match your notes. The code is the one that must increase.</li>
+    <li><strong>Confirm the package name.</strong> <kbd class="ui">Package &gt; Unique Name</kbd> is <code>com.yourname.yourgame</code> with your real segments, all lowercase. The template's <code>com.yourname.shipkit</code> is only for the template. A copied game uses the name from the course game page (<code>idleclicker</code>, <code>bulletheaven</code>, <code>physicsmerge</code>, <code>deckbuilder</code>, <code>deepdigger</code>).</li>
+    <li><strong>Confirm the release keystore.</strong> Release path, Release User <code>shipkit</code> or the alias you chose, Release Password. Debug keystore fields stay empty of your release password. You are not shipping the debug key.</li>
+    <li><strong>Edge to edge stays on.</strong> <kbd class="ui">Screen &gt; Edge To Edge</kbd> enabled, <kbd class="ui">Immersive Mode</kbd> off, unless this game's design hides the bars on purpose. <code>safe_area.gd</code> pads from <code>DisplayServer.get_display_safe_area</code>.</li>
+    <li><strong>Export.</strong> Path <code>C:\GodotProjects\ship-kit-build\android\ship-kit.aab</code>, or the matching folder for the copied game. Click <kbd class="ui">Export Project...</kbd>. Uncheck <kbd class="ui">Export With Debug</kbd>. Save. Wait for Gradle.</li>
+  </ol>
+  <div class="checkpoint"><p>A new <code>.aab</code> exists. The export log does not say debug. Version code is the number you intended. If Gradle says the passwords do not match, the keystore was created with two different passwords. Recreate it with one password at both <code>keytool</code> prompts, and do that only if this keystore has never been used for an upload.</p></div>
+  <div class="callout docs"><span class="callout-title">keytool, from the Android export page</span>
+    <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+keytool -v -genkey -keystore C:\GodotProjects\keystores\ship-kit.keystore -alias shipkit -keyalg RSA -validity 10000
+    </script>
+    <p>JDK 17. Same password twice. Letters and digits. The docs page is <a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_android.html" target="_blank" rel="noopener">Exporting for Android</a>.</p></div>
+
+  <h2 id="build-2">App Signing, data safety, rating, listing</h2>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>These forms are on <a href="https://play.google.com/console" target="_blank" rel="noopener">play.google.com/console</a>. Search the words in each step. If the button moved, the search result is the step. Do not follow a blog's click path from a previous year.</p></div>
+  <ol class="steps">
+    <li><strong>Create the app</strong> in the console if you have not. The package name must match Unique Name exactly. You cannot change it later.</li>
+    <li><strong>Play App Signing.</strong> Search "App Signing". Enroll. Understand the sentence on that page that says Google holds the app signing key and you keep the upload key. Your Godot release keystore is the upload key. Download any certificate the page offers and store it next to the keystore backup, outside <code>res://</code>.</li>
+    <li><strong>Upload the AAB to an internal testing track first.</strong> Search "internal testing". Upload the file you just exported. If the console rejects the target SDK, go back to the preset, set the level it names, bump the version code, export again. If it rejects the signature, you used the debug keystore or Export With Debug was on.</li>
+    <li><strong>Data safety.</strong> Search "data safety". For an unmodified Ship Kit, saves and settings stay on the device in <code>user://</code>. You do not send them to a server. Say that, if it is still true of this game. If the game has no account and no ads, do not claim you collect advertising identifiers. Submit the form.</li>
+    <li><strong>Content rating.</strong> Search "content rating". Answer the questionnaire for this game. A deckbuilder and a digger do not get the same answers. Wait until the rating is issued. Production stays blocked without it.</li>
+    <li><strong>Store listing.</strong> Search "main store listing". Fill the title, short description, and full description. Add the icon and screenshots at the pixel sizes the form shows today. Capture them from a phone or from the release window, not from the Godot editor. Mention languages you actually ship in the CSV.</li>
+    <li><strong>Privacy policy URL</strong> if the form requires one. A game that only stores local saves often still needs a URL because the console asks. Host a page you control. Do not invent a policy that claims you collect nothing if you enabled ads.</li>
+  </ol>
+  <div class="checkpoint"><p>Internal testing has the AAB. Data safety is submitted. The content rating questionnaire is complete or waiting on their email. The listing shows your icon, not the default Godot robot, unless you chose that icon on purpose. Nothing in the description mentions a feature the build lacks.</p></div>
+
+  <h2 id="build-3">Tracks and the closed test</h2>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>New personal Play accounts have been required to run a closed test before production: 12 testers opted in, for 14 consecutive days. Google has changed that count. On the console, search "closed testing" and follow the requirement printed there. The fee to open the developer account is also listed on the signup page. Confirm both before you rely on this paragraph.</p></div>
+  <ol class="steps">
+    <li><strong>Internal track</strong> is you and the emails you list. Install from the opt-in link on a phone. Cold-start, play, pause, background the app for a minute, reopen it. <code>SaveManager.flush</code> should have run on <code>NOTIFICATION_APPLICATION_PAUSED</code>. Kill the app from the recents screen and reopen. Progress you flushed is still there.</li>
+    <li><strong>Closed testing</strong> is the track that starts the clock for a new personal account. Add testers the way the console describes. Tell them the opt-in link. The clock starts when the console says it starts, which is usually when enough testers are opted in, not when you click upload.</li>
+    <li><strong>Do not upload a debug AAB to that track.</strong> Export With Debug off. A tester crash on a debug build wastes the 14 days.</li>
+    <li><strong>Open testing and production</strong> come after the closed-test requirement is marked done in the console. Production uses a higher version code than the closed track if you changed anything.</li>
+    <li><strong>Write the date</strong> you started the closed test and the tester count the console asked for, in the same note as the keystore location.</li>
+  </ol>
+  <div class="checkpoint"><p>A phone that is not your editor machine installed the game from Play's testing link. Backgrounding did not wipe the save. The console shows the closed test as active, or it shows a specific unmet requirement you can name. "I think it uploaded" is not the checkpoint.</p></div>
+
+  <h2 id="build-4">Billing and ads, optional</h2>
+  <ol class="steps">
+    <li><strong>Leave both off</strong> if the game is paid up front or free with no items. The Ship Kit does not reference either SDK. That is a valid launch.</li>
+    <li><strong>Billing, if you need it.</strong> Read <a href="https://docs.godotengine.org/en/stable/tutorials/platform/android/android_in_app_purchases.html" target="_blank" rel="noopener">Android in-app purchases</a>. The plugin name is GodotGooglePlayBilling. Install from the instructions on that page. The plugin's own manual is linked from there and is not the engine class reference. Re-read it when you upgrade Godot. Create products in the console before the game tries to buy them.</li>
+    <li><strong>Ads, if you need them.</strong> They are not in the Godot docs. Treat the whole integration as external. Policy and SDK setup are on <a href="https://play.google.com/console" target="_blank" rel="noopener">play.google.com/console</a>. Search "ads". Then redo data safety. Do not add an ad SDK to a game you described as collecting nothing.</li>
+    <li><strong>Symbols.</strong> If a tester gets a native crash, the docs page <a href="https://docs.godotengine.org/en/stable/tutorials/platform/android/resolving_crashes_on_android.html" target="_blank" rel="noopener">Resolving crashes on Android</a> covers uploading symbols to Play. Do that before you guess.</li>
+  </ol>
+
+  <h2 id="build-5">Walk the checklist</h2>
+  <ol class="steps">
+    <li><strong>Open <a href="../publishing/launch-checklist.html">the launch checklist</a>.</strong> It is three lists: both stores, Steam, Play.</li>
+    <li><strong>Tick Both stores</strong> against this AAB and, if you did Day 29, against the Steam beta. A failed box stops the upload. Fix and export again. Do not edit the store text to hide it.</li>
+    <li><strong>Tick the Play section</strong> only for items the console shows as complete. Target API, version code, data safety, rating, listing, and the closed-test rule are the usual blockers.</li>
+    <li><strong>Tick Steam</strong> only if Day 29's beta actually launched from the Steam client. Otherwise leave those boxes empty. An empty Steam section does not block Play, and the reverse is also true.</li>
+    <li><strong>Stop when a box is no.</strong> The automatic no-go lines on that page are: debug export, missing license text, crash on launch, Android save lost on pause, a missing keystore, or a store page that promises something the build does not do.</li>
+  </ol>
+  <div class="checkpoint"><p>You can point at the checklist and say which boxes are yes. The AAB on the testing track is the file you just exported. Credits still open and show the engine license. You know where the keystore file is.</p></div>
+
+  <h2 id="build-6">When Play rejects the file</h2>
+  <p>Read the console error before you change Godot. These are the rejects this template actually hits.</p>
+  <table>
+    <tr><th>Console message, roughly</th><th>Fix in the Godot preset or the keystore</th></tr>
+    <tr><td>You uploaded an APK and they wanted a bundle</td><td>Gradle Build on, Export Format <code>aab</code>. The Android docs page is why: new apps after August 2021.</td></tr>
+    <tr><td>Debuggable, or a debug certificate</td><td>Export With Debug was checked, or the Release fields still point at the debug keystore. Uncheck the box. Fill Release, Release User, Release Password.</td></tr>
+    <tr><td>Wrong signing key</td><td>This package was uploaded before with a different keystore. You cannot switch upload keys casually. Find the original file. Play App Signing's support flow, if you lost it, is on the console. Search "upload key". It is slow. Do not create a second package name to dodge it unless you are willing to orphan the first app.</td></tr>
+    <tr><td>Version code already used</td><td>Bump <code>version/code</code>. Export again. The AAB you drag in must be the new file, not the one still sitting in Downloads from last week.</td></tr>
+    <tr><td>Target API too low</td><td>Read the level in the error. Set Target SDK. Bump the version code. Export again.</td></tr>
+    <tr><td>Package name does not match</td><td>Unique Name and the console app disagree. They must be identical, including every dot.</td></tr>
+    <tr><td>Policy: data safety incomplete</td><td>Not a Gradle error. Finish the form. Local <code>user://</code> saves are still data. Describe them.</td></tr>
+  </table>
+  <p>A phone install from internal testing is the test that matters. An AAB that exists on disk has not been installed. The opt-in link is the installer. If the icon is the default Godot robot, set the launcher icons the Android export page describes (main icon at least 192×192, adaptive icons at least 432×432) before you call the listing done. Those sizes are in the engine docs. Store screenshot sizes are not. Take those from the console.</p>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>Rejection emails and the "publishing overview" checklist are on <a href="https://play.google.com/console" target="_blank" rel="noopener">play.google.com/console</a>. Search the error string. The closed-test gate for a new personal account is there too. This lesson's 12 testers and 14 days match the rule as commonly published. If the overview shows a different count, follow the overview.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Reusing <code>com.yourname.shipkit</code> for two games.</strong> Play treats that as one app. Change Unique Name when you copy the template.</li>
+    <li><strong>Version code unchanged.</strong> The second upload is rejected. Bump <code>version/code</code> every export you upload.</li>
+    <li><strong>Target SDK from a blog.</strong> The console is the number. The Godot field is only where you type it.</li>
+    <li><strong>Export With Debug checked</strong> on the file you dragged into the console.</li>
+    <li><strong>Two passwords in <code>keytool</code>.</strong> Godot needs them equal.</li>
+    <li><strong>Data safety filled in before you added ads.</strong> The form is part of the build. Update it when the build changes.</li>
+    <li><strong>Starting the 14-day test on a crashy build.</strong> Testers opt in, the build crashes, the clock still ran. Internal-test first.</li>
+    <li><strong>Assuming Play App Signing means you can delete the keystore.</strong> That file is the upload key. Keep it.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 20-30 min)</h2>
+  <div class="challenge">
+    <h3>Prove flush on a real pause</h3>
+    <p>On the internal-test build, earn a <code>SaveManager.set_value("best_score", n)</code> you can see, call <code>flush()</code>, background the app, force-stop it from Android settings, and reopen. Hint: the profile file is <code>user://profile.json</code>. If the score resets, <code>flush</code> did not run on <code>NOTIFICATION_APPLICATION_PAUSED</code>. That notification is already in <code>save_manager.gd</code>. Check you did not replace the kit script with a shorter one in the copied game.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>After you enroll in Play App Signing, what is the Godot release keystore?</p>
+      <ul>
+        <li>Useless. Delete it.</li>
+        <li>The upload key. Back it up. Google holds the app signing key.</li>
+        <li>The same file as the debug keystore</li>
+        <li>A Steam depot</li>
+      </ul>
+      <p class="explain">Play App Signing is a console feature, not a Godot feature. You still sign the AAB with the release keystore before upload. Losing that file blocks updates.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>Where do you read the target API level you must set?</p>
+      <ul>
+        <li>It is hard-coded in <code>SceneRouter</code></li>
+        <li>Any blog from the year you learned Android</li>
+        <li>Play Console, the current target API requirement, then typed into <code>gradle_build/target_sdk</code></li>
+        <li>The Master audio bus</li>
+      </ul>
+      <p class="explain">The Godot property exists. The number changes on Google's schedule. The console page is the source.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>What does version code have to do on the next upload?</p>
+      <ul>
+        <li>Increase. Play rejects a code that is not higher than the last accepted build.</li>
+        <li>Stay at 1 forever</li>
+        <li>Match the viewport width</li>
+        <li>Equal the keystore password</li>
+      </ul>
+      <p class="explain"><code>version/code</code> is an integer in the Android preset. The player-facing version name is a different field.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>Which closed-test statement matches this course?</p>
+      <ul>
+        <li>Production is immediate for every new personal account</li>
+        <li>The tester count is a Godot project setting</li>
+        <li>You must use ads to finish the test</li>
+        <li>New personal accounts have faced a closed test (taught here as 12 testers for 14 days). Confirm the current rule on the console because it has changed.</li>
+      </ul>
+      <p class="explain">That rule is Play policy, external, and it has moved before. The console text wins over this page.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>When are ads part of the Ship Kit?</p>
+      <ul>
+        <li>Always. The template loads them in <code>Audio</code>.</li>
+        <li>Never by default. They are an optional external SDK, and they change the data safety form.</li>
+        <li>They are a button in Project Settings, Rendering</li>
+        <li>They replace <code>SaveManager.flush</code></li>
+      </ul>
+      <p class="explain">Billing has an official Godot docs page and a named plugin. Ads do not. Both are optional. A game that does not show them should not request them.</p>
+    </div>
+  </div>
+
+  <h2 id="kit-names">What copied games are not allowed to rename</h2>
+  <p>Idle clicker, bullet heaven, physics merge, deckbuilder, and deep digger start as a copy of <code>C:\GodotProjects\ship-kit</code>. They change the window size, the package name, and the files under <code>res://game</code>. They do not change the kit. If a later day calls a method that is not on this list, the day is wrong, not the kit.</p>
+  <ul>
+    <li><code>Events</code>: <code>game_started</code>, <code>game_paused</code>, <code>game_over</code>, <code>score_changed</code>, <code>achievement_unlocked</code>, <code>settings_changed</code>, <code>toast_requested</code>.</li>
+    <li><code>Settings</code>: <code>get_volume</code>, <code>set_volume</code>, <code>is_fullscreen</code>, <code>set_fullscreen</code>, <code>get_locale</code>, <code>set_locale</code>, <code>get_value</code>, <code>set_value</code>, <code>save_settings</code>, <code>save_input_map</code>, <code>load_input_map</code>.</li>
+    <li><code>SaveManager</code>: <code>FORMAT_VERSION</code>, <code>has_slot</code>, <code>save_slot</code>, <code>load_slot</code>, <code>delete_slot</code>, <code>get_value</code>, <code>set_value</code>, <code>flush</code>.</li>
+    <li><code>Audio</code>: <code>play_sfx</code>, <code>play_sfx_varied</code>, <code>play_music</code>, <code>stop_music</code>.</li>
+    <li><code>SceneRouter</code>: <code>MAIN_MENU_SCENE</code>, <code>GAME_SCENE</code>, <code>transition_finished</code>, <code>go_to</code>, <code>reload_current</code>, <code>quit_game</code>.</li>
+  </ul>
+  <p>Pause stays <code>ShipPauseMenu.toggle()</code> on a CanvasLayer whose process mode is Always. Buses stay <code>Master</code>, <code>Music</code>, <code>SFX</code>. Translation columns stay <code>keys,en,es,de,fr,pt_BR,ru,zh_CN</code>, and new game strings use that game's prefix. Cast JSON integers with <code>int()</code> when you read them back. The full scripts are on <a href="../publishing/ship-kit.html">the Ship Kit page</a>.</p>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_android.html" target="_blank" rel="noopener">Exporting for Android</a>: JDK 17, AAB, keystore passwords, Export With Debug.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/android_gradle_build.html" target="_blank" rel="noopener">Gradle builds for Android</a>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_editorexportplatformandroid.html" target="_blank" rel="noopener">EditorExportPlatformAndroid</a>: target SDK, package name, version code, edge-to-edge.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/platform/android/android_in_app_purchases.html" target="_blank" rel="noopener">Android in-app purchases</a>: GodotGooglePlayBilling.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/platform/android/resolving_crashes_on_android.html" target="_blank" rel="noopener">Resolving crashes on Android</a>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/inputs/handling_quit_requests.html" target="_blank" rel="noopener">Handling quit requests</a>: why flush runs on application pause.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/about/complying_with_licenses.html" target="_blank" rel="noopener">Complying with licenses</a>.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li>The uploaded AAB is a Gradle release build. Export With Debug was off. Version code is higher than any previous upload.</li>
+    <li>Target SDK matches the console's current requirement.</li>
+    <li>Data safety, content rating, and the listing are filled for this build, at the sizes the console shows.</li>
+    <li>Internal testing installed on a phone. A background-and-kill kept the flushed save.</li>
+    <li>Closed testing is running under the rule the console printed, or I can quote the unmet requirement.</li>
+    <li>I walked <a href="../publishing/launch-checklist.html">the launch checklist</a>. Billing and ads are off, or their forms match the build.</li>
+  </ul>
+  <p><strong>After the course:</strong> copy <code>ship-kit</code> per game, keep these autoload names, and re-run this checklist on each package name. The API page is <a href="../publishing/ship-kit.html">Ship Kit</a>.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 27 - Deep Digger I: noise, chunks, and the drill | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day27" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 27</div>
+    <h1>Deep Digger I: noise, chunks, and the drill</h1>
+    <p class="lead">Copy the Ship Kit into a landscape project and generate an endless mine with FastNoiseLite and a TileMapLayer. By the end of the session the drill flies, eats tiles, burns fuel, and fills a cargo bay.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:25</td><td><strong>Concepts.</strong> Noise, chunks, and the extraction loop. No editor yet.</td></tr>
+    <tr><td>0:25 – 1:20</td><td><strong>Project and tileset.</strong> Copy the kit, set the window, generate the atlas, paint tile collision.</td></tr>
+    <tr><td>1:20 – 1:35</td><td><strong>Break.</strong> Stand up, drink water.</td></tr>
+    <tr><td>1:35 – 2:50</td><td><strong>World.</strong> TileMapLayer chunks from two FastNoiseLite resources.</td></tr>
+    <tr><td>2:50 – 3:40</td><td><strong>Drill.</strong> Movement, digging, fuel, cargo, HUD.</td></tr>
+    <tr><td>3:40 – 4:00</td><td><strong>Challenge, quiz, wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>4 h</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Open <code>C:\GodotProjects\deep-digger</code> at 1280×720, stretch mode <code>canvas_items</code>, aspect <code>expand</code>, Mobile renderer.</li>
+    <li>Generate a 9-column atlas and turn it into a TileSet whose solid tiles have collision.</li>
+    <li>Fill 16×16 chunks on a TileMapLayer from <code>FastNoiseLite.get_noise_2d</code>.</li>
+    <li>Fly a CharacterBody2D in <code>MOTION_MODE_FLOATING</code> and erase the cell in front of it with <code>erase_cell</code>.</li>
+    <li>Watch fuel drain by the depth formula and cargo count copper, iron, gold, and crystal.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 15's Ship Kit opens from <code>C:\GodotProjects\ship-kit</code>. You will copy that folder, not edit it.</li>
+    <li>You will not change <code>events.gd</code>, <code>settings.gd</code>, <code>save_manager.gd</code>, <code>audio.gd</code>, or <code>scene_router.gd</code>. Autoload names stay <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, <code>SceneRouter</code>.</li>
+    <li>Design numbers for the finished game live on the <a href="../games/g10-extraction-miner.html">Deep Digger game page</a>. Today uses fuel, cargo, and dig time. The shop is tomorrow.</li>
+    <li>No art download is required. An optional Kenney pack is named later, by role only.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>The loop</h3>
+  <p>Deep Digger is an endless extraction miner. A shaft drops through a dirt crust. Below that, noise decides air, dirt, stone, ore, and bedrock. You fly in open cells, drill solid cells, and spend fuel to do it. Ore occupies cargo. Dirt and stone do not. The surface refills the tank. Selling and upgrades are Day 28.</p>
+  <h3>FastNoiseLite is a Resource, not a node</h3>
+  <p>If you have called Perlin noise from another engine, this is the same idea. <code>FastNoiseLite</code> extends <code>Noise</code>. <code>get_noise_2d(x, y)</code> returns a float, about −1 to 1. <code>frequency</code> is the zoom: low values (we use <code>0.045</code> for caves) change slowly, high values flicker cell to cell. <code>fractal_type</code> of <code>FRACTAL_FBM</code> stacks octaves. The <code>seed</code> makes the same hole appear on the next launch. Sample with the cell coordinate. Do not also multiply the coordinate by the frequency, or you scale the noise twice.</p>
+  <h3>TileMapLayer, one cell at a time</h3>
+  <p>A chunk is a 16×16 block of cells, the same idea as a streaming sector. <code>set_cell(coords, source_id, atlas_coords, alternative_tile)</code> paints one cell. <code>erase_cell(coords)</code> removes the tile and its collision. <code>local_to_map</code> expects a position in the TileMapLayer's own space, so a global drill position goes through <code>to_local</code> first. <code>map_to_local</code> returns the center of a cell. Add a TileMapLayer node. Do not add the older tile-grid node Godot deprecated in favor of TileMapLayer.</p>
+  <div class="callout docs"><span class="callout-title">Docs checked for this day</span>
+    <p><code>FastNoiseLite</code> frequency, seed, <code>TYPE_SIMPLEX_SMOOTH</code>, <code>FRACTAL_FBM</code>. <code>Noise.get_noise_2d</code>. <code>TileMapLayer.set_cell</code>, <code>erase_cell</code>, <code>local_to_map</code>, <code>map_to_local</code>. TileSet creation and the <kbd>F</kbd> rectangle collision shortcut are in the tileset tutorial.</p>
+  </div>
+
+  <h2 id="build-1">Block 2: Copy the kit and set the window</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Close Godot</strong> if a project is open, so the copy is not locked. In PowerShell, run:
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+Copy-Item -Path C:\GodotProjects\ship-kit -Destination C:\GodotProjects\deep-digger -Recurse
+      </script>
+      If PowerShell says the destination already exists, rename the old folder first. Do not copy into a folder that already contains a project.</li>
+    <li><strong>Import.</strong> Open the Godot Project Manager. Click <kbd class="ui">Import</kbd>. Browse to <code>C:\GodotProjects\deep-digger\project.godot</code>. Click <kbd class="ui">Import &amp; Edit</kbd>. The editor opens on the Ship Kit.</li>
+    <li><strong>Name the game.</strong> Menu bar: <kbd class="menu">Project &gt; Project Settings</kbd>. In the search box at the top of the dialog, type <code>name</code>. Open <kbd class="ui">Application &gt; Config</kbd>. Set <kbd class="ui">Name</kbd> to <code>Deep Digger</code>. Set <kbd class="ui">Version</kbd> to <code>1.0.0</code> if that row is present.</li>
+    <li><strong>Viewport.</strong> Clear the search box, then open <kbd class="ui">Display &gt; Window</kbd>. Under <kbd class="ui">Size</kbd>, set <kbd class="ui">Viewport Width</kbd> to <code>1280</code> and <kbd class="ui">Viewport Height</kbd> to <code>720</code>. Under <kbd class="ui">Stretch</kbd>, set <kbd class="ui">Mode</kbd> to <code>canvas_items</code> and <kbd class="ui">Aspect</kbd> to <code>expand</code>. Aspect <code>expand</code> lets a wide monitor show more of the mine; the HUD anchors absorb the extra space.</li>
+    <li><strong>Renderer.</strong> Search <code>renderer</code>. Open <kbd class="ui">Rendering &gt; Renderer</kbd>. Set <kbd class="ui">Rendering Method</kbd> to <kbd class="ui">Mobile</kbd>. This is a 2D phone game; the tile grid does not need Forward+. If Godot asks to restart, click the button that saves and restarts.</li>
+    <li><strong>Layer names.</strong> In the left list of Project Settings, click <kbd class="ui">Layer Names</kbd>, then <kbd class="ui">2D Physics</kbd>. Set the seven rows to <code>world</code>, <code>player</code>, <code>enemies</code>, <code>player_attacks</code>, <code>enemy_attacks</code>, <code>pickups</code>, <code>triggers</code>. Click <kbd class="ui">Close</kbd>.</li>
+    <li><strong>Confirm the actions.</strong> Open <kbd class="menu">Project &gt; Project Settings &gt; Input Map</kbd>. You need <code>move_left</code>, <code>move_right</code>, <code>move_up</code>, <code>move_down</code>, <code>interact</code>, and <code>pause</code> (the Ship Kit already added them). If one is missing, type the name in the action field at the top, click <kbd class="ui">Add</kbd>, then click the <kbd class="ui">+</kbd> on that row and add a key: A/D/W/S (and the arrow keys), <kbd>E</kbd> for <code>interact</code>, <kbd>Escape</kbd> for <code>pause</code>. Click <kbd class="ui">Close</kbd>.</li>
+    <li><strong>Main scene stays the menu.</strong> Search Project Settings for <code>main scene</code>. <kbd class="ui">Application &gt; Run &gt; Main Scene</kbd> should be <code>res://ui/main_menu.tscn</code>. Do not point it at the game scene. <code>SceneRouter</code> already loads <code>res://game/game.tscn</code>.</li>
+  </ol>
+  <div class="checkpoint"><p>Press <kbd>F5</kbd>. The Ship Kit main menu appears in a 1280×720 window (or larger, because aspect is <code>expand</code>). Press <kbd>F8</kbd> to stop. If the window is a tall portrait, Viewport Width and Height are swapped.</p></div>
+
+  <h2 id="build-2">Block 2 continued: a 9-tile atlas</h2>
+  <p>A TileSet atlas needs a texture. ColorRect nodes cannot be dropped onto a TileSet. The script below is the texture factory: nine 16×16 squares in one row, 144×16 pixels. Columns, left to right:</p>
+  <table class="timebox">
+    <tr><td>0 dirt</td><td>1 stone</td><td>2 copper</td><td>3 iron</td><td>4 gold</td></tr>
+    <tr><td>5 crystal</td><td>6 magma (red)</td><td>7 gas (yellow-green)</td><td>8 bedrock</td><td>16×16 each</td></tr>
+  </table>
+  <p>Today the generator only paints columns 0–5 and 8. Columns 6 and 7 stay in the atlas so tomorrow's hazards do not move the other tiles.</p>
+  <ol class="steps">
+    <li><strong>Create the script.</strong> In the <kbd class="ui">FileSystem</kbd> dock (bottom-left), right-click the <code>game</code> folder. Choose <kbd class="ui">Create New &gt; Script</kbd>. Set <kbd class="ui">Path</kbd> to <code>res://game/make_tiles.gd</code>. Set <kbd class="ui">Inherits</kbd> to <code>EditorScript</code>. Leave the class-name field empty. Click <kbd class="ui">Create</kbd>.</li>
+    <li><strong>Replace the file.</strong> The script editor opens. Press <kbd>Ctrl</kbd>+<kbd>A</kbd>, delete, and paste this whole file. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/make_tiles.gd">
+@tool
+extends EditorScript
+
+func _run() -> void:
+    var tile := 16
+    var colors: Array[Color] = [
+        Color(0.420, 0.310, 0.165),
+        Color(0.490, 0.490, 0.510),
+        Color(0.769, 0.478, 0.227),
+        Color(0.722, 0.725, 0.769),
+        Color(0.886, 0.702, 0.251),
+        Color(0.494, 0.878, 0.839),
+        Color(0.886, 0.231, 0.184),
+        Color(0.784, 0.949, 0.478),
+        Color(0.165, 0.165, 0.196),
+    ]
+    var image := Image.create_empty(colors.size() * tile, tile, false, Image.FORMAT_RGBA8)
+    image.fill(Color(0, 0, 0, 0))
+    for i in colors.size():
+        var origin := Vector2i(i * tile, 0)
+        var color := colors[i]
+        image.fill_rect(Rect2i(origin, Vector2i(tile, tile)), color)
+        var edge := color.darkened(0.45)
+        image.fill_rect(Rect2i(origin, Vector2i(tile, 1)), edge)
+        image.fill_rect(Rect2i(origin + Vector2i(0, tile - 1), Vector2i(tile, 1)), edge)
+        image.fill_rect(Rect2i(origin, Vector2i(1, tile)), edge)
+        image.fill_rect(Rect2i(origin + Vector2i(tile - 1, 0), Vector2i(1, tile)), edge)
+    DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://assets/art"))
+    var path := "res://assets/art/tiles.png"
+    var err := image.save_png(path)
+    if err != OK:
+        push_error("tiles.png failed to save: %s" % error_string(err))
+        return
+    EditorInterface.get_resource_filesystem().update_file(path)
+    print("Wrote %s (%d columns)" % [path, colors.size()])
+      </script>
+    </li>
+    <li><strong>Run it.</strong> With <code>make_tiles.gd</code> focused in the script editor, menu bar <kbd class="menu">File &gt; Run</kbd> (or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>). This runs <code>_run()</code> inside the editor. It does not start the game.</li>
+  </ol>
+  <div class="checkpoint"><p>The <kbd class="ui">Output</kbd> panel (bottom) prints <code>Wrote res://assets/art/tiles.png (9 columns)</code>. In the FileSystem dock, <code>assets/art/tiles.png</code> shows nine colored squares. Click the file: the Inspector preview is 144×16. If the file is missing, click <code>assets</code> and choose <kbd class="ui">Reimport</kbd> from the right-click menu, then run the script again.</p></div>
+  <div class="callout external"><span class="callout-title">External resource: optional Kenney tiles</span>
+    <p>You do not need a download. If you want drawn tiles later, open <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a> and search for a top-down or abstract tilesheet (the Godot tileset tutorial uses Kenney's Abstract Platformer pack as an example). Filenames change between pack versions, so pick the sheet by looking at it, not by a name from this course. Verify the license on that page. Keep the tile size at 16, or rebuild the TileSet if the sheet uses another size.</p>
+  </div>
+  <ol class="steps">
+    <li><strong>Open the game scene.</strong> In the FileSystem dock, double-click <code>res://game/game.tscn</code>. If the root node is not a <code>Node2D</code>, menu bar <kbd class="menu">Scene &gt; New Scene</kbd>, in the Scene dock click <kbd class="ui">2D Scene</kbd>, press <kbd>F2</kbd>, rename the root to <code>Game</code>, then <kbd class="menu">Scene &gt; Save Scene As</kbd> and overwrite <code>res://game/game.tscn</code>.</li>
+    <li><strong>Clear placeholder children.</strong> If the Ship Kit left sample nodes under <code>Game</code>, select each child (not the root) and press <kbd>Delete</kbd>. Leave the root <code>Game</code>.</li>
+    <li><strong>Add World.</strong> Select <code>Game</code>. In the Scene dock click <kbd class="ui">+</kbd> (or press <kbd>Ctrl</kbd>+<kbd>A</kbd>). Search <code>Node2D</code>, click <kbd class="ui">Create</kbd>. Press <kbd>F2</kbd> and name it <code>World</code>.</li>
+    <li><strong>Add Terrain.</strong> Select <code>World</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>TileMapLayer</code>, click <kbd class="ui">Create</kbd>. Press <kbd>F2</kbd> and name it <code>Terrain</code>. This is the only tile-grid node in the game.</li>
+    <li><strong>Crisp pixels.</strong> Select <code>Terrain</code>. In the Inspector, open <kbd class="ui">CanvasItem &gt; Texture</kbd> and set <kbd class="ui">Filter</kbd> to <kbd class="ui">Nearest</kbd>. Confirm <kbd class="ui">Collision Enabled</kbd> under the layer's collision group is checked, and <kbd class="ui">Use Kinematic Bodies</kbd> is unchecked (static rock, not moving platforms).</li>
+    <li><strong>New TileSet.</strong> In the Inspector, find <kbd class="ui">Tile Set</kbd>. Click the empty field and choose <kbd class="ui">New TileSet</kbd>. Click the new TileSet to unfold it. Set <kbd class="ui">Tile Size</kbd> to <code>16</code> and <code>16</code> before you add the atlas. Turn on <kbd class="ui">Rendering &gt; UV Clipping</kbd> so a tile cannot draw outside its square.</li>
+    <li><strong>Add the atlas.</strong> Select <code>Terrain</code>. Open the <kbd class="ui">TileSet</kbd> tab in the bottom panel. Drag <code>tiles.png</code> from the FileSystem dock onto that panel. When asked to create tiles automatically, click <kbd class="ui">Yes</kbd>. Nine squares appear. The atlas list on the left shows a source id, usually <code>0</code>. The scripts use <code>0</code>. If yours is another number, you will change <code>SOURCE_ID</code> later.</li>
+    <li><strong>Physics layer.</strong> Select <code>Terrain</code> again. In the Inspector, unfold the TileSet, unfold <kbd class="ui">Physics Layers</kbd>, and click <kbd class="ui">Add Element</kbd>. On that element, set <kbd class="ui">Collision Layer</kbd> to <code>world</code> only, and <kbd class="ui">Collision Mask</kbd> to <code>player</code> only.</li>
+    <li><strong>Rectangle collision on solid tiles.</strong> Bottom panel, stay on <kbd class="ui">TileSet</kbd>. Switch the toolbar to <kbd class="ui">Select</kbd> mode. On the right-hand atlas, drag a box around all nine tiles. Then hold <kbd>Shift</kbd> and click the red square (column 6) and the yellow-green square (column 7) so those two are not selected. In the middle column, open the physics polygon editor and click the empty area beside the tile so it has keyboard focus. Press <kbd>F</kbd>. Each selected tile gets a full rectangle. Columns 6 and 7 must stay without a square: tomorrow you fly into them.</li>
+    <li><strong>Fallback if F hit only one tile.</strong> Click column 0, focus the polygon editor, press <kbd>F</kbd>. Repeat for columns 1, 2, 3, 4, 5, and 8. Skip 6 and 7.</li>
+    <li><strong>Save the TileSet.</strong> In the Inspector, click the TileSet dropdown (the arrow next to the resource) and choose <kbd class="ui">Save</kbd>. Save as <code>res://assets/art/tileset.tres</code>. Press <kbd>Ctrl</kbd>+<kbd>S</kbd> to save the scene.</li>
+  </ol>
+  <div class="checkpoint"><p>Select <code>Terrain</code>, open the <kbd class="ui">TileSet</kbd> bottom panel, and click the dirt tile. The middle column shows a rectangle in the physics editor. The red and yellow-green tiles do not. Menu bar <kbd class="menu">Debug &gt; Visible Collision Shapes</kbd> can stay on while you test. If the atlas sliced into the wrong count, tile size was changed after the drag: delete the atlas (right-click it in the TileSet list, <kbd class="ui">Delete</kbd>) and drag <code>tiles.png</code> again.</p></div>
+
+  <h2 id="build-3">Block 3: Chunks</h2>
+  <p>Two noise resources share the world seed. Cave noise carves air where the value is above <code>0.32</code>. Ore noise places copper, iron, gold, and crystal by depth. A 3-cell shaft at <code>x = -1, 0, 1</code> stays air down to <code>y = 8</code> so you can leave the surface. Cell <code>y</code> below <code>2</code> is sky. The crust at <code>y = 2</code> is dirt except the shaft mouth.</p>
+  <table class="timebox">
+    <tr><td>Kind</td><td>Atlas x</td><td>Solid</td><td>Seconds at drill 0</td><td>Break fuel</td><td>Cargo / value</td></tr>
+    <tr><td>Dirt</td><td>0</td><td>yes</td><td>0.35</td><td>0.28</td><td>0</td></tr>
+    <tr><td>Stone</td><td>1</td><td>yes</td><td>0.90</td><td>0.72</td><td>0</td></tr>
+    <tr><td>Copper</td><td>2</td><td>yes</td><td>0.70</td><td>0.56</td><td>1 / 8</td></tr>
+    <tr><td>Iron</td><td>3</td><td>yes</td><td>1.10</td><td>0.88</td><td>1 / 18</td></tr>
+    <tr><td>Gold</td><td>4</td><td>yes</td><td>1.40</td><td>1.12</td><td>1 / 45</td></tr>
+    <tr><td>Crystal</td><td>5</td><td>yes</td><td>1.80</td><td>1.44</td><td>1 / 120</td></tr>
+    <tr><td>Bedrock</td><td>8</td><td>yes</td><td>never</td><td>—</td><td>0</td></tr>
+  </table>
+  <p>Dig time is <code>hardness / (1 + 0.35 * drill_level)</code>. Today <code>drill_level</code> is 0, so the seconds column is the hardness. Break fuel is <code>hardness * 0.8</code>, on top of the per-second burn.</p>
+  <ol class="steps">
+    <li><strong>Attach the terrain script.</strong> Right-click <code>Terrain</code> in the Scene dock, choose <kbd class="ui">Attach Script</kbd>. Path <code>res://game/terrain.gd</code>. Leave the dialog class name empty. Click <kbd class="ui">Create</kbd>. Press <kbd>Ctrl</kbd>+<kbd>A</kbd> and replace the whole file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/terrain.gd">
+class_name DiggerTerrain
+extends TileMapLayer
+
+const SOURCE_ID: int = 0
+const CHUNK: int = 16
+const STREAM_RADIUS: int = 2
+
+const KIND_DIRT: int = 0
+const KIND_STONE: int = 1
+const KIND_COPPER: int = 2
+const KIND_IRON: int = 3
+const KIND_GOLD: int = 4
+const KIND_CRYSTAL: int = 5
+const KIND_MAGMA: int = 6
+const KIND_GAS: int = 7
+const KIND_BEDROCK: int = 8
+
+var seed_value: int = 1
+
+var _cave: FastNoiseLite
+var _ore: FastNoiseLite
+var _loaded: Dictionary = {}
+var _dug: Dictionary = {}
+
+func setup(world_seed: int) -> void:
+    seed_value = world_seed
+    _cave = FastNoiseLite.new()
+    _cave.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+    _cave.fractal_type = FastNoiseLite.FRACTAL_FBM
+    _cave.fractal_octaves = 3
+    _cave.frequency = 0.045
+    _cave.seed = world_seed
+    _ore = FastNoiseLite.new()
+    _ore.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+    _ore.fractal_type = FastNoiseLite.FRACTAL_FBM
+    _ore.fractal_octaves = 2
+    _ore.frequency = 0.09
+    _ore.seed = world_seed + 1
+
+func _process(_delta: float) -> void:
+    if _cave == null:
+        return
+    var player := get_tree().get_first_node_in_group("player") as Node2D
+    if player == null:
+        return
+    stream_around(local_to_map(to_local(player.global_position)))
+
+func stream_around(cell: Vector2i) -> void:
+    var center := _chunk_of(cell)
+    for y in range(center.y - STREAM_RADIUS, center.y + STREAM_RADIUS + 1):
+        for x in range(center.x - STREAM_RADIUS, center.x + STREAM_RADIUS + 1):
+            load_chunk(Vector2i(x, y))
+
+func load_chunk(chunk: Vector2i) -> void:
+    var key := _key(chunk)
+    if _loaded.has(key):
+        return
+    _loaded[key] = true
+    if chunk.y < 0:
+        return
+    var origin := chunk * CHUNK
+    for y in CHUNK:
+        for x in CHUNK:
+            var cell := origin + Vector2i(x, y)
+            if _dug.has(_key(cell)):
+                continue
+            var kind := _procedural_kind(cell)
+            if kind < 0:
+                continue
+            set_cell(cell, SOURCE_ID, Vector2i(kind, 0), 0)
+
+func kind_at(cell: Vector2i) -> int:
+    if _dug.has(_key(cell)):
+        return -1
+    return _procedural_kind(cell)
+
+func erase_dug(cell: Vector2i) -> void:
+    _dug[_key(cell)] = true
+    erase_cell(cell)
+
+func is_solid(kind: int) -> bool:
+    return kind == KIND_DIRT or kind == KIND_STONE or kind == KIND_COPPER or kind == KIND_IRON or kind == KIND_GOLD or kind == KIND_CRYSTAL or kind == KIND_BEDROCK
+
+func is_ore(kind: int) -> bool:
+    return kind >= KIND_COPPER and kind <= KIND_CRYSTAL
+
+static func ore_id(kind: int) -> String:
+    match kind:
+        KIND_COPPER:
+            return "copper"
+        KIND_IRON:
+            return "iron"
+        KIND_GOLD:
+            return "gold"
+        KIND_CRYSTAL:
+            return "crystal"
+        _:
+            return ""
+
+func hardness(kind: int) -> float:
+    match kind:
+        KIND_DIRT:
+            return 0.35
+        KIND_STONE:
+            return 0.90
+        KIND_COPPER:
+            return 0.70
+        KIND_IRON:
+            return 1.10
+        KIND_GOLD:
+            return 1.40
+        KIND_CRYSTAL:
+            return 1.80
+        KIND_MAGMA:
+            return 0.40
+        KIND_GAS:
+            return 0.25
+        _:
+            return 999.0
+
+func _procedural_kind(cell: Vector2i) -> int:
+    if _cave == null:
+        return -1
+    if cell.y < DiggerGame.SURFACE_Y:
+        return -1
+    if absi(cell.x) <= 1 and cell.y <= DiggerGame.SURFACE_Y + 6:
+        return -1
+    if cell.y == DiggerGame.SURFACE_Y and absi(cell.x) > 2:
+        return KIND_DIRT
+    var n := _cave.get_noise_2d(float(cell.x), float(cell.y))
+    if n > 0.32:
+        return -1
+    var depth := cell.y
+    var o := _ore.get_noise_2d(float(cell.x), float(cell.y))
+    if depth > 16 and absf(n) < 0.015:
+        return KIND_BEDROCK
+    if depth > 80 and o > 0.72:
+        return KIND_CRYSTAL
+    if depth > 48 and o > 0.62:
+        return KIND_GOLD
+    if depth > 24 and o > 0.50:
+        return KIND_IRON
+    if depth > 8 and o > 0.42:
+        return KIND_COPPER
+    if n < -0.2:
+        return KIND_STONE
+    return KIND_DIRT
+
+func _chunk_of(cell: Vector2i) -> Vector2i:
+    # Float division: integer division truncates toward zero and maps cell -1 into chunk 0.
+    return Vector2i(floori(float(cell.x) / float(CHUNK)), floori(float(cell.y) / float(CHUNK)))
+
+func _key(v: Vector2i) -> String:
+    return "%d,%d" % [v.x, v.y]
+      </script>
+    </li>
+    <li><strong>If the atlas id is not 0.</strong> Open <code>terrain.gd</code> and set <code>SOURCE_ID</code> to the number shown beside the atlas in the TileSet panel. Save.</li>
+  </ol>
+  <div class="callout note"><span class="callout-title">Chunks stay loaded today</span>
+    <p><code>stream_around</code> only calls <code>load_chunk</code>. Flying a long way keeps every chunk. That is fine for this session. Day 28 unloads chunks far from the drill. Do not treat a missing unload as a bug today.</p></div>
+
+  <h2 id="build-4">Block 4: Drill, fuel, cargo, HUD</h2>
+  <p>Fuel per second while you thrust or while the dig timer is running:</p>
+  <p><code>(1.6 + 0.035 * depth) * (1 - 0.08 * efficiency_level)</code></p>
+  <p><code>depth</code> is <code>max(0, cell_y - 2)</code>. Efficiency is 0 today, so a full tank of 100 lasts about 62 seconds of thrusting at the surface and about 33 seconds at depth 40. Holding still does not burn fuel. At the surface (<code>cell_y &lt;= 2</code>) the tank refills at 40 per second. Out of fuel, speed drops from 110 to 44 and the drill will not bite.</p>
+  <pre class="scene-tree">Game (Node2D)                      [game.gd]
+├── World (Node2D)
+│   └── Terrain (TileMapLayer)     [terrain.gd]
+├── Drill (CharacterBody2D)        [drill.gd]  group: player
+│   ├── Body (Polygon2D)
+│   ├── CollisionShape2D
+│   └── Camera2D
+├── HUD (CanvasLayer)
+│   └── MarginContainer
+│       └── VBoxContainer
+│           ├── FuelLabel (Label)
+│           ├── FuelBar (ProgressBar)
+│           ├── HullLabel (Label)
+│           ├── HullBar (ProgressBar)
+│           ├── InfoLabel (Label)
+│           └── DigLabel (Label)
+└── PauseMenu (instance of pause_menu.tscn)</pre>
+  <ol class="steps">
+    <li><strong>Add the drill.</strong> Select <code>Game</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>CharacterBody2D</code>, rename it <code>Drill</code>. In the Inspector set <kbd class="ui">Motion Mode</kbd> to <kbd class="ui">Floating</kbd> so every direction is a wall, with no floor snap. Under <kbd class="ui">Collision &gt; Layer</kbd>, uncheck every box, then check only <code>player</code>. Under <kbd class="ui">Collision &gt; Mask</kbd>, check only <code>world</code>.</li>
+    <li><strong>Body.</strong> Select <code>Drill</code>, add a child <code>Polygon2D</code>, rename it <code>Body</code>. The script fills the triangle on run. You do not have to edit points by hand.</li>
+    <li><strong>Collision shape.</strong> Select <code>Drill</code>, add a child <code>CollisionShape2D</code>. In the Inspector, <kbd class="ui">Shape</kbd> &gt; <kbd class="ui">New CircleShape2D</kbd>. Click the circle to unfold it and set <kbd class="ui">Radius</kbd> to <code>6</code>. A 12-pixel body fits inside a 16-pixel cell. A radius of 16 jams in the shaft.</li>
+    <li><strong>Camera.</strong> Select <code>Drill</code>, add a child <code>Camera2D</code>. Leave it at position <code>0, 0</code>. In the Inspector set <kbd class="ui">Zoom</kbd> to <code>2</code> and <code>2</code>. Turn on <kbd class="ui">Position Smoothing Enabled</kbd> and set <kbd class="ui">Position Smoothing Speed</kbd> to <code>8</code>. Turn on <kbd class="ui">Limit Enabled</kbd> and set <kbd class="ui">Limit Top</kbd> to <code>-180</code> so the sky is not infinite. Leave the other limits at their huge defaults.</li>
+    <li><strong>Group.</strong> Select <code>Drill</code>. Open the <kbd class="ui">Node</kbd> tab (beside the Inspector) and the <kbd class="ui">Groups</kbd> sub-tab. Type <code>player</code> and click <kbd class="ui">Add</kbd>. The terrain script looks up this group. The drill script also calls <code>add_to_group</code>, so a missed click still streams after you run.</li>
+    <li><strong>HUD.</strong> Select <code>Game</code>, add a <code>CanvasLayer</code>, rename it <code>HUD</code>. Leave <kbd class="ui">Layer</kbd> at <code>1</code>. Add a child <code>MarginContainer</code>. In the Inspector set <kbd class="ui">Layout &gt; Anchors Preset</kbd> to <kbd class="ui">Full Rect</kbd>. Set <kbd class="ui">Offset Left</kbd> and <kbd class="ui">Offset Top</kbd> to <code>16</code>, and <kbd class="ui">Offset Right</kbd> and <kbd class="ui">Offset Bottom</kbd> to <code>-16</code>. Set <kbd class="ui">Mouse &gt; Filter</kbd> to <kbd class="ui">Ignore</kbd> so the bars do not eat clicks tomorrow.</li>
+    <li><strong>VBox and labels.</strong> Select <code>MarginContainer</code>, add a <code>VBoxContainer</code>. Under it, add in this order: <code>Label</code> named <code>FuelLabel</code>, <code>ProgressBar</code> named <code>FuelBar</code>, <code>Label</code> named <code>HullLabel</code>, <code>ProgressBar</code> named <code>HullBar</code>, <code>Label</code> named <code>InfoLabel</code>, <code>Label</code> named <code>DigLabel</code>. For each of those six nodes: right-click it in the Scene dock and choose <kbd class="ui">Access as Unique Name</kbd>. A <code>%</code> appears in front of the name. Scripts use <code>%FuelBar</code> and the rest.</li>
+    <li><strong>Bars.</strong> Select <code>FuelBar</code>. Turn off <kbd class="ui">Show Percentage</kbd>. Set <kbd class="ui">Layout &gt; Custom Minimum Size</kbd> Y to <code>22</code>. Under <kbd class="ui">Size Flags &gt; Horizontal</kbd> enable <kbd class="ui">Fill</kbd> and <kbd class="ui">Expand</kbd>. Repeat for <code>HullBar</code>.</li>
+    <li><strong>Pause menu.</strong> Select <code>Game</code>. In the Scene dock click the chain-link icon (instantiate a scene). Pick <code>res://ui/pause_menu.tscn</code>. Select the new instance. In the Inspector set <kbd class="ui">Layer</kbd> to <code>20</code> so the pause UI draws above the HUD. Do not edit the pause menu script. It already toggles <code>get_tree().paused</code> on the <code>pause</code> action.</li>
+    <li><strong>Strings.</strong> In the FileSystem dock, double-click <code>res://i18n/translations.csv</code>. Confirm the header starts with <code>keys,en,es,de,fr,pt_BR,ru,zh_CN</code>. Click at the end of the file and paste the rows below. Do not change the header. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>. Godot reimports the CSV. <code>fr</code>, <code>pt_BR</code>, <code>ru</code>, and <code>zh_CN</code> are still English so every column exists; replace them when you have a translation.
+      <script type="text/x-code" data-lang="csv" data-file="res://i18n/translations.csv">
+DIGGER_FUEL,Fuel,Combustible,Treibstoff,Fuel,Fuel,Fuel,Fuel
+DIGGER_HULL,Hull,Casco,Hülle,Hull,Hull,Hull,Hull
+DIGGER_CARGO,Cargo,Carga,Fracht,Cargo,Cargo,Cargo,Cargo
+DIGGER_CREDITS,Credits,Créditos,Credits,Credits,Credits,Credits,Credits
+DIGGER_DEPTH,Depth,Profundidad,Tiefe,Depth,Depth,Depth,Depth
+DIGGER_DIG,Drilling,Perforando,Bohren,Drilling,Drilling,Drilling,Drilling
+DIGGER_TOAST_CARGO,Cargo bay is full.,La bodega está llena.,Der Laderaum ist voll.,Cargo bay is full.,Cargo bay is full.,Cargo bay is full.,Cargo bay is full.
+DIGGER_TOAST_FUEL,Not enough fuel to drill.,No hay combustible para perforar.,Nicht genug Treibstoff zum Bohren.,Not enough fuel to drill.,Not enough fuel to drill.,Not enough fuel to drill.,Not enough fuel to drill.
+DIGGER_TOAST_BEDROCK,Bedrock. Dig around it.,Roca madre. Excava alrededor.,Grundgestein. Grabe darum herum.,Bedrock. Dig around it.,Bedrock. Dig around it.,Bedrock. Dig around it.,Bedrock. Dig around it.
+      </script>
+    </li>
+    <li><strong>game.gd.</strong> Right-click <code>Game</code>, <kbd class="ui">Attach Script</kbd>, path <code>res://game/game.gd</code>. Replace the whole file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/game.gd">
+class_name DiggerGame
+extends Node2D
+
+const SURFACE_Y: int = 2
+const ORE_VALUE: Dictionary = {
+    "copper": 8,
+    "iron": 18,
+    "gold": 45,
+    "crystal": 120,
+}
+
+var seed_value: int = 1
+var credits: int = 0
+var fuel: float = 100.0
+var hull: float = 100.0
+var dig_ratio: float = 0.0
+var shop_open: bool = false
+var dug_total: int = 0
+var best_depth: int = 0
+var cargo: Dictionary = {
+    "copper": 0,
+    "iron": 0,
+    "gold": 0,
+    "crystal": 0,
+}
+var upgrades: Dictionary = {
+    "tank": 0,
+    "drill": 0,
+    "cargo": 0,
+    "hull": 0,
+    "efficiency": 0,
+    "assay": 0,
+}
+
+var _toast_at: Dictionary = {}
+
+@onready var terrain: DiggerTerrain = $World/Terrain
+@onready var drill: DiggerDrill = $Drill
+
+func _ready() -> void:
+    add_to_group("digger_game")
+    seed_value = randi()
+    fuel = max_fuel()
+    hull = max_hull()
+    terrain.setup(seed_value)
+    drill.global_position = terrain.map_to_local(Vector2i(0, 1))
+    Events.game_started.emit()
+    print("Deep Digger seed %d" % seed_value)
+
+func max_fuel() -> float:
+    return 100.0 + 40.0 * float(int(upgrades["tank"]))
+
+func max_hull() -> float:
+    return 100.0 + 25.0 * float(int(upgrades["hull"]))
+
+func cargo_cap() -> int:
+    return 20 + 12 * int(upgrades["cargo"])
+
+func cargo_used() -> int:
+    var total := 0
+    for key in cargo.keys():
+        total += int(cargo[key])
+    return total
+
+func burn_per_second(cell_y: int) -> float:
+    var depth := maxi(0, cell_y - SURFACE_Y)
+    var efficiency := float(int(upgrades["efficiency"]))
+    return (1.6 + 0.035 * float(depth)) * (1.0 - 0.08 * efficiency)
+
+func dig_seconds(hardness: float) -> float:
+    var drill_level := float(int(upgrades["drill"]))
+    return hardness / (1.0 + 0.35 * drill_level)
+
+func note_depth(cell_y: int) -> void:
+    var depth := maxi(0, cell_y - SURFACE_Y)
+    if depth > best_depth:
+        best_depth = depth
+
+func refuel_and_repair(delta: float) -> void:
+    fuel = minf(max_fuel(), fuel + 40.0 * delta)
+    hull = minf(max_hull(), hull + 8.0 * delta)
+
+func collect(kind: int) -> void:
+    dug_total += 1
+    var ore := DiggerTerrain.ore_id(kind)
+    if ore == "":
+        return
+    cargo[ore] = int(cargo[ore]) + 1
+
+func toast_once(id: String, key: String) -> void:
+    var now := Time.get_ticks_msec()
+    if _toast_at.has(id) and now - int(_toast_at[id]) < 1600:
+        return
+    _toast_at[id] = now
+    Events.toast_requested.emit(tr(key))
+
+func depth_of_drill() -> int:
+    var cell := terrain.local_to_map(terrain.to_local(drill.global_position))
+    return maxi(0, cell.y - SURFACE_Y)
+      </script>
+    </li>
+    <li><strong>drill.gd.</strong> Right-click <code>Drill</code>, attach <code>res://game/drill.gd</code>, replace the whole file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/drill.gd">
+class_name DiggerDrill
+extends CharacterBody2D
+
+const MOVE_SPEED: float = 110.0
+const EMERGENCY_SCALE: float = 0.4
+
+var facing: Vector2 = Vector2.DOWN
+var dig_time: float = 0.0
+var dig_cell: Vector2i = Vector2i.ZERO
+var game: DiggerGame
+var terrain: DiggerTerrain
+
+@export var dig_break: AudioStream
+
+@onready var body_poly: Polygon2D = $Body
+
+func _ready() -> void:
+    add_to_group("player")
+    motion_mode = MOTION_MODE_FLOATING
+    game = get_parent() as DiggerGame
+    terrain = get_parent().get_node("World/Terrain") as DiggerTerrain
+    body_poly.polygon = PackedVector2Array([
+        Vector2(0, -8),
+        Vector2(6, 7),
+        Vector2(-6, 7),
+    ])
+    body_poly.color = Color(0.949, 0.757, 0.306)
+
+func _physics_process(delta: float) -> void:
+    if game == null or terrain == null:
+        return
+    var cell := terrain.local_to_map(terrain.to_local(global_position))
+    game.note_depth(cell.y)
+    if cell.y <= DiggerGame.SURFACE_Y:
+        game.refuel_and_repair(delta)
+    if game.shop_open:
+        velocity = Vector2.ZERO
+        move_and_slide()
+        return
+    var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+    var speed := MOVE_SPEED
+    if game.fuel <= 0.0:
+        speed *= EMERGENCY_SCALE
+    if dir != Vector2.ZERO:
+        facing = dir
+        body_poly.rotation = facing.angle() + PI * 0.5
+    velocity = dir * speed
+    move_and_slide()
+    var burning := dir != Vector2.ZERO or dig_time > 0.0
+    if burning and game.fuel > 0.0:
+        game.fuel = maxf(0.0, game.fuel - game.burn_per_second(cell.y) * delta)
+    _dig(delta, cell, dir)
+
+func _dig(delta: float, here: Vector2i, dir: Vector2) -> void:
+    if dir == Vector2.ZERO or game.fuel <= 0.0:
+        _clear_dig()
+        return
+    var step := Vector2i(int(round(facing.x)), int(round(facing.y)))
+    if step == Vector2i.ZERO:
+        _clear_dig()
+        return
+    var target := here + step
+    if target != dig_cell:
+        dig_cell = target
+        dig_time = 0.0
+    var kind := terrain.kind_at(target)
+    if not terrain.is_solid(kind):
+        _clear_dig()
+        return
+    if kind == DiggerTerrain.KIND_BEDROCK:
+        _clear_dig()
+        game.toast_once("bedrock", "DIGGER_TOAST_BEDROCK")
+        return
+    var hard := terrain.hardness(kind)
+    var fuel_cost := hard * 0.8
+    if game.fuel < fuel_cost:
+        _clear_dig()
+        game.toast_once("fuel", "DIGGER_TOAST_FUEL")
+        return
+    if terrain.is_ore(kind) and game.cargo_used() >= game.cargo_cap():
+        _clear_dig()
+        game.toast_once("cargo", "DIGGER_TOAST_CARGO")
+        return
+    var need := game.dig_seconds(hard)
+    dig_time += delta
+    game.dig_ratio = clampf(dig_time / need, 0.0, 1.0)
+    if dig_time < need:
+        return
+    game.fuel -= fuel_cost
+    terrain.erase_dug(target)
+    game.collect(kind)
+    _clear_dig()
+    if dig_break != null:
+        Audio.play_sfx_varied(dig_break, 0.12, -2.0)
+
+func _clear_dig() -> void:
+    dig_time = 0.0
+    game.dig_ratio = 0.0
+      </script>
+    </li>
+    <li><strong>hud.gd.</strong> Right-click <code>HUD</code>, attach <code>res://game/hud.gd</code>, replace the whole file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/hud.gd">
+class_name DiggerHud
+extends CanvasLayer
+
+func _process(_delta: float) -> void:
+    var game := get_tree().get_first_node_in_group("digger_game") as DiggerGame
+    if game == null:
+        return
+    %FuelLabel.text = "%s  %d / %d" % [tr("DIGGER_FUEL"), int(game.fuel), int(game.max_fuel())]
+    %FuelBar.max_value = game.max_fuel()
+    %FuelBar.value = game.fuel
+    %HullLabel.text = "%s  %d / %d" % [tr("DIGGER_HULL"), int(game.hull), int(game.max_hull())]
+    %HullBar.max_value = game.max_hull()
+    %HullBar.value = game.hull
+    %InfoLabel.text = "%s %d    %s %d/%d    %s %d" % [
+        tr("DIGGER_CREDITS"),
+        game.credits,
+        tr("DIGGER_CARGO"),
+        game.cargo_used(),
+        game.cargo_cap(),
+        tr("DIGGER_DEPTH"),
+        game.depth_of_drill(),
+    ]
+    %DigLabel.text = "%s %d%%" % [tr("DIGGER_DIG"), int(round(game.dig_ratio * 100.0))]
+      </script>
+    </li>
+    <li><strong>Optional hit sound.</strong> Select <code>Drill</code>. The Inspector shows <kbd class="ui">Dig Break</kbd>. Leave it empty to play silent, or assign a short hit from a Kenney impact pack after you drop the file into <code>res://assets/audio</code>. The call is <code>Audio.play_sfx_varied</code> on the Ship Kit autoload. Do not write a new audio player.</li>
+    <li><strong>Save.</strong> Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> (save all). If the script editor says <code>DiggerGame</code> is not declared, wait for the parser to finish, or use <kbd class="menu">Project &gt; Reload Current Project</kbd>.</li>
+  </ol>
+  <div class="checkpoint"><p>Press <kbd>F6</kbd> (Run Current Scene). Output prints <code>Deep Digger seed</code> and a number. You see a gold triangle over a dirt crust with a gap under you. <kbd>S</kbd> flies down the shaft. Hold a direction into dirt: the <code>Drilling</code> percent climbs, the tile disappears, fuel falls. Copper (orange) raises cargo by 1. Fly back until Depth reads 0: fuel climbs toward 100. <kbd>Escape</kbd> opens the Ship Kit pause menu. Press <kbd>F8</kbd> to stop.</p>
+    <p>If you fly through rock, the drill mask is not <code>world</code>, or the solid tiles never got the <kbd>F</kbd> rectangle. If the window is a flat color and you collide with invisible walls, <code>SOURCE_ID</code> does not match the atlas. If Output says the action <code>move_left</code> is missing, return to the Input Map step.</p></div>
+  <div class="callout tip"><span class="callout-title">F5 path</span>
+    <p>Press <kbd>F5</kbd>. The main menu appears. Use the play button Day 15 wired to <code>SceneRouter</code>. You land in the same mine. Stop with <kbd>F8</kbd>.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Tile size edited after the atlas existed.</strong> The grid no longer matches 16 pixels. Delete the atlas and drag <code>tiles.png</code> again.</li>
+    <li><strong>Passing global coordinates to <code>local_to_map</code>.</strong> The drill looks one cell off and digs the wrong tile. Convert with <code>to_local</code> first.</li>
+    <li><strong>Integer division for negative chunks.</strong> <code>-1 / 16</code> in GDScript is <code>0</code>. <code>_chunk_of</code> uses <code>floori</code> on floats so the cell left of the origin stays in chunk −1.</li>
+    <li><strong>Collision on magma and gas.</strong> Those two atlas columns must not have a physics rectangle. Tomorrow they are volumes you enter.</li>
+    <li><strong>Circle radius 16.</strong> The body is wider than a cell and sticks in the shaft. Radius is 6.</li>
+    <li><strong>Hand-painted tiles.</strong> Code only overwrites chunks it loads. If you painted with the bottom panel's tile-painting tab, choose the Eraser there and wipe those cells.</li>
+    <li><strong>Edited an autoload.</strong> Fuel and cargo live on <code>game.gd</code>. <code>SaveManager</code> is not involved until tomorrow.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 20–30 min)</h2>
+  <div class="challenge">
+    <h3>Print the chunk you just entered</h3>
+    <p>When the drill crosses into a new chunk, print <code>chunk x,y</code> once (not every frame). Store the last chunk coordinate on <code>DiggerTerrain</code> and compare it at the top of <code>stream_around</code>.</p>
+    <details><summary>Hint</summary>
+      <p>A <code>Vector2i</code> member starts as a sentinel such as <code>Vector2i(999999, 999999)</code>. Update it only when <code>center</code> differs, then <code>print</code>.</p>
+    </details>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>What does <code>FastNoiseLite.frequency</code> do?</p>
+      <ul>
+        <li>It is the random seed.</li>
+        <li>Low values make smooth regions; high values make finer detail.</li>
+        <li>It sets the TileSet tile size in pixels.</li>
+        <li>It picks the atlas source id.</li>
+      </ul>
+      <p class="explain"><code>frequency</code> scales every noise type. The seed is a separate property. This project uses <code>0.045</code> for caves and <code>0.09</code> for ore.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>How do you remove one mined cell, including its collision?</p>
+      <ul>
+        <li><code>erase_cell(coords)</code> on the TileMapLayer.</li>
+        <li>Hide the whole TileMapLayer.</li>
+        <li><code>queue_free()</code> on the TileMapLayer.</li>
+        <li>Set the camera limit so the cell is off screen.</li>
+      </ul>
+      <p class="explain"><code>erase_cell</code> clears the source id, atlas coords, and the physics shape for that cell. <code>set_cell</code> with source id <code>-1</code> erases too. The project stores the coordinate in <code>_dug</code> so a later chunk load does not put the rock back.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>The drill's <code>global_position</code> is known. What do you pass to <code>local_to_map</code>?</p>
+      <ul>
+        <li>The global position, unchanged.</li>
+        <li>The position divided by the viewport size.</li>
+        <li><code>terrain.to_local(drill.global_position)</code>.</li>
+        <li><code>terrain.map_to_local(drill.global_position)</code>.</li>
+      </ul>
+      <p class="explain"><code>local_to_map</code> expects the TileMapLayer's local space. <code>map_to_local</code> goes the other way and returns a cell center.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Why is the drill's Motion Mode set to Floating?</p>
+      <ul>
+        <li>So gravity pulls the drill down the shaft.</li>
+        <li>So collisions are walls in every direction, with no floor snap.</li>
+        <li>So <code>move_and_slide</code> can take a velocity argument.</li>
+        <li>So the body ignores the TileMapLayer.</li>
+      </ul>
+      <p class="explain">The miner flies. Floating mode stops Godot from treating downward collisions as floors. <code>move_and_slide()</code> still uses the <code>velocity</code> property and takes no arguments.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>Which tiles add one cargo unit when they break?</p>
+      <ul>
+        <li>Dirt, stone, and bedrock.</li>
+        <li>Every solid tile.</li>
+        <li>Only crystal.</li>
+        <li>Copper, iron, gold, and crystal, and only when the bay is not full.</li>
+      </ul>
+      <p class="explain">Dirt and stone are path. Bedrock never breaks. Ore adds one unit at values 8, 18, 45, and 120. A full bay (20 today) refuses another ore tile.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_fastnoiselite.html" target="_blank" rel="noopener">FastNoiseLite</a>: frequency, fractal type, seed.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_noise.html" target="_blank" rel="noopener">Noise.get_noise_2d</a>: the sample the chunks call.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_tilemaplayer.html" target="_blank" rel="noopener">TileMapLayer</a>: <code>set_cell</code>, <code>erase_cell</code>, <code>local_to_map</code>, <code>map_to_local</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/2d/using_tilesets.html" target="_blank" rel="noopener">Using TileSets</a>: atlas drag, physics layer, the <kbd>F</kbd> rectangle.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/2d/using_tilemaps.html" target="_blank" rel="noopener">Using tile maps</a>: the bottom-panel paint tab and collision enabled.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_characterbody2d.html" target="_blank" rel="noopener">CharacterBody2D</a>: Floating mode and <code>move_and_slide</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/plugins/running_code_in_the_editor.html" target="_blank" rel="noopener">Running code in the editor</a>: <code>EditorScript</code> and <kbd class="menu">File &gt; Run</kbd>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/rendering/renderers.html" target="_blank" rel="noopener">Renderers</a>: why Mobile is enough for this 2D project.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li><kbd>F6</kbd> shows the crust, the shaft, and a drill that can erase dirt.</li>
+    <li>Fuel falls while thrusting and refills when Depth is 0.</li>
+    <li>Cargo increases on copper, iron, gold, or crystal, and stays put on dirt.</li>
+    <li>Bedrock prints a toast and does not break.</li>
+    <li><kbd>F5</kbd> still opens the main menu, and play reaches the mine.</li>
+    <li>Ship Kit autoloads were not edited.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> the surface shop with the price table, magma and gas, chunk unload, <code>SaveManager</code>, tutorial lines, and release builds.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

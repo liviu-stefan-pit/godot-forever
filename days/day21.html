@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 21 - Bullet Heaven III: scale, meta-progression, ship it | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day21" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 21 · Game 7: Bullet Heaven</div>
+    <h1>Bullet Heaven III: scale, meta-progression, ship it</h1>
+    <p class="lead">The weapons stay. The bats stop being nodes. A single <code>Node2D</code> keeps a pool of <code>RenderingServer</code> canvas items, moves them by setting transforms, and the cell hash still answers "who is in range." Then you add a boss, three characters, a coin shop, and you leave the editor with a Windows exe and an Android debug install.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:25</td><td><strong>Block 1: Concepts.</strong> Why a node per enemy dies at a thousand, and what a canvas item RID actually is.</td></tr>
+    <tr><td>0:25 – 1:25</td><td><strong>Block 2: The horde.</strong> Create the RIDs once, move them, keep the Day 20 weapon API.</td></tr>
+    <tr><td>1:25 – 2:10</td><td><strong>Block 3: Boss, characters, shop.</strong> Numbers from <code>Balance</code> and character resources.</td></tr>
+    <tr><td>2:10 – 2:25</td><td><strong>Break.</strong></td></tr>
+    <tr><td>2:25 – 3:05</td><td><strong>Block 4: Profile.</strong> Monitors, script profiler, the 16.6 ms budget, a stress toggle.</td></tr>
+    <tr><td>3:05 – 3:45</td><td><strong>Block 5: Store pass.</strong> Credits, Windows export, Android debug install.</td></tr>
+    <tr><td>3:45 – 4:00</td><td><strong>Block 6: Challenge, quiz, wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>4 h 0 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Draw 1000+ enemies as <code>RenderingServer</code> canvas items parented to one <code>Node2D</code>, updating only <code>canvas_item_set_transform</code> each physics frame.</li>
+    <li>Keep Day 20's <code>Loadout</code> unchanged: <code>nearest_enemy</code>, <code>enemies_near</code>, <code>damage_enemy</code>, and <code>borrow_shot</code> still mean the same thing.</li>
+    <li>Fight the Warden at 8:00 (8000 HP), pick Scout, Acolyte, or Vanguard, and spend coins in a shop whose prices are <code>base × 2^rank</code>.</li>
+    <li>Read node count, <code>BH/Alive</code>, and the script profiler, with a frame budget of 16.6 ms.</li>
+    <li>Export a Windows exe and an Android debug package <code>com.yourname.bulletheaven</code>, and confirm a run still saves coins.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 20 runs: gems, a level-up card, three weapon resources, six passives, and a joystick or the fallback stick.</li>
+    <li>If you skipped it, the node names this day expects are <code>Game</code>, <code>World</code>, <code>Player</code>, <code>Projectiles</code>, <code>Gems</code>, <code>Loadout</code>, <code>HUD</code>, <code>LevelUp</code>, <code>PauseMenu</code>. <code>Loadout</code> and <code>Balance</code> stay as Day 20 wrote them.</li>
+    <li>Renderer stays <code>mobile</code>. Canvas items are not a Forward+ feature. The same RID calls draw on Forward+, Mobile, and Compatibility, because they are the 2D canvas, the same path a <code>Sprite2D</code> uses.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>A node is the expensive part</h3>
+  <p>Day 19's pool capped the swarm at 36 because each enemy was a node, a sprite, and a collision shape. A thousand of those is a thousand entries in the scene tree and a thousand canvas items the scene system has to visit. The draw itself is cheap. The per-node bookkeeping is not.</p>
+  <p>A canvas item is the thing the renderer actually draws. <code>Sprite2D</code> owns one. You can also create one with <code>RenderingServer.canvas_item_create()</code>, parent it with <code>canvas_item_set_parent</code>, and draw into it with <code>canvas_item_add_circle</code> or <code>canvas_item_add_rect</code>. Those draw commands are baked. You cannot edit a circle's radius in place. You <code>canvas_item_clear</code> and add it again. The transform is the exception: <code>canvas_item_set_transform</code> can run every frame. That split is the whole trick. Create the circle once. Move it forever.</p>
+  <div class="callout docs"><span class="callout-title">From the servers tutorial</span>
+    <p>Keep any texture you pass in alive for as long as the RID needs it (a local variable that dies at the end of <code>_ready</code> is not enough). Call <code>canvas_item_reset_physics_interpolation</code> the frame you first place the item, or it can glide in from the origin. Call <code>free_rid</code> when you are finished, including in <code>_exit_tree</code>. This day uses circles, so there is no texture to retain.</p></div>
+  <h3>The other tool, not the one you build</h3>
+  <p><code>MultiMeshInstance2D</code> draws many copies of one mesh in one go. You would set <code>transform_format = MultiMesh.TRANSFORM_2D</code>, set <code>use_colors = true</code> <em>before</em> <code>instance_count</code> (the class reference rejects that flag once the count is non-zero, unless you set the count back to 0), assign a <code>QuadMesh</code> whose <code>size</code> is the sprite size, then each frame call <code>set_instance_transform_2d</code> and, if you need tints, <code>set_instance_color</code>. <code>visible_instance_count</code> limits how many of those instances draw. It is excellent when every enemy is the same quad. Two radii want two meshes. Per-item show and hide is clumsier than a canvas item's visibility flag. Circles also need no mesh asset. That is why the swarm below is canvas items. Both approaches work on every renderer.</p>
+  <h3>Shipping numbers</h3>
+  <p>These are the values <code>Balance</code> already computes, plus the rows Day 21 adds. Do not retune them while you type.</p>
+  <table>
+    <thead><tr><th>Rule</th><th>Formula</th></tr></thead>
+    <tbody>
+      <tr><td>Minute</td><td><code>int(elapsed_seconds / 60)</code></td></tr>
+      <tr><td>Bat HP / speed / contact</td><td><code>round(14 × (1 + 0.18 × minute))</code>, <code>min(160, 78 + 3 × minute)</code>, <code>8 + minute</code> HP/s</td></tr>
+      <tr><td>Brute, from minute 2, 22% of spawns</td><td>base HP 36 with the same HP curve, speed <code>min(110, 56 + 2 × minute)</code>, contact <code>14 + 2 × minute</code>, radius 18, 3 XP</td></tr>
+      <tr><td>Spawn interval</td><td><code>max(0.04, 0.55 × 0.90^(seconds / 30))</code>. Alive cap 1100.</td></tr>
+      <tr><td>Warden, once, at 480 s</td><td>8000 HP, 48 px/s, 22 contact HP/s, body radius 36. Every 2.4 s, up to 12 shots at 160 px/s, 14 HP each. Death drops 8 gems of 5 XP and adds 50 kills.</td></tr>
+      <tr><td>Coins</td><td><code>floor((kills × 0.25 + seconds × 0.5 + boss_kills × 200) × (1 + 0.08 × purse_rank))</code></td></tr>
+      <tr><td>Shop price</td><td><code>base × 2^rank</code> for the next rank, ranks 0 through 4. Rank 5 is closed.</td></tr>
+    </tbody>
+  </table>
+  <p>Worked coins, purse rank 0: 150 kills in 300 s is <code>floor(37.5 + 150) = 187</code>. 600 kills in 600 s is 450. A Warden kill on top of 400 kills and 480 s is <code>floor(100 + 240 + 200) = 540</code>. Acolyte costs 800, so two solid runs. Vanguard costs 1500.</p>
+  <table>
+    <thead><tr><th>Upgrade</th><th>Save key</th><th>Base</th><th>Prices for ranks 0→4</th><th>Effect per rank</th></tr></thead>
+    <tbody>
+      <tr><td>Sharpened</td><td><code>bh_might_rank</code></td><td>200</td><td>200, 400, 800, 1600, 3200</td><td>+4% damage (the <code>0.04 × rank</code> term)</td></tr>
+      <tr><td>Vitality</td><td><code>bh_hp_rank</code></td><td>250</td><td>250, 500, 1000, 2000, 4000</td><td>+15 max HP</td></tr>
+      <tr><td>Pocket magnet</td><td><code>bh_magnet_rank</code></td><td>150</td><td>150, 300, 600, 1200, 2400</td><td>+20 px magnet</td></tr>
+      <tr><td>Coin purse</td><td><code>bh_purse_rank</code></td><td>300</td><td>300, 600, 1200, 2400, 4800</td><td>+8% coins</td></tr>
+    </tbody>
+  </table>
+  <table>
+    <thead><tr><th>Character</th><th>Cost</th><th>Starts with</th><th>Bonus</th></tr></thead>
+    <tbody>
+      <tr><td>Scout</td><td>0</td><td>Needle</td><td>move speed × 1.10</td></tr>
+      <tr><td>Acolyte</td><td>800</td><td>Orbit</td><td>area × 1.15 (orbit radius and hit radius)</td></tr>
+      <tr><td>Vanguard</td><td>1500</td><td>Scatter</td><td>+25 max HP</td></tr>
+    </tbody>
+  </table>
+  <p>Shop HP stacks with Vanguard: <code>max HP = 100 + character_bonus + 15 × vitality_rank</code>. At vitality 5 and Vanguard that is 100 + 25 + 75 = 200.</p>
+
+  <h2 id="build-1">Block 2: Replace enemy nodes with canvas items</h2>
+  <ol class="steps">
+    <li><strong>One line in Balance.</strong> Open <code>res://data/balance.gd</code>. Find <code>const XP_BAT: int = 1</code> and replace that line with these four. Leave the boss constants that are already there.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/balance.gd (replace the XP_BAT line)">
+const XP_BAT: int = 1
+const XP_BRUTE: int = 3
+const XP_BOSS_GEM: int = 5
+const BOSS_GEMS: int = 8
+      </script>
+    </li>
+    <li><strong>Flat damage on the player.</strong> Open <code>player.gd</code>. Above <code>func heal</code>, add this function. Contact damage still goes through <code>apply_contact</code>. Boss shots need a single hit, not a per-second rate.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/player/player.gd (add above heal)">
+func hurt(amount: float) -> void:
+    if not alive:
+        return
+    hp -= maxf(0.0, amount)
+    hp_changed.emit(hp, max_hp)
+    if hp <= 0.0:
+        hp = 0.0
+        alive = false
+        set_physics_process(false)
+        died.emit()
+      </script>
+    </li>
+    <li><strong>Draw order.</strong> Open <code>player.tscn</code>. Select <code>Sprite2D</code>. Set <kbd class="ui">Z Index</kbd> to <code>2</code>. Open <code>projectile.tscn</code>, set the sprite <kbd class="ui">Z Index</kbd> to <code>4</code>. Open <code>gem.tscn</code>, set the sprite <kbd class="ui">Z Index</kbd> to <code>1</code>. Save each scene.</li>
+    <li><strong>Horde node.</strong> Open <code>game.tscn</code>. Select <code>World</code>, add a <code>Node2D</code> named <code>Horde</code>. Leave Position at <code>(0, 0)</code> and Scale at <code>(1, 1)</code>. Canvas-item transforms are relative to this node. If you move it, every enemy doubles that offset. The old <code>Enemies</code> node can stay empty. Do not instance <code>enemy.tscn</code> anymore.</li>
+    <li><strong>Horde script.</strong> Attach <code>res://game/horde.gd</code> to <code>Horde</code>. It allocates 1200 canvas items once. Hidden items are the free list. <code>_physics_process</code> only uploads transforms for living ids.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/horde.gd">
+class_name Horde
+extends Node2D
+
+const MAX_ENEMIES: int = 1200
+const BAT: int = 0
+const BRUTE: int = 1
+
+var alive_count: int = 0
+var _rid: Array[RID] = []
+var _pos := PackedVector2Array()
+var _hp := PackedFloat32Array()
+var _speed := PackedFloat32Array()
+var _dps := PackedFloat32Array()
+var _radius := PackedFloat32Array()
+var _alive := PackedByteArray()
+var _kind := PackedByteArray()
+var _drawn := PackedByteArray()
+var _flash := PackedFloat32Array()
+var _free: Array[int] = []
+var _player: Player
+
+func _ready() -> void:
+    _pos.resize(MAX_ENEMIES)
+    _hp.resize(MAX_ENEMIES)
+    _speed.resize(MAX_ENEMIES)
+    _dps.resize(MAX_ENEMIES)
+    _radius.resize(MAX_ENEMIES)
+    _alive.resize(MAX_ENEMIES)
+    _kind.resize(MAX_ENEMIES)
+    _drawn.resize(MAX_ENEMIES)
+    _flash.resize(MAX_ENEMIES)
+    for i: int in MAX_ENEMIES:
+        var rid: RID = RenderingServer.canvas_item_create()
+        RenderingServer.canvas_item_set_parent(rid, get_canvas_item())
+        RenderingServer.canvas_item_set_z_index(rid, 0)
+        RenderingServer.canvas_item_add_circle(rid, Vector2.ZERO, 11.0, Color(0.86, 0.22, 0.28), false)
+        RenderingServer.canvas_item_set_visible(rid, false)
+        RenderingServer.canvas_item_reset_physics_interpolation(rid)
+        _rid.append(rid)
+        _drawn[i] = BAT
+        _alive[i] = 0
+        _free.append(i)
+    if not Performance.has_custom_monitor(&"BH/Alive"):
+        Performance.add_custom_monitor(&"BH/Alive", _monitor_alive)
+
+func _exit_tree() -> void:
+    for rid: RID in _rid:
+        if rid.is_valid():
+            RenderingServer.free_rid(rid)
+    _rid.clear()
+    if Performance.has_custom_monitor(&"BH/Alive"):
+        Performance.remove_custom_monitor(&"BH/Alive")
+
+func _monitor_alive() -> float:
+    return float(alive_count)
+
+func _physics_process(delta: float) -> void:
+    if _player == null:
+        _player = get_tree().get_first_node_in_group(&"player") as Player
+    if _player == null:
+        return
+    var origin: Vector2 = _player.global_position
+    for i: int in MAX_ENEMIES:
+        if _alive[i] == 0:
+            continue
+        var to_player: Vector2 = origin - _pos[i]
+        var dist: float = to_player.length()
+        if dist > 0.001:
+            _pos[i] = _pos[i] + (to_player / dist) * _speed[i] * delta
+        var rid: RID = _rid[i]
+        RenderingServer.canvas_item_set_transform(rid, Transform2D(0.0, _pos[i]))
+        if _flash[i] > 0.0:
+            _flash[i] -= delta
+            if _flash[i] <= 0.0:
+                RenderingServer.canvas_item_set_modulate(rid, Color.WHITE)
+
+func spawn(at: Vector2, kind: int, hp: float, speed: float, dps: float) -> int:
+    if _free.is_empty():
+        return -1
+    var id: int = _free.pop_back()
+    var radius: float = 11.0 if kind == BAT else 18.0
+    _pos[id] = at
+    _hp[id] = hp
+    _speed[id] = speed
+    _dps[id] = dps
+    _radius[id] = radius
+    _kind[id] = kind
+    _alive[id] = 1
+    _flash[id] = 0.0
+    alive_count += 1
+    var rid: RID = _rid[id]
+    if int(_drawn[id]) != kind:
+        var color: Color = Color(0.86, 0.22, 0.28) if kind == BAT else Color(0.45, 0.16, 0.55)
+        RenderingServer.canvas_item_clear(rid)
+        RenderingServer.canvas_item_add_circle(rid, Vector2.ZERO, radius, color, false)
+        _drawn[id] = kind
+    RenderingServer.canvas_item_set_modulate(rid, Color.WHITE)
+    RenderingServer.canvas_item_set_visible(rid, true)
+    RenderingServer.canvas_item_set_transform(rid, Transform2D(0.0, at))
+    RenderingServer.canvas_item_reset_physics_interpolation(rid)
+    return id
+
+func hurt(id: int, amount: float) -> bool:
+    if not is_active(id):
+        return false
+    _hp[id] -= amount
+    _flash[id] = 0.08
+    RenderingServer.canvas_item_set_modulate(_rid[id], Color(1.6, 1.6, 1.6))
+    if _hp[id] > 0.0:
+        return false
+    _alive[id] = 0
+    alive_count -= 1
+    RenderingServer.canvas_item_set_visible(_rid[id], false)
+    _free.append(id)
+    return true
+
+func is_active(id: int) -> bool:
+    return id >= 0 and id < MAX_ENEMIES and _alive[id] != 0
+
+func position_of(id: int) -> Vector2:
+    return _pos[id]
+
+func kind_of(id: int) -> int:
+    return int(_kind[id])
+
+func dps_of(id: int) -> float:
+    return _dps[id]
+
+func fill_hash(hash: SpatialHash) -> void:
+    for i: int in MAX_ENEMIES:
+        if _alive[i] != 0:
+            hash.insert(i, _pos[i])
+
+func dismiss_all() -> void:
+    for i: int in MAX_ENEMIES:
+        if _alive[i] == 0:
+            continue
+        _alive[i] = 0
+        alive_count -= 1
+        RenderingServer.canvas_item_set_visible(_rid[i], false)
+        _free.append(i)
+      </script>
+    </li>
+  </ol>
+  <div class="callout warn"><span class="callout-title">Do not clear the circle every frame</span>
+    <p><code>canvas_item_clear</code> throws away the draw commands. The only time this script clears is when a free slot changes from bat to brute or back. Movement is <code>canvas_item_set_transform</code> only. A white flash is <code>canvas_item_set_modulate</code>, which also does not require a rebuild.</p></div>
+
+  <h2 id="build-2">Block 3: Boss, cast, shop</h2>
+  <ol class="steps">
+    <li><strong>Boss scene.</strong> New scene, root <code>Area2D</code> named <code>Boss</code>. Monitoring off, Monitorable off, collision layer <code>enemies</code> only, mask empty. Add <code>Sprite2D</code>, texture <code>icon.svg</code>, scale <code>0.55</code>, modulate about <code>(0.55, 0.08, 0.12)</code>, <kbd class="ui">Z Index</kbd> <code>3</code>. Add <code>CollisionShape2D</code>, <kbd class="ui">New CircleShape2D</kbd>, radius <code>36</code>. The shape is a visual guide in the editor. Hits use distance. Save as <code>res://game/enemies/boss.tscn</code>. Attach <code>res://game/enemies/boss.gd</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/enemies/boss.gd">
+class_name Boss
+extends Area2D
+
+const RING: int = 12
+const SHOTS: int = 24
+const SHOT_SPEED: float = 160.0
+
+var hp: float = 8000.0
+var max_hp: float = 8000.0
+var active: bool = false
+var _player: Player
+var _wait: float = 1.6
+var _shots: Array[Sprite2D] = []
+var _vel := PackedVector2Array()
+var _on := PackedByteArray()
+
+func _ready() -> void:
+    monitoring = false
+    monitorable = false
+    visible = false
+    set_physics_process(false)
+    _vel.resize(SHOTS)
+    _on.resize(SHOTS)
+    var icon: Texture2D = preload("res://icon.svg")
+    for i: int in SHOTS:
+        var sprite := Sprite2D.new()
+        sprite.texture = icon
+        sprite.scale = Vector2(0.08, 0.08)
+        sprite.modulate = Color(0.95, 0.4, 0.12)
+        sprite.z_index = 3
+        sprite.visible = false
+        add_child(sprite)
+        _shots.append(sprite)
+        _on[i] = 0
+
+func activate_at(at: Vector2) -> void:
+    max_hp = float(Balance.BOSS_HP)
+    hp = max_hp
+    global_position = at
+    active = true
+    visible = true
+    _wait = 1.6
+    set_physics_process(true)
+    _player = get_tree().get_first_node_in_group(&"player") as Player
+
+func dismiss() -> void:
+    active = false
+    visible = false
+    set_physics_process(false)
+    for i: int in SHOTS:
+        _on[i] = 0
+        _shots[i].visible = false
+
+func _physics_process(delta: float) -> void:
+    if _player == null or not active:
+        return
+    var to_player: Vector2 = _player.global_position - global_position
+    var dist: float = to_player.length()
+    if dist > 0.001:
+        global_position += (to_player / dist) * Balance.BOSS_SPEED * delta
+    _wait -= delta
+    if _wait <= 0.0:
+        _wait = 2.4
+        _ring()
+    var limit2: float = 18.0 * 18.0
+    for i: int in SHOTS:
+        if _on[i] == 0:
+            continue
+        _shots[i].global_position += _vel[i] * delta
+        var traveled: float = _shots[i].global_position.distance_squared_to(global_position)
+        var hit: bool = _shots[i].global_position.distance_squared_to(_player.global_position) <= limit2
+        if hit:
+            _player.hurt(Balance.BOSS_HURT)
+        if hit or traveled > 900.0 * 900.0:
+            _on[i] = 0
+            _shots[i].visible = false
+
+func _ring() -> void:
+    var fired: int = 0
+    var cursor: int = 0
+    while fired < RING and cursor < SHOTS:
+        if _on[cursor] == 0:
+            var dir: Vector2 = Vector2.from_angle(TAU * float(fired) / float(RING))
+            _shots[cursor].global_position = global_position + dir * 48.0
+            _shots[cursor].visible = true
+            _vel[cursor] = dir * SHOT_SPEED
+            _on[cursor] = 1
+            fired += 1
+        cursor += 1
+      </script>
+    </li>
+    <li><strong>Instance the boss.</strong> In <code>game.tscn</code>, select <code>World</code>, click the chain icon, instance <code>boss.tscn</code>. The node name should be <code>Boss</code>. It starts invisible.</li>
+    <li><strong>Character resource.</strong> Create <code>res://data/character_data.gd</code>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://data/character_data.gd">
+class_name CharacterData
+extends Resource
+
+@export var id: StringName = &""
+@export var name_key: String = ""
+@export var blurb_key: String = ""
+@export var start_weapon: StringName = &"needle"
+@export var bonus_stat: StringName = &"speed"
+@export var bonus_amount: float = 0.0
+@export var unlock_cost: int = 0
+      </script>
+    </li>
+    <li><strong>Three characters.</strong> In FileSystem, create <code>data/characters</code>. Right-click it, <kbd class="ui">New Resource</kbd>, choose <code>CharacterData</code>. Make <code>scout.tres</code>, <code>acolyte.tres</code>, and <code>vanguard.tres</code> with this table. Bonus Stat is the StringName <code>speed</code>, <code>area</code>, or <code>hp</code>.</li>
+  </ol>
+  <table>
+    <thead><tr><th>Field</th><th>scout.tres</th><th>acolyte.tres</th><th>vanguard.tres</th></tr></thead>
+    <tbody>
+      <tr><td>Id</td><td>scout</td><td>acolyte</td><td>vanguard</td></tr>
+      <tr><td>Name Key</td><td>BH_CHAR_SCOUT</td><td>BH_CHAR_ACOLYTE</td><td>BH_CHAR_VANGUARD</td></tr>
+      <tr><td>Blurb Key</td><td>BH_CHAR_SCOUT_BLURB</td><td>BH_CHAR_ACOLYTE_BLURB</td><td>BH_CHAR_VANGUARD_BLURB</td></tr>
+      <tr><td>Start Weapon</td><td>needle</td><td>orbit</td><td>scatter</td></tr>
+      <tr><td>Bonus Stat</td><td>speed</td><td>area</td><td>hp</td></tr>
+      <tr><td>Bonus Amount</td><td>0.10</td><td>0.15</td><td>25</td></tr>
+      <tr><td>Unlock Cost</td><td>0</td><td>800</td><td>1500</td></tr>
+    </tbody>
+  </table>
+  <ol class="steps">
+    <li><strong>Front end.</strong> Select <code>Game</code>, add <code>CanvasLayer</code> named <code>Front</code>, Layer <code>40</code>, Process Mode <code>Always</code>. Under it add <code>PanelContainer</code> <code>Select</code> (anchor preset <kbd class="ui">Full Rect</kbd>) and <code>PanelContainer</code> <code>Shop</code> (also Full Rect). Turn <code>Shop</code> visibility off. Under <code>Select</code> add <code>VBoxContainer</code> <code>SelectBox</code> with a <code>Label</code> <code>CoinLabel</code>, buttons <code>ScoutButton</code>, <code>AcolyteButton</code>, <code>VanguardButton</code>, <code>ShopButton</code>, and <code>StartButton</code>. Under <code>Shop</code> add <code>VBoxContainer</code> <code>ShopBox</code> with buttons <code>MightButton</code>, <code>HpButton</code>, <code>MagnetButton</code>, <code>PurseButton</code>, and <code>ShopClose</code>. Give every one of those controls <kbd class="ui">Access as Unique Name</kbd>. Set each button's <kbd class="ui">Autowrap Mode</kbd> to <code>Word</code> and a minimum width of about <code>420</code>.</li>
+    <li><strong>Boss bar.</strong> Under <code>HUD</code>'s <code>Row</code>, add a <code>ProgressBar</code> named <code>BossBar</code>. Minimum size <code>220</code> by <code>18</code>, Show Percentage off, Visible off. Access as Unique Name.</li>
+    <li><strong>Front script and HUD.</strong> Attach <code>res://game/front.gd</code> to <code>Front</code>. Then replace <code>hud.gd</code> with the file below so the boss bar and the coin line on the game-over panel exist.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/front.gd">
+extends CanvasLayer
+
+const SCOUT: CharacterData = preload("res://data/characters/scout.tres")
+const ACOLYTE: CharacterData = preload("res://data/characters/acolyte.tres")
+const VANGUARD: CharacterData = preload("res://data/characters/vanguard.tres")
+
+var _selected: StringName = &"scout"
+
+func _ready() -> void:
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    %ScoutButton.pressed.connect(_on_scout)
+    %AcolyteButton.pressed.connect(_on_acolyte)
+    %VanguardButton.pressed.connect(_on_vanguard)
+    %ShopButton.pressed.connect(_on_shop)
+    %StartButton.pressed.connect(_on_start)
+    %ShopClose.pressed.connect(_on_shop_close)
+    %MightButton.pressed.connect(_on_might)
+    %HpButton.pressed.connect(_on_hp)
+    %MagnetButton.pressed.connect(_on_magnet)
+    %PurseButton.pressed.connect(_on_purse)
+    %ShopButton.text = tr("BH_SHOP")
+    %StartButton.text = tr("BH_START")
+    %ShopClose.text = tr("BH_CLOSE")
+    _refresh()
+
+func _on_scout() -> void:
+    _selected = &"scout"
+    _refresh()
+
+func _on_acolyte() -> void:
+    _try_unlock(ACOLYTE)
+
+func _on_vanguard() -> void:
+    _try_unlock(VANGUARD)
+
+func _on_shop() -> void:
+    %Shop.visible = true
+
+func _on_shop_close() -> void:
+    %Shop.visible = false
+    _refresh()
+
+func _on_start() -> void:
+    if not _unlocked(str(_selected)):
+        return
+    %Select.visible = false
+    %Shop.visible = false
+    get_parent().call("begin", _selected)
+
+func _on_might() -> void:
+    _buy("bh_might_rank", 200)
+
+func _on_hp() -> void:
+    _buy("bh_hp_rank", 250)
+
+func _on_magnet() -> void:
+    _buy("bh_magnet_rank", 150)
+
+func _on_purse() -> void:
+    _buy("bh_purse_rank", 300)
+
+func _try_unlock(data: CharacterData) -> void:
+    var id: String = str(data.id)
+    if _unlocked(id):
+        _selected = data.id
+        _refresh()
+        return
+    var cost: int = data.unlock_cost
+    var coins: int = int(SaveManager.get_value("bh_coins", 0))
+    if coins < cost:
+        _refresh()
+        return
+    SaveManager.set_value("bh_coins", coins - cost)
+    var raw: String = str(SaveManager.get_value("bh_unlocks", ""))
+    raw = id if raw == "" else raw + "," + id
+    SaveManager.set_value("bh_unlocks", raw)
+    SaveManager.flush()
+    _selected = data.id
+    _refresh()
+
+func _buy(key: String, base_cost: int) -> void:
+    var rank: int = int(SaveManager.get_value(key, 0))
+    if rank >= 5:
+        return
+    var cost: int = Balance.shop_cost(base_cost, rank)
+    var coins: int = int(SaveManager.get_value("bh_coins", 0))
+    if coins < cost:
+        return
+    SaveManager.set_value("bh_coins", coins - cost)
+    SaveManager.set_value(key, rank + 1)
+    SaveManager.flush()
+    _refresh()
+
+func _unlocked(id: String) -> bool:
+    if id == "scout":
+        return true
+    return str(SaveManager.get_value("bh_unlocks", "")).split(",", false).has(id)
+
+func _refresh() -> void:
+    var coins: int = int(SaveManager.get_value("bh_coins", 0))
+    %CoinLabel.text = tr("BH_COINS") + " " + str(coins)
+    _paint(%ScoutButton, SCOUT)
+    _paint(%AcolyteButton, ACOLYTE)
+    _paint(%VanguardButton, VANGUARD)
+    %MightButton.text = _rank_text("BH_META_MIGHT", "bh_might_rank", 200)
+    %HpButton.text = _rank_text("BH_META_HP", "bh_hp_rank", 250)
+    %MagnetButton.text = _rank_text("BH_META_MAGNET", "bh_magnet_rank", 150)
+    %PurseButton.text = _rank_text("BH_META_PURSE", "bh_purse_rank", 300)
+
+func _paint(button: Button, data: CharacterData) -> void:
+    var owned: bool = _unlocked(str(data.id))
+    var mark: String = " *" if data.id == _selected else ""
+    var tail: String = ""
+    if not owned:
+        tail = "   " + tr("BH_UNLOCK") + " " + str(data.unlock_cost)
+    button.text = tr(data.name_key) + mark + "\n" + tr(data.blurb_key) + tail
+
+func _rank_text(label_key: String, save_key: String, base_cost: int) -> String:
+    var rank: int = int(SaveManager.get_value(save_key, 0))
+    if rank >= 5:
+        return tr(label_key) + "  " + tr("BH_MAX")
+    return tr(label_key) + "  " + str(rank) + "/5   " + str(Balance.shop_cost(base_cost, rank))
+      </script>
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/hud.gd">
+class_name Hud
+extends CanvasLayer
+
+@onready var _time: Label = %TimeLabel
+@onready var _hp: ProgressBar = %HpBar
+@onready var _kills: Label = %KillsLabel
+@onready var _level: Label = %LevelLabel
+@onready var _xp: ProgressBar = %XpBar
+@onready var _boss: ProgressBar = %BossBar
+@onready var _over: PanelContainer = %GameOver
+@onready var _title: Label = %GameOverTitle
+
+func _ready() -> void:
+    %RetryButton.text = tr("BH_RETRY")
+    %MenuButton.text = tr("BH_MENU")
+    %RetryButton.pressed.connect(_on_retry_pressed)
+    %MenuButton.pressed.connect(_on_menu_pressed)
+
+func _process(_delta: float) -> void:
+    var director: Node = get_parent()
+    if director == null:
+        return
+    var secs: int = int(director.call("elapsed"))
+    _time.text = "%02d:%02d" % [int(secs / 60), secs % 60]
+    _kills.text = tr("BH_KILLS") + " " + str(int(director.call("kills")))
+    _level.text = tr("BH_LEVEL") + " " + str(int(director.call("run_level")))
+    var player: Player = director.get_node("World/Player") as Player
+    _hp.max_value = player.max_hp
+    _hp.value = player.hp
+    _xp.max_value = maxf(1.0, float(director.call("xp_goal")))
+    _xp.value = float(director.call("xp_value"))
+    var ratio: float = float(director.call("boss_ratio"))
+    _boss.visible = ratio >= 0.0
+    if ratio >= 0.0:
+        _boss.max_value = 1.0
+        _boss.value = ratio
+
+func show_game_over(kills: int, coins: int) -> void:
+    _title.text = tr("BH_GAME_OVER") + "  " + str(kills) + "    " + tr("BH_COINS") + " +" + str(coins)
+    _over.visible = true
+
+func _on_retry_pressed() -> void:
+    if get_tree().paused:
+        get_tree().paused = false
+    SceneRouter.reload_current()
+
+func _on_menu_pressed() -> void:
+    if get_tree().paused:
+        get_tree().paused = false
+    SceneRouter.go_to(SceneRouter.MAIN_MENU_SCENE)
+      </script>
+    </li>
+    <li><strong>More translation rows.</strong> Append these to <code>res://i18n/translations.csv</code>. Same header, no commas inside fields, UTF-8. Reimport if the cards stay in the key names.
+      <script type="text/x-code" data-lang="csv" data-file="res://i18n/translations.csv">
+BH_COINS,Coins,Monedas,Münzen,Pièces,Moedas,Монеты,金币
+BH_SHOP,Shop,Tienda,Laden,Boutique,Loja,Лавка,商店
+BH_START,Start run,Empezar,Starten,Commencer,Começar,Начать,开始
+BH_CLOSE,Close,Cerrar,Schließen,Fermer,Fechar,Закрыть,关闭
+BH_UNLOCK,Unlock,Desbloquear,Freischalten,Débloquer,Desbloquear,Открыть,解锁
+BH_MAX,Maxed,Al máximo,Maximum,Au max,No máximo,Максимум,已满
+BH_BOSS_INCOMING,The Warden arrives,Llega el Guardián,Der Wärter kommt,Le Gardien arrive,O Guardião chega,Страж явился,守望者降临
+BH_CHAR_SCOUT,Scout,Explorador,Späher,Éclaireur,Batedor,Разведчик,侦察
+BH_CHAR_SCOUT_BLURB,Needle. +10% move speed.,Aguja. +10% de velocidad.,Nadel. +10% Tempo.,Aiguille. +10% de vitesse.,Agulha. +10% de movimento.,Игла. +10% скорости.,细针。移速 +10%。
+BH_CHAR_ACOLYTE,Acolyte,Acólito,Akolyth,Acolyte,Acólito,Аколит,侍者
+BH_CHAR_ACOLYTE_BLURB,Orbit. +15% area.,Órbita. +15% de área.,Orbit. +15% Fläche.,Orbite. +15% de zone.,Órbita. +15% de área.,Орбита. +15% площади.,环绕。范围 +15%。
+BH_CHAR_VANGUARD,Vanguard,Vanguardia,Vorhut,Avant-garde,Vanguarda,Авангард,先锋
+BH_CHAR_VANGUARD_BLURB,Scatter. +25 max HP.,Dispersión. +25 PS máx.,Streuschuss. +25 KP.,Éventail. +25 PV max.,Dispersão. +25 PV máx.,Веер. +25 макс. ОЗ.,散射。最大生命 +25。
+BH_META_MIGHT,Sharpened,Afilado,Geschärft,Aiguisé,Afiado,Заточка,磨锋
+BH_META_HP,Vitality,Vitalidad,Vitalität,Vitalité,Vitalidade,Живучесть,体魄
+BH_META_MAGNET,Pocket magnet,Imán de bolsillo,Taschenmagnet,Aimant de poche,Ímã de bolso,Карманный магнит,口袋磁铁
+BH_META_PURSE,Coin purse,Bolsa,Geldbeutel,Bourse,Bolsa,Кошель,钱袋
+      </script>
+    </li>
+    <li><strong>Replace <code>game.gd</code>.</strong> <code>Loadout</code> is not edited. Enemy ids below 1200 belong to the horde. Id <code>1000001</code> is the Warden. <code>stress_spawn</code> is an Inspector checkbox for the profiler; it must be off when you export.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/game.gd">
+class_name RunDirector
+extends Node
+
+const SHOT_SCENE: PackedScene = preload("res://game/combat/projectile.tscn")
+const GEM_SCENE: PackedScene = preload("res://game/pickups/gem.tscn")
+const SCOUT: CharacterData = preload("res://data/characters/scout.tres")
+const ACOLYTE: CharacterData = preload("res://data/characters/acolyte.tres")
+const VANGUARD: CharacterData = preload("res://data/characters/vanguard.tres")
+const SHOT_POOL: int = 40
+const GEM_POOL: int = 160
+const ALIVE_CAP: int = 1100
+const CONTACT_RADIUS: float = 26.0
+const BOSS_ID: int = 1000001
+
+@export var stress_spawn: bool = false
+
+var _hash: SpatialHash = SpatialHash.new()
+var _query: Array[int] = []
+var _shots: Array[Projectile] = []
+var _shot_free: Array[int] = []
+var _gems: Array[Gem] = []
+var _gem_free: Array[int] = []
+
+var _player: Player
+var _horde: Horde
+var _boss: Boss
+var _loadout: Loadout
+var _level_up: LevelUp
+var _character: StringName = &"scout"
+var _elapsed: float = 0.0
+var _spawn_wait: float = 0.3
+var _kills: int = 0
+var _boss_kills: int = 0
+var _boss_spawned: bool = false
+var _xp: int = 0
+var _level: int = 1
+var _leveling: bool = false
+var _running: bool = true
+var _started: bool = false
+
+func _ready() -> void:
+    physics_process_priority = 20
+    _player = $World/Player as Player
+    _horde = $World/Horde as Horde
+    _boss = $World/Boss as Boss
+    _loadout = $World/Loadout as Loadout
+    _level_up = $LevelUp as LevelUp
+    _player.died.connect(_on_player_died)
+    _level_up.picked.connect(_on_level_picked)
+    _player.set_physics_process(false)
+    _build_pools()
+    print("BH nodes ", int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))
+
+func begin(character: StringName) -> void:
+    if _started:
+        return
+    _character = character
+    _started = true
+    var meta: Dictionary = _meta()
+    _player.max_hp = 100.0 + float(meta["hp_bonus"])
+    _player.hp = _player.max_hp
+    _player.alive = true
+    _player.hp_changed.emit(_player.hp, _player.max_hp)
+    _player.set_physics_process(true)
+    _loadout.start_with(StringName(str(meta["start_weapon"])))
+    _loadout.recompute(_player, meta)
+    Events.game_started.emit()
+
+func _physics_process(delta: float) -> void:
+    if not _started or not _running:
+        return
+    _elapsed += delta
+    _spawn_wait -= delta
+    var interval: float = 0.02 if stress_spawn else Balance.spawn_interval(_elapsed)
+    if _spawn_wait <= 0.0:
+        _spawn_wait = interval
+        _spawn_enemy()
+    if not _boss_spawned and not stress_spawn and _elapsed >= Balance.BOSS_AT:
+        _spawn_boss()
+    _hash.clear()
+    _horde.fill_hash(_hash)
+    if not stress_spawn:
+        _loadout.tick(delta, self)
+        _resolve_shots()
+        _resolve_contact(delta)
+        _move_gems(delta)
+
+func _build_pools() -> void:
+    for i: int in SHOT_POOL:
+        var shot: Projectile = SHOT_SCENE.instantiate() as Projectile
+        $World/Projectiles.add_child(shot)
+        _shots.append(shot)
+        _shot_free.append(i)
+    for i: int in GEM_POOL:
+        var gem: Gem = GEM_SCENE.instantiate() as Gem
+        $World/Gems.add_child(gem)
+        _gems.append(gem)
+        _gem_free.append(i)
+
+func _spawn_enemy() -> void:
+    if _horde.alive_count >= ALIVE_CAP:
+        return
+    var minute: int = Balance.minute_of(_elapsed)
+    var brute: bool = minute >= 2 and randf() < 0.22
+    var kind: int = Horde.BRUTE if brute else Horde.BAT
+    var hp: float = float(Balance.scaled_hp(36 if brute else 14, minute))
+    var speed: float = Balance.brute_speed(minute) if brute else Balance.bat_speed(minute)
+    var dps: float = Balance.brute_dps(minute) if brute else Balance.bat_dps(minute)
+    var ang: float = randf() * TAU
+    var dist: float = randf_range(640.0, 900.0)
+    _horde.spawn(_player.global_position + Vector2.from_angle(ang) * dist, kind, hp, speed, dps)
+
+func _spawn_boss() -> void:
+    _boss_spawned = true
+    var at: Vector2 = _player.global_position + Vector2(0, -520)
+    _boss.activate_at(at)
+    Events.toast_requested.emit(tr("BH_BOSS_INCOMING"))
+
+func player_position() -> Vector2:
+    return _player.global_position
+
+func nearest_enemy(origin: Vector2, radius: float) -> int:
+    var found: Array[int] = enemies_near(origin, radius)
+    var best: int = -1
+    var best_d: float = radius * radius
+    for id: int in found:
+        var pos: Vector2 = enemy_position(id)
+        var d: float = origin.distance_squared_to(pos)
+        if d < best_d:
+            best_d = d
+            best = id
+    return best
+
+func enemy_position(id: int) -> Vector2:
+    if id == BOSS_ID:
+        return _boss.global_position
+    return _horde.position_of(id)
+
+func enemies_near(origin: Vector2, radius: float) -> Array[int]:
+    var out: Array[int] = []
+    _hash.query_into(origin, radius, _query)
+    var reach2: float = radius * radius
+    for id: int in _query:
+        if _horde.is_active(id) and origin.distance_squared_to(_horde.position_of(id)) <= reach2:
+            out.append(id)
+    if _boss.active:
+        var boss_limit: float = radius + 22.0
+        if origin.distance_squared_to(_boss.global_position) <= boss_limit * boss_limit:
+            out.append(BOSS_ID)
+    return out
+
+func borrow_shot() -> Projectile:
+    if _shot_free.is_empty():
+        return null
+    return _shots[_shot_free.pop_back()]
+
+func damage_enemy(id: int, amount: float) -> bool:
+    if id == BOSS_ID:
+        return _hurt_boss(amount)
+    if not _horde.is_active(id):
+        return false
+    var where: Vector2 = _horde.position_of(id)
+    var kind: int = _horde.kind_of(id)
+    if not _horde.hurt(id, amount):
+        return false
+    _kills += 1
+    Events.score_changed.emit(_kills)
+    _spawn_gem(where, Balance.XP_BRUTE if kind == Horde.BRUTE else Balance.XP_BAT)
+    return true
+
+func _hurt_boss(amount: float) -> bool:
+    if not _boss.active:
+        return false
+    _boss.hp -= amount
+    if _boss.hp > 0.0:
+        return false
+    var where: Vector2 = _boss.global_position
+    _boss.dismiss()
+    _boss_kills += 1
+    _kills += 50
+    Events.score_changed.emit(_kills)
+    Events.achievement_unlocked.emit(&"bh_warden")
+    for i: int in Balance.BOSS_GEMS:
+        var dir: Vector2 = Vector2.from_angle(TAU * float(i) / float(Balance.BOSS_GEMS))
+        _spawn_gem(where + dir * 36.0, Balance.XP_BOSS_GEM)
+    return true
+
+func _resolve_shots() -> void:
+    for shot: Projectile in _shots:
+        if not shot.active:
+            continue
+        var ids: Array[int] = enemies_near(shot.global_position, shot.radius + 18.0)
+        for id: int in ids:
+            if not shot.active or shot.already_hit(id):
+                continue
+            shot.remember_hit(id)
+            damage_enemy(id, shot.damage)
+            if shot.pierce_left <= 0:
+                shot.deactivate()
+                break
+            shot.pierce_left -= 1
+    for i: int in _shots.size():
+        if not _shots[i].active and not _shot_free.has(i):
+            _shot_free.append(i)
+
+func _resolve_contact(delta: float) -> void:
+    var ids: Array[int] = enemies_near(_player.global_position, CONTACT_RADIUS)
+    var total: float = 0.0
+    for id: int in ids:
+        if id == BOSS_ID:
+            total += Balance.BOSS_DPS
+        else:
+            total += _horde.dps_of(id)
+    if total > 0.0:
+        _player.apply_contact(total, delta)
+
+func _spawn_gem(at: Vector2, xp: int) -> void:
+    if _gem_free.is_empty():
+        _gain_xp(xp)
+        return
+    _gems[_gem_free.pop_back()].activate(at, xp)
+
+func _move_gems(delta: float) -> void:
+    var origin: Vector2 = _player.global_position
+    var magnet: float = _player.magnet_radius
+    for i: int in _gems.size():
+        var gem: Gem = _gems[i]
+        if not gem.active:
+            continue
+        var dist: float = origin.distance_to(gem.global_position)
+        if dist <= 22.0:
+            var gained: int = gem.value
+            gem.deactivate()
+            if not _gem_free.has(i):
+                _gem_free.append(i)
+            _gain_xp(gained)
+        elif dist <= magnet:
+            gem.global_position = gem.global_position.move_toward(origin, 460.0 * delta)
+
+func _gain_xp(amount: int) -> void:
+    _xp += amount
+    _try_level()
+
+func _try_level() -> void:
+    if _leveling or not _running:
+        return
+    var need: int = Balance.xp_to_next(_level)
+    if _xp < need:
+        return
+    _xp -= need
+    _level += 1
+    _leveling = true
+    _level_up.open(_loadout.roll_labeled())
+
+func _on_level_picked(choice: Dictionary) -> void:
+    _loadout.apply(choice, _player)
+    _loadout.recompute(_player, _meta())
+    _leveling = false
+    _try_level()
+
+func _on_player_died() -> void:
+    if not _running:
+        return
+    _running = false
+    _horde.dismiss_all()
+    _boss.dismiss()
+    for shot: Projectile in _shots:
+        shot.deactivate()
+    var gained: int = _grant_coins()
+    Events.game_over.emit(_kills)
+    ($HUD as Hud).show_game_over(_kills, gained)
+
+func _grant_coins() -> int:
+    var purse: int = int(SaveManager.get_value("bh_purse_rank", 0))
+    var gained: int = Balance.coins_for_run(_kills, int(_elapsed), _boss_kills, purse)
+    var total: int = int(SaveManager.get_value("bh_coins", 0)) + gained
+    SaveManager.set_value("bh_coins", total)
+    var best_kills: int = int(SaveManager.get_value("bh_best_kills", 0))
+    if _kills > best_kills:
+        SaveManager.set_value("bh_best_kills", _kills)
+    var best_time: int = int(SaveManager.get_value("bh_best_time", 0))
+    if int(_elapsed) > best_time:
+        SaveManager.set_value("bh_best_time", int(_elapsed))
+    SaveManager.flush()
+    return gained
+
+func _meta() -> Dictionary:
+    var data: CharacterData = _character_data(_character)
+    var speed: float = 1.0
+    var area: float = 1.0
+    var hp: float = 0.0
+    if data.bonus_stat == &"speed":
+        speed = 1.0 + data.bonus_amount
+    elif data.bonus_stat == &"area":
+        area = 1.0 + data.bonus_amount
+    elif data.bonus_stat == &"hp":
+        hp = data.bonus_amount
+    hp += 15.0 * float(int(SaveManager.get_value("bh_hp_rank", 0)))
+    return {
+        "might_rank": int(SaveManager.get_value("bh_might_rank", 0)),
+        "speed_mult": speed,
+        "magnet_add": 20.0 * float(int(SaveManager.get_value("bh_magnet_rank", 0))),
+        "area_mult": area,
+        "hp_bonus": hp,
+        "start_weapon": data.start_weapon,
+    }
+
+func _character_data(id: StringName) -> CharacterData:
+    if id == &"acolyte":
+        return ACOLYTE
+    if id == &"vanguard":
+        return VANGUARD
+    return SCOUT
+
+func boss_ratio() -> float:
+    if _boss == null or not _boss.active:
+        return -1.0
+    return _boss.hp / maxf(1.0, _boss.max_hp)
+
+func kills() -> int:
+    return _kills
+
+func elapsed() -> float:
+    return _elapsed
+
+func run_level() -> int:
+    return _level
+
+func xp_value() -> int:
+    return _xp
+
+func xp_goal() -> int:
+    return Balance.xp_to_next(_level)
+      </script>
+    </li>
+  </ol>
+  <div class="checkpoint">
+    <p>Press <kbd>F6</kbd>. A select panel covers the run. Scout is free. Start. Red circles (not icon sprites) walk in. Needle still fires. Gems still level you up. The Output line <code>BH nodes</code> is the count to remember. Play thirty seconds: that count stays put while <code>BH/Alive</code> in Debugger &gt; Monitors moves. Purple circles appear once the timer passes about two minutes, if you live that long. You do not have to reach the Warden for this checkpoint.</p>
+    <p>If the screen is empty of enemies, <code>Horde</code> is not at <code>(0, 0)</code>, or <code>canvas_item_set_parent</code> ran before the node was in the tree (the script must create RIDs in <code>_ready</code>, not at parse time). If Start does nothing, <code>Front</code> is not a child of <code>Game</code>.</p>
+  </div>
+
+  <h2 id="build-3">Block 4: Profile it</h2>
+  <ol class="steps">
+    <li><strong>Stress toggle.</strong> Select <code>Game</code> in <code>game.tscn</code>. In the Inspector, turn on <kbd class="ui">Stress Spawn</kbd>. This skips weapons and contact and spawns every 0.02 s, up to 1100. It exists so you can see the horde without waiting for a 15-minute run. Turn it off again before the export steps. Save the scene after you turn it off; a saved <code>true</code> would ship.</li>
+    <li><strong>Monitors.</strong> Press <kbd>F6</kbd>, click Start, then click the editor to focus it. Bottom panel, <kbd class="ui">Debugger</kbd>, then <kbd class="ui">Monitors</kbd>. Watch FPS, Process, Physics Process, Object Count (nodes), and Draw Calls. Also tick <code>BH/Alive</code>. Let the alive count pass 1000. Object Count must stay within about 30 of the <code>BH nodes</code> number printed at launch. A thousand enemies did not add a thousand nodes.</li>
+    <li><strong>Script profiler.</strong> Still in Debugger, open <kbd class="ui">Profiler</kbd>. Click <kbd class="ui">Start</kbd>. Return to the game for about ten seconds. Click <kbd class="ui">Stop</kbd>. Click the graph to pick a heavy frame. In the function list, find <code>horde.gd</code> <code>_physics_process</code>. That function is allowed to be the hot one. Frame time on the graph is the whole frame. The budget you are aiming at on this desktop is <strong>16.6 ms</strong>, which is 60 frames per second. If you are over it, the list tells you whether the cost is the horde loop or something else (a stray enemy scene you are still instancing, for example).</li>
+    <li><strong>Visual Profiler.</strong> Debugger, <kbd class="ui">Visual Profiler</kbd>, <kbd class="ui">Start</kbd>, play a few seconds, <kbd class="ui">Stop</kbd>. This measures CPU time spent submitting the 2D canvas, on every renderer including Mobile. It does not measure GPU time. Write down the number. You are looking for a spike that appears only when the alive count jumps, which would mean the canvas submission, not your GDScript, is the wall.</li>
+  </ol>
+  <div class="callout version"><span class="callout-title">Version note</span>
+    <p>The docs page for the ObjectDB Profiler says it exists since Godot 4.6, as a Debugger tab. If your build has that tab, you can confirm the horde is not leaking nodes when you stop the stress run. If the tab is missing, skip it. Monitors and the script profiler are enough.</p></div>
+  <div class="checkpoint">
+    <p>With Stress Spawn on, <code>BH/Alive</code> crosses 1000 and Object Count does not. Turn Stress Spawn off, save, and press <kbd>F6</kbd> again. Weapons fire. You can die. A normal minute does not spawn a thousand bats, and it should not.</p>
+  </div>
+
+  <h2 id="build-4">Block 5: Store-ready pass</h2>
+  <p>Menus, settings, pause, the fade, and the quit flush are the Ship Kit. You are only proving this game is wired into them, then producing two builds. The full template install and the release keystore are the Ship Kit export lesson; today uses the debug keystore for the phone.</p>
+  <ol class="steps">
+    <li><strong>Identity.</strong> Project Settings, Application &gt; Config. Name <code>Bullet Heaven</code>, Version <code>0.1.0</code>. Icon can stay <code>res://icon.svg</code>. Application &gt; Run, Main Scene stays <code>res://ui/main_menu.tscn</code>. Confirm Stress Spawn is off on <code>Game</code>.</li>
+    <li><strong>Credits line.</strong> Open <code>res://ui/credits.tscn</code>. Select the label that already mentions Godot (Day 16 put the license text there; if there are several labels, use the longest one). Add a final paragraph only for packs you actually copied in: <code>Sounds and icons from Kenney (https://kenney.nl/assets), CC0.</code> If you shipped no Kenney files, do not add that sentence. Open <code>res://licenses/THIRD_PARTY.txt</code> and append the same sentence if you added it to the credits scene. Leave <code>GODOT_LICENSE.txt</code> and <code>GODOT_COPYRIGHT.txt</code> as the Ship Kit created them.</li>
+    <li><strong>Windows.</strong> Menu bar <kbd class="menu">Project &gt; Export</kbd>. If Windows is missing, click <kbd class="ui">Add...</kbd> and choose Windows Desktop. Click <kbd class="ui">Export Project</kbd>. Create the folder <code>C:\GodotProjects\bullet-heaven\build</code> if the dialog asks. Save as <code>BulletHeaven.exe</code>. If Godot says export templates are missing, use <kbd class="menu">Editor &gt; Manage Export Templates</kbd> and install the templates that match your editor version, then export again. Close Godot's play window. In File Explorer, run that exe. Main menu, start Scout, move, kill a few bats, die or quit. Open the game again: the coin line should still show what you earned, because <code>SaveManager.flush</code> ran at the end of the run and the Ship Kit also flushes when the window closes.</li>
+    <li><strong>Android package name.</strong> In the same Export window, <kbd class="ui">Add...</kbd> Android if needed. Select that preset. Find the Package section and set Unique Name to <code>com.yourname.bulletheaven</code>. Replace <code>yourname</code> with something that is yours; the rest of the id stays, so it cannot collide with another course project. Do not create a release keystore today.</li>
+    <li><strong>Debug APK.</strong> With the Android preset selected, export. Prefer the control labeled Export With Debug when it is present, so the debug keystore signs the file. Save as <code>C:\GodotProjects\bullet-heaven\build\BulletHeaven.apk</code>. Install it with a phone in developer mode:
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+adb install -r C:\GodotProjects\bullet-heaven\build\BulletHeaven.apk
+      </script>
+      If <code>adb</code> is not on your PATH, copy the apk to the phone and open it there. Allow that install source when Android asks. On the phone: landscape, the stick moves you, the level-up cards are readable, the back or quit path returns to the menu, and coins survive leaving the app. A release AAB and the Play Console listing are a later publishing day, not this one.</li>
+  </ol>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>Google Play's upload rules and the debug-keystore warning change. Verify them on <a href="https://play.google.com/console" target="_blank" rel="noopener">play.google.com/console</a> when you get there. Today's apk is a device install, not a store upload. Kenney pack names and file names also change; the credit line uses the site root <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a> and describes the files by role (a short UI click, a soft hit, a sword-like icon, a circular-arrows icon, a burst icon) rather than a filename.</p></div>
+  <div class="checkpoint">
+    <p>The exe and, if you have a phone or emulator, the apk both boot the Ship Kit menu, start a run, and keep coins after you close them. <code>stress_spawn</code> is false in the build you exported. If the phone build is a black screen, the export used the wrong renderer preset or the main scene was left on <code>game.tscn</code> so the menu never loads. Main scene is the menu.</p>
+  </div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Enemies appear at the wrong place or slide in from the corner.</strong> You skipped <code>canvas_item_reset_physics_interpolation</code> on spawn, or <code>Horde</code> is not at the origin. The docs call the interpolation reset out specifically for server-created canvas items.</li>
+    <li><strong>You <code>canvas_item_clear</code> inside <code>_physics_process</code>.</strong> That rebuilds 1000 draw lists a frame and the profiler will show it. Clear only when the kind stored on that slot changes.</li>
+    <li><strong>RIDs leak after you stop the game from the editor.</strong> <code>free_rid</code> belongs in <code>_exit_tree</code>. Hot-reloading the script while the game runs can skip that. Stop with <kbd>F8</kbd> and run again.</li>
+    <li><strong>Object Count climbed.</strong> Something is still instancing <code>enemy.tscn</code>. Search for <code>ENEMY_SCENE</code>. The Day 21 director does not preload it.</li>
+    <li><strong>JSON turned the coin balance into a float.</strong> Every read uses <code>int(SaveManager.get_value(...))</code> before math. A missing <code>int()</code> makes <code>1 << rank</code> fail or makes the shop price a float comparison that looks random.</li>
+    <li><strong>Stress Spawn shipped.</strong> The Inspector checkbox is saved in the scene. Export after you turn it off and save.</li>
+    <li><strong>Boss shots use <code>apply_contact</code>.</strong> That function treats the number as HP per second. <code>hurt(14)</code> is 14 HP once. Mixing them up deletes the player in one frame or tickles them.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, about 25 min)</h2>
+  <div class="challenge">
+    <h3>A gold elite</h3>
+    <p>Every 40th bat spawns with 4× HP and a gold modulate. Hint: keep an <code>_elite</code> byte array on the horde. After a normal bat spawn, if the counter says so, multiply that slot's HP and call <code>canvas_item_set_modulate</code> with <code>Color(1.0, 0.82, 0.25)</code>. Do not add a node. The flash code currently paints the slot white, so store the elite tint and restore that color when the flash ends instead of always restoring white.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>You want a living bat to move 3 pixels. What do you call?</p>
+      <ul>
+        <li><code>canvas_item_clear</code>, then <code>canvas_item_add_circle</code> at the new position.</li>
+        <li><code>canvas_item_set_transform</code> with a <code>Transform2D</code> whose origin is the new position.</li>
+        <li><code>queue_free</code> on the RID.</li>
+        <li><code>MultiMesh.visible_instance_count</code>.</li>
+      </ul>
+      <p class="explain">Draw commands are immutable. The transform is not. Clearing every frame throws away the reason you used canvas items.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>When must <code>use_colors</code> be set on a <code>MultiMesh</code>?</p>
+      <ul>
+        <li>After <code>instance_count</code>, or the colors are ignored.</li>
+        <li>Only on a <code>MultiMeshInstance3D</code>.</li>
+        <li>Before <code>instance_count</code> is greater than zero. Otherwise set the count back to 0, set the flag, then set the count again.</li>
+        <li>It is implied by <code>TRANSFORM_2D</code>.</li>
+      </ul>
+      <p class="explain">The class reference says <code>use_colors</code> can only be set while <code>instance_count</code> is 0. This day does not build the MultiMesh path, but that order is the usual footgun.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>Why does <code>BH/Alive</code> at 1000 not add about 1000 to Object Count?</p>
+      <ul>
+        <li>Those enemies are RIDs owned by one <code>Horde</code> node, not nodes in the tree.</li>
+        <li>Object Count ignores <code>Node2D</code>.</li>
+        <li>The Mobile renderer hides nodes from the monitor.</li>
+        <li><code>free_rid</code> deletes nodes.</li>
+      </ul>
+      <p class="explain">Object Count is nodes. The horde holds positions in packed arrays and canvas items in an <code>Array[RID]</code>. Shots and gems are still nodes, and their pools were created up front.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>A shop rank is 3 and the base price is 200. What does the next purchase cost?</p>
+      <ul>
+        <li>203</li>
+        <li>600</li>
+        <li>800</li>
+        <li>1600</li>
+      </ul>
+      <p class="explain"><code>shop_cost(200, 3) = 200 × 2^3 = 1600</code>. Rank 0 costs the base. Rank 5 is not for sale.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/performance/using_servers.html" target="_blank" rel="noopener">Optimization using Servers</a>: creating a canvas item, keeping references, freeing RIDs, resetting physics interpolation.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_renderingserver.html" target="_blank" rel="noopener">RenderingServer</a>: <code>canvas_item_create</code>, <code>canvas_item_add_circle</code>, <code>canvas_item_set_transform</code>, <code>canvas_item_clear</code>, <code>free_rid</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/performance/using_multimesh.html" target="_blank" rel="noopener">Optimization using MultiMeshes</a>: one draw, <code>visible_instance_count</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_multimeshinstance2d.html" target="_blank" rel="noopener">MultiMeshInstance2D</a> and <a href="https://docs.godotengine.org/en/stable/classes/class_multimesh.html" target="_blank" rel="noopener">MultiMesh</a>: <code>TRANSFORM_2D</code>, <code>use_colors</code>, <code>set_instance_transform_2d</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/debug/the_profiler.html" target="_blank" rel="noopener">The Profiler</a>: Start, frame time, script functions.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/debug/debugger_panel.html" target="_blank" rel="noopener">Debugger panel</a>: Monitors and the Visual Profiler.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_performance.html" target="_blank" rel="noopener">Performance</a>: <code>OBJECT_NODE_COUNT</code> and custom monitors.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li>Stress Spawn off, a normal run still levels up, and <code>BH/Alive</code> can pass 1000 in the stress run without Object Count following it.</li>
+    <li>The Warden can spawn at 8:00, has 8000 HP, and drops 8 gems of 5 XP.</li>
+    <li>Scout, Acolyte (800), and Vanguard (1500) match the character table. Shop prices match <code>base × 2^rank</code>. Coins use <code>int()</code> on load and <code>SaveManager.flush()</code> on death.</li>
+    <li><code>BulletHeaven.exe</code> runs from <code>build</code>. The debug apk installs, the stick works, and coins survive a restart.</li>
+    <li>Pause, settings, and the main menu are still the Ship Kit. <code>BH_</code> keys cover the new buttons in <code>en</code>, <code>es</code>, and <code>de</code>.</li>
+  </ul>
+  <h3>File map</h3>
+  <table>
+    <thead><tr><th>Path</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td><code>game/game.gd</code></td><td><code>RunDirector</code>. Pools shots and gems, hash, XP, boss timing, coins.</td></tr>
+      <tr><td><code>game/horde.gd</code></td><td><code>Horde</code>. 1200 canvas-item RIDs.</td></tr>
+      <tr><td><code>game/loadout.gd</code></td><td>Weapons, passives, evolutions. Unchanged from Day 20.</td></tr>
+      <tr><td><code>game/level_up.gd</code></td><td>Pauses the tree and emits the chosen card.</td></tr>
+      <tr><td><code>game/front.gd</code></td><td>Character select and shop.</td></tr>
+      <tr><td><code>game/hud.gd</code></td><td>Timer, HP, XP, boss bar, game over.</td></tr>
+      <tr><td><code>game/spatial_hash.gd</code></td><td>64 px buckets, reused arrays.</td></tr>
+      <tr><td><code>game/player/player.gd</code></td><td>Floating <code>CharacterBody2D</code>, contact DPS, <code>hurt</code>.</td></tr>
+      <tr><td><code>game/enemies/boss.gd</code></td><td>Warden and the 24-shot ring pool.</td></tr>
+      <tr><td><code>game/combat/projectile.gd</code></td><td>Pooled player shots.</td></tr>
+      <tr><td><code>game/pickups/gem.gd</code></td><td>Pooled XP gems.</td></tr>
+      <tr><td><code>data/balance.gd</code></td><td>Every curve and shop price.</td></tr>
+      <tr><td><code>data/weapon_data.gd</code> <code>passive_data.gd</code> <code>character_data.gd</code></td><td>Resource layouts.</td></tr>
+      <tr><td><code>data/weapons/*.tres</code> <code>data/passives/*.tres</code> <code>data/characters/*.tres</code></td><td>The rows.</td></tr>
+      <tr><td><code>autoload/*</code> <code>ui/*</code></td><td>Ship Kit. Not rewritten.</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Tomorrow:</strong> a different game. This one is the store-ready slice on the <a href="../games/g07-bullet-heaven.html">Bullet Heaven page</a>: menu, save, three characters, a boss, and a swarm that is not a thousand nodes.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

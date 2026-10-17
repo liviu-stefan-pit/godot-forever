@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 29 - Publishing on Steam | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day29" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 29</div>
+    <h1>Publishing on Steam</h1>
+    <p class="lead">You export a Windows release from the command line, then do the Steamworks work that Godot does not document: an app, store images, a depot, and a SteamCMD upload. Achievements go through GodotSteam, which is an addon. Controller and Deck checks reuse the input map you already built.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:25</td><td><strong>Concepts.</strong> What Steam receives versus what Godot builds.</td></tr>
+    <tr><td>0:25 – 1:15</td><td><strong>Release export.</strong> <code>--export-release</code> and a folder you can upload.</td></tr>
+    <tr><td>1:15 – 1:30</td><td><strong>Break.</strong></td></tr>
+    <tr><td>1:30 – 2:40</td><td><strong>Steamworks.</strong> App, assets, depot. External. Labels move.</td></tr>
+    <tr><td>2:40 – 3:25</td><td><strong>SteamCMD and GodotSteam.</strong> Upload, then one achievement path.</td></tr>
+    <tr><td>3:25 – 4:00</td><td><strong>Deck, controller, quiz.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>4 h</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Produce a Windows release with <code>--export-release</code> and the preset name <code>Windows Desktop</code>.</li>
+    <li>Know which Steamworks tasks are outside the Godot docs, and where to read the current steps.</li>
+    <li>Upload that folder with SteamCMD to a non-default branch first.</li>
+    <li>Keep achievements behind <code>Events.achievement_unlocked</code> so the game still runs with the addon removed.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>A copied game, or the Ship Kit itself, exports from the editor the way <a href="day16.html">Day 16</a> describes. Export templates for this editor version are installed.</li>
+    <li>You know the full path to <code>Godot.exe</code> (the filename includes your version).</li>
+    <li>The Steamworks account from Day 16 exists, or you can open <a href="https://partner.steamgames.com" target="_blank" rel="noopener">partner.steamgames.com</a> today. The app fee is paid only when you create the app.</li>
+    <li>Lookup page: <a href="../publishing/steam.html">Steam guide</a>.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <p>Steam does not open your Godot project. It installs a folder: an exe, a pack, and the license file beside them. Godot's job ends at <code>--export-release</code>. Everything after that is Steamworks. Those pages are not in the Godot documentation, so every one of them sits in an external callout. If a button name below does not match the site, search the phrase and follow the site.</p>
+  <p>GodotSteam is the same kind of dependency. It is a GDExtension people add so the game can call Steam. The engine class reference has no <code>Steam</code> singleton. Treat every method on it as external, and read the reference that came with the addon version you installed.</p>
+  <div class="callout docs"><span class="callout-title">The flag</span>
+    <p><a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_projects.html" target="_blank" rel="noopener">Exporting projects</a> and the <a href="https://docs.godotengine.org/en/stable/tutorials/editor/command_line_tutorial.html" target="_blank" rel="noopener">command line tutorial</a> both use <code>--export-release</code>. <code>--export-debug</code> is the other switch. Store uploads use release.</p></div>
+
+  <h2 id="build-1">Release build from PowerShell</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Confirm the preset name.</strong> Open the game project. <kbd class="menu">Project &gt; Export...</kbd>. The Windows row must be named <code>Windows Desktop</code>. If you renamed it, either rename it back or use your name in the command below. The string on the command line is matched exactly.</li>
+    <li><strong>Confirm the export path.</strong> Select that preset. The path at the bottom should be an exe outside <code>res://</code>. For the template that is <code>C:\GodotProjects\ship-kit-build\windows\ShipKit.exe</code>. A copied game uses its own folder, for example <code>C:\GodotProjects\idle-clicker-build\windows\IdleClicker.exe</code>. The steps are the same.</li>
+    <li><strong>Close the game if it is running.</strong> An exe that is open cannot be overwritten. Press <kbd>F8</kbd> in the editor too, so the editor is not locking the pack.</li>
+    <li><strong>Run the export.</strong> Open PowerShell. Replace the Godot path with yours. The <code>&amp;</code> is PowerShell's call operator.
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+& "C:\Path\To\Godot.exe" --headless --path "C:\GodotProjects\ship-kit" --export-release "Windows Desktop" "C:\GodotProjects\ship-kit-build\windows\ShipKit.exe"
+      </script>
+    </li>
+    <li><strong>Read the log.</strong> The window should end without an error about missing templates. If it says the preset was not found, the name does not match, including spaces. If it says templates are missing, go back to <kbd class="menu">Editor &gt; Manage Export Templates...</kbd> and install the pack for this editor.</li>
+    <li><strong>Add the license file.</strong> Copy <code>res://licenses/GODOT_COPYRIGHT.txt</code> into the same folder as the exe. If you have not saved that file yet, follow <a href="../publishing/licenses.html">Licenses and credits</a> first. The export does not copy it for you.</li>
+    <li><strong>Smoke-test the exe.</strong> Double-click it. Main menu, one run, pause, quit. This is not a Steam launch. It only proves the export is a release player.</li>
+  </ol>
+  <div class="checkpoint"><p>The build folder contains the exe and <code>GODOT_COPYRIGHT.txt</code>. The exe is not named <code>Godot</code> and it does not open the editor. Output from the PowerShell command does not contain "Export With Debug" as the mode you selected. You used <code>--export-release</code>.</p></div>
+
+  <h2 id="build-2">Steamworks app and store assets</h2>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>Verify every click on <a href="https://partner.steamgames.com" target="_blank" rel="noopener">partner.steamgames.com</a>. The steps change. Search is more reliable than a memorized menu.</p></div>
+  <ol class="steps">
+    <li><strong>Sign in.</strong> Open the partner site with the Steam user that owns the games. Finish any identity prompt the site still shows. If the account is not in good standing, stop. An upload will fail later for a reason that looks like a Godot bug and is not.</li>
+    <li><strong>Read the fee.</strong> Search the partner site for the fee charged when you add an app. Pay it only if you want an app id today. Write down the amount you were actually charged.</li>
+    <li><strong>Create the application.</strong> Search "create application" or "new app". Name it the store name, not <code>ship-kit</code>, unless you are only practicing. Copy the numeric app id into a note. You will paste it into SteamCMD and, if you add GodotSteam, into <code>steam_appid.txt</code>.</li>
+    <li><strong>Create a Windows depot.</strong> Search "depots". Add a depot for Windows 64-bit. Copy the depot id. Leave macOS and Linux depots out until you export those platforms. This course's upload is the Windows folder from the previous section.</li>
+    <li><strong>Open the store graphical-asset checklist.</strong> Search "graphical assets" or "store page". The page lists capsules, a header, library art, and screenshots. Write down the pixel sizes it shows today. Ignore sizes you remember from an older article.</li>
+    <li><strong>Capture screenshots from the release exe.</strong> Run the exe, not the editor. On Windows, <kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> grabs a region. Crop to the size the checklist asks for. Five screenshots of the real menu and the real game are enough to start. Do not upload the Godot editor.</li>
+    <li><strong>Fill the text fields the checklist requires.</strong> Short description and about-this-game text. Mention only languages you actually filled in <code>translations.csv</code>, and only controller support you have tested.</li>
+  </ol>
+  <div class="checkpoint"><p>You have an app id, a depot id, and a note of the current capsule sizes. The store page is a draft. It is not public. If the site will not let you create an app, the block is the partner account, not the exe.</p></div>
+
+  <h2 id="build-3">SteamCMD upload</h2>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>Search "SteamCMD" and "SteamPipe" on <a href="https://partner.steamgames.com" target="_blank" rel="noopener">partner.steamgames.com</a>. Install the tool the way that page says. The script shape below matches the samples those pages have used. Diff it against the sample you see today before you run it. Replace the zeros with your app id and depot id.</p></div>
+  <ol class="steps">
+    <li><strong>Install SteamCMD</strong> into <code>C:\GodotProjects\steamcmd</code> using the partner instructions. Do not put it inside a Godot project.</li>
+    <li><strong>Write a build script</strong> next to it, <code>C:\GodotProjects\steamcmd\app_build.vdf</code>. A starting point:
+      <script type="text/x-code" data-lang="text" data-file="app_build.vdf">
+"AppBuild"
+{
+    "AppID" "0"
+    "Desc" "release candidate"
+    "ContentRoot" "C:\\GodotProjects\\ship-kit-build\\windows"
+    "BuildOutput" "C:\\GodotProjects\\steamcmd\\output"
+    "Depots"
+    {
+        "0"
+        {
+            "FileMapping"
+            {
+                "LocalPath" "*"
+                "DepotPath" "."
+                "recursive" "1"
+            }
+        }
+    }
+}
+      </script>
+    </li>
+    <li><strong>Set the two ids.</strong> Replace both <code>0</code> values. <code>ContentRoot</code> must be the folder you listed in the checkpoint, the one with the exe. Double the backslashes inside this file. SteamCMD's parser treats a single backslash as an escape.</li>
+    <li><strong>Log in and upload.</strong> From PowerShell, run <code>steamcmd.exe</code> the way the partner page shows for <code>login</code> and <code>run_app_build</code>. Use your partner login. If the page shows a guard or a Steam Guard code, that is expected. Do not paste your password into a script file in the Godot project.</li>
+    <li><strong>Set the build on a beta branch first.</strong> Search "branches" in Steamworks. Put this build on a passworded beta, not on <code>default</code>. Install the beta in the Steam client. Launch from Steam. Play the menu. Then, and only then, consider default.</li>
+  </ol>
+  <div class="checkpoint"><p>SteamCMD's log says the depot was built. The Steam client's beta branch launches your menu. Double-clicking the exe and launching from Steam both work. If Steam launches a black window, the depot's content root was the project folder or an old debug export. Fix the VDF and upload again. Builds are cheap. A public default branch is not.</p></div>
+
+  <h2 id="build-4">GodotSteam achievements</h2>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>Create the achievement in Steamworks first (search "achievements"). The API name, such as <code>ACH_WIN</code>, is the string the addon will send. Then install a GodotSteam build that matches your Godot version. Its class reference is the method list. The sketch below is the shape people use. If <code>steamInit</code> or <code>setAchievement</code> is named differently in your addon, use the addon. Do not file an engine bug.</p></div>
+  <ol class="steps">
+    <li><strong>Define one achievement</strong> on the partner site. Copy its API name exactly.</li>
+    <li><strong>Add the addon</strong> the way its own readme says. Enable the plugin under <kbd class="menu">Project &gt; Project Settings &gt; Plugins</kbd> if the readme says to.</li>
+    <li><strong>Editor app id.</strong> If the addon docs tell you to drop <code>steam_appid.txt</code> in the project root containing only the app id, do that for editor runs. Keep it out of marketing screenshots.</li>
+    <li><strong>One listener, not ten.</strong> Add a script that connects to <code>Events.achievement_unlocked</code> and calls the addon. Games only emit the signal. A sketch you must edit to match the addon:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://autoload/steam_achievements.gd">
+extends Node
+
+## External addon. This is NOT one of the five Ship Kit autoloads.
+## Add it only in games that ship on Steam, and only after the addon reference matches these calls.
+
+func _ready() -> void:
+    var ready: Dictionary = Steam.steamInit()
+    if int(ready.get("status", 0)) != 1:
+        push_warning("Steam init failed. Achievements will not sync.")
+        return
+    Events.achievement_unlocked.connect(_on_achievement_unlocked)
+
+
+func _on_achievement_unlocked(id: StringName) -> void:
+    Steam.setAchievement(String(id))
+    Steam.storeStats()
+      </script>
+    </li>
+    <li><strong>Do not register this as a required kit autoload</strong> unless that game ships on Steam. The five names stay <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, <code>SceneRouter</code>. If you add this sixth autoload, name the node something like <code>SteamAchievements</code> and put it after <code>Events</code> so the signal exists.</li>
+    <li><strong>Trigger it once</strong> from the game with <code>Events.achievement_unlocked.emit(&amp;"ACH_WIN")</code> using your real API name. Run from the Steam client, not only from the editor. The partner site's stats page, or the overlay, should show the unlock. Editor runs need Steam running and the app id file.</li>
+  </ol>
+  <div class="callout warn"><span class="callout-title">If the script does not parse</span>
+    <p>A parse error on <code>Steam</code> means the addon is not installed or not enabled. Delete this file until it is. The rest of the Ship Kit must still run.</p></div>
+
+  <h2 id="build-5">Controller and Steam Deck</h2>
+  <ol class="steps">
+    <li><strong>Plug in a controller.</strong> Run the release exe. The main menu's Play button should show a focus rectangle after you press a direction or the south face button. If nothing focuses, <code>grab_focus()</code> on the menu did not run. That is a Godot bug in the scene, fixed in <code>main_menu.gd</code>, not a Steam bug.</li>
+    <li><strong>Play and pause from the pad.</strong> <code>pause</code> is Escape and, if you bound it, Start. The pause menu is <code>process_mode</code> Always. Resume must work with <code>ui_accept</code>.</li>
+    <li><strong>Read the Deck checklist as external.</strong> On the partner site, search "Steam Deck". Check text size, a 16:10 window, and full controller play against the list you see. Your project already uses stretch mode <code>canvas_items</code> and aspect <code>expand</code>, so a wider window adds space instead of bars. Resize the release exe's window to something near 1280×800 and look for buttons under the edge.</li>
+    <li><strong>Do not tick Verified yourself</strong> in the store text. Deck review is Steam's. You can write "controller supported" only after the pad test above passed.</li>
+  </ol>
+  <div class="checkpoint"><p>A gamepad reaches Play, moves the game if the game uses <code>move_*</code>, and pauses. The partner site has a draft store page and a beta build you have launched from the Steam client. GodotSteam, if you added it, parses, and one achievement unlocks from a Steam launch. If you skipped the addon, the five kit autoloads still run and you have not left a broken <code>Steam</code> reference in the project.</p></div>
+
+  <h2 id="build-6">When the upload looks like a Godot bug</h2>
+  <p>Most failed Steam uploads are a wrong folder or a wrong id. Walk this list before you change a script.</p>
+  <table>
+    <tr><th>What you see</th><th>What it usually is</th></tr>
+    <tr><td>SteamCMD says the app id is invalid</td><td>The VDF still has <code>0</code>, or the app is not in good standing yet. The fee and the identity check are on the partner site.</td></tr>
+    <tr><td>The build succeeds and the Steam client launches nothing</td><td><code>ContentRoot</code> pointed at <code>res://</code> or at an empty directory. Open the depot in Steamworks and look at the file list. You want the exe at the root of the depot, not nested in <code>ship-kit-build\windows\windows</code>.</td></tr>
+    <tr><td>The client launches the Godot splash and then a debugger</td><td>You uploaded <code>--export-debug</code>, or you uploaded <code>Godot.exe</code> itself. Re-export with <code>--export-release</code>.</td></tr>
+    <tr><td>The menu opens and then an error about a missing autoload</td><td>The export did not include a script because of a parse error. Run the exe from PowerShell so the console build prints it. Fix the script. Do not "fix" it by deleting <code>SaveManager</code>.</td></tr>
+    <tr><td>Achievements stay locked in the overlay</td><td>The API name does not match Steamworks, <code>storeStats</code> was not called, or you only ran from the editor without Steam. This is the addon, not <code>Events</code>.</td></tr>
+    <tr><td>A controller does nothing on the menu</td><td><code>grab_focus()</code> never ran, or you deleted <code>ui_up</code> / <code>ui_accept</code>. Those rows are engine input, documented with the focus tutorial. Steam Input glyphs are a partner-site topic. Search "Steam Input" there if you want Steam's glyph set. The game does not need that set to be playable.</td></tr>
+  </table>
+  <p>Keep the five kit autoloads spelled the way Day 15 registered them. A Steam upload does not get its own <code>save_game()</code> or a renamed <code>SceneRouter</code>. The beta branch should boot the same main menu <kbd>F5</kbd> boots.</p>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>Depot file lists, branch passwords, and review times are on <a href="https://partner.steamgames.com" target="_blank" rel="noopener">partner.steamgames.com</a>. Search "builds" and "SteamPipe". If the site's sample VDF uses different key capitalization than the sample in this lesson, follow the site. The tool is theirs.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Uploading the Godot project folder.</strong> Steam needs the export folder. <code>project.godot</code> in a depot is a mistake.</li>
+    <li><strong><code>--export-debug</code> on a store branch.</strong> Use <code>--export-release</code>.</li>
+    <li><strong>Preset name mismatch.</strong> <code>Windows</code> is not <code>Windows Desktop</code> unless you renamed the preset.</li>
+    <li><strong>Single backslashes in the VDF.</strong> The content root silently points at the wrong place.</li>
+    <li><strong>Setting default live before the Steam client launch.</strong> You cannot un-see a bad push on a public branch as easily as you can delete a beta.</li>
+    <li><strong>Calling GodotSteam from gameplay scripts everywhere.</strong> One listener on <code>Events.achievement_unlocked</code> keeps the game runnable without the addon.</li>
+    <li><strong>Capsule pixels from memory.</strong> The partner checklist is the size list.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 20-30 min)</h2>
+  <div class="challenge">
+    <h3>A second depot branch without touching default</h3>
+    <p>Change one label in the main menu, export again, upload again, and install the new beta build from Steam. Hint: bump the <code>Desc</code> string in the VDF so the build list shows which upload is which. Do not move the default branch. Confirm the Steam client is running the new label, then quit.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="2">
+      <p>Which command flag does the Godot export docs use for a store build?</p>
+      <ul>
+        <li><code>--export-debug</code></li>
+        <li><code>--export</code> with the editor still in debug mode</li>
+        <li><code>--export-release</code></li>
+        <li><code>--export-pack</code> only</li>
+      </ul>
+      <p class="explain">The exporting page and the command line tutorial both document <code>--export-release</code>. The preset name is a separate argument and must match the Export dialog.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>Where do Steamworks steps live?</p>
+      <ul>
+        <li>On partner.steamgames.com, and they change. They are not in the Godot docs.</li>
+        <li>In Project Settings, under Steam</li>
+        <li>In <code>SceneRouter.go_to</code></li>
+        <li>Inside <code>default_bus_layout.tres</code></li>
+      </ul>
+      <p class="explain">Depots, capsules, fees, and SteamCMD are external. Godot's piece is the Windows release export plus the controller actions you already mapped.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>What should <code>ContentRoot</code> point at?</p>
+      <ul>
+        <li><code>res://</code></li>
+        <li>The folder that contains the exported exe</li>
+        <li>The Godot editor install</li>
+        <li><code>user://saves</code></li>
+      </ul>
+      <p class="explain">Steam installs files. It does not open a Godot project. The export folder plus <code>GODOT_COPYRIGHT.txt</code> is the upload.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>How should gameplay code unlock a Steam achievement?</p>
+      <ul>
+        <li>Call a Steam method from every script that might unlock something</li>
+        <li>Write the achievement into <code>user://settings.cfg</code> only</li>
+        <li>Rename the <code>Events</code> autoload to <code>Steam</code></li>
+        <li>Emit <code>Events.achievement_unlocked</code>, and let one addon listener call GodotSteam</li>
+      </ul>
+      <p class="explain">GodotSteam is optional and external. The signal is part of the kit. Games that are not on Steam never reference the addon.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>What is the Godot-side Deck check you can do without Steam's review?</p>
+      <ul>
+        <li>Mark the store page Verified</li>
+        <li>Switch the renderer to Forward+ and hope</li>
+        <li>Resize the release window, confirm <code>canvas_items</code> / <code>expand</code>, and play with a controller only</li>
+        <li>Delete the <code>ui_*</code> input actions</li>
+      </ul>
+      <p class="explain">Focus and the stretch mode are engine features. The Verified label is Steam's process, documented on the partner site, not a checkbox in Godot.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_projects.html" target="_blank" rel="noopener">Exporting projects</a>: presets and <code>--export-release</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/command_line_tutorial.html" target="_blank" rel="noopener">Command line tutorial</a>: <code>--headless</code> with export.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_windows.html" target="_blank" rel="noopener">Exporting for Windows</a>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/inputs/controllers_gamepads_joysticks.html" target="_blank" rel="noopener">Controllers, gamepads, and joysticks</a>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/inputs/controller_features.html" target="_blank" rel="noopener">Controller features</a>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/ui/gui_navigation.html" target="_blank" rel="noopener">Keyboard and controller navigation</a>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/about/complying_with_licenses.html" target="_blank" rel="noopener">Complying with licenses</a>: the file you copy next to the exe.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li>PowerShell <code>--export-release "Windows Desktop"</code> produced an exe I launched myself.</li>
+    <li><code>GODOT_COPYRIGHT.txt</code> sits in that folder.</li>
+    <li>Steamworks has an app id and a depot, or I stopped because the partner account is not ready. I did not invent a menu path when the site disagreed.</li>
+    <li>If I uploaded, I launched the build from the Steam client on a beta branch.</li>
+    <li>GodotSteam calls match the addon I installed, or I did not leave a <code>Steam</code> reference in the project.</li>
+    <li>A controller can focus the menu and pause.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> the same release discipline on Google Play: App Signing, target API, data safety, the store listing, and the closed-test track. The list you tick is <a href="../publishing/launch-checklist.html">the launch checklist</a>.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

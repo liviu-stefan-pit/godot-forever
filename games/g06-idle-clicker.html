@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game 6 - Idle Clicker: Crumb Foundry | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="game" data-id="g06" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Publishable game 6 · 2D portrait · Idle clicker</div>
+    <h1>Idle Clicker: Crumb Foundry</h1>
+    <p class="lead">A Cookie-Clicker-style foundry in a 720×1280 portrait window. Tap for crumbs, buy generators from resource files, come back to offline pay, and prestige lifetime earnings into sparks. The course title is Idle Clicker; the phone shows Crumb Foundry.</p>
+    <div class="chips"><span class="chip blue">Days 17–18</span><span class="chip green">Ship Kit · Resources · SaveManager</span></div>
+  </header>
+
+  <h2 id="design">Game design</h2>
+  <p>One screen. The player taps a large button, then spends crumbs on generators that produce crumbs per second, then on upgrades that multiply taps, one generator, or everything. Closing the app still pays, at half rate, for at most 8 hours. Prestige wipes the run and pays sparks from lifetime crumbs. There is no game-over. The session ends when the player opens the Ship Kit pause menu or the Menu button.</p>
+  <p><strong>Controls.</strong> Mouse or touch on the tap button and the rows. The <code>pause</code> action opens <code>pause_menu.tscn</code>. No new Input Map actions.</p>
+  <p><strong>Currencies.</strong> Crumbs and lifetime are floats, saved as strings. Owned counts and <code>total_clicks</code> are small ints, cast with <code>int()</code> on load. Sparks are floats too. Nothing in this game is sent through <code>Events.score_changed</code> or <code>Events.game_over</code>, because those signals take an <code>int</code>.</p>
+  <h3>Formulas</h3>
+  <p>Next unit when you already own <code>n</code>: <code>ceilf(base_cost * growth ^ n)</code>. Buying <code>k</code> at once: <code>ceilf(base_cost * growth ^ n * (growth ^ k - 1) / (growth - 1))</code>. One sprout from zero is 15; the next is 18; ten from zero cost 305.</p>
+  <p>Per second: <code>sum(base_rate * owned * generator_mult) * global_mult</code>. A tap adds <code>click_mult * global_mult</code> (base click is 1) and does not change the rate label.</p>
+  <p>Offline: <code>rate * min(elapsed_seconds, 28800) * 0.5</code>. Gaps under 5 seconds are ignored.</p>
+  <p>Sparks ever earned: <code>floorf(sqrt(lifetime / 1e6))</code>. This prestige pays <code>that total - sparks_claimed</code>. Each unspent spark is <code>+2%</code> global (<code>1 + 0.02 * unspent</code>). Spent sparks do not keep the 2%; they keep the permanent upgrade instead.</p>
+  <table>
+    <thead><tr><th>Id</th><th>Base cost</th><th>Growth</th><th>Per second each</th></tr></thead>
+    <tbody>
+      <tr><td>sprout</td><td>15</td><td>1.15</td><td>0.1</td></tr>
+      <tr><td>grove</td><td>100</td><td>1.15</td><td>1</td></tr>
+      <tr><td>mill</td><td>1100</td><td>1.15</td><td>8</td></tr>
+      <tr><td>foundry</td><td>12000</td><td>1.15</td><td>47</td></tr>
+      <tr><td>workshop</td><td>130000</td><td>1.15</td><td>260</td></tr>
+      <tr><td>convoy</td><td>1400000</td><td>1.14</td><td>1400</td></tr>
+      <tr><td>reactor</td><td>20000000</td><td>1.13</td><td>7800</td></tr>
+      <tr><td>gate</td><td>330000000</td><td>1.13</td><td>44000</td></tr>
+    </tbody>
+  </table>
+  <p>Crumb upgrades: Steel Tap and Double Tap, click ×2, costs 100 and 500 (Double Tap requires Steel Tap). Sprout Food, Grove Song, and Mill Gears double that generator at 250, 1500, and 12000, and require one of that generator. Focus is global ×1.5 at 50000 and does not persist. Spark upgrades that persist: Ledger (1 spark, global ×1.10), Archive (5, global ×1.25), Monument (25, click ×3).</p>
+
+  <h2 id="scope">Scope: store-ready</h2>
+  <p>Store-ready means the rows below, not a vague "add more content". Export clicks are <a href="../days/day16.html">Day 16</a>. Package id <code>com.yourname.idleclicker</code> (replace <code>yourname</code>). Application name <code>Crumb Foundry</code>, version <code>0.1.0</code>.</p>
+  <ul class="checklist">
+    <li>Portrait 720×1280, stretch <code>canvas_items</code>, aspect <code>expand</code>, handheld orientation Portrait, renderer Mobile</li>
+    <li>Ship Kit main menu, pause menu, settings, and credits still open. No extra autoload</li>
+    <li>Tap, eight generators, six crumb upgrades, three spark upgrades, all from <code>catalog.tres</code></li>
+    <li>Autosave every 15 seconds and on application pause / focus-out, slot <code>&amp;run</code>, crumbs stored as strings</li>
+    <li>Offline panel uses the 8-hour, 50% formula and does not pay twice for one absence</li>
+    <li>Prestige confirm dialog, spark multiplier, permanent upgrades survive, generators reset</li>
+    <li>Nine achievements emit <code>Events.achievement_unlocked</code> and <code>Events.toast_requested</code></li>
+    <li>English, Spanish, and German strings with the <code>CLICKER_</code> prefix</li>
+    <li>Click juice: button punch, floating <code>+N</code>, synthesized blip via <code>Audio.play_sfx</code> on the SFX bus</li>
+    <li>Debug 60-second grant is labeled Debug and is not an ad SDK</li>
+    <li>Windows release exe runs outside the editor (Export With Debug off)</li>
+    <li>Android debug install keeps the save after a force-stop</li>
+    <li>Signed release <code>.aab</code> uses the Day 16 release keystore and is uploaded to a Play closed test</li>
+  </ul>
+
+  <h2 id="architecture">Architecture</h2>
+  <pre class="scene-tree">Game (Control) [game.gd]
+├── Background (ColorRect)
+├── Margin (MarginContainer)
+│   └── Columns (VBoxContainer)
+│       ├── TitleLabel / CrumbLabel / RateLabel / SparksLabel
+│       ├── ClickButton
+│       ├── TabRow (Generators, Upgrades, Achievements)
+│       ├── Lists
+│       │   ├── GenScroll / GenList
+│       │   ├── UpScroll / UpgradeList
+│       │   └── AchScroll / AchList
+│       └── BottomRow (Menu, Prestige, Debug)
+├── Economy (Node) [economy.gd]  class_name CrumbEconomy
+├── AutosaveTimer (Timer)
+├── OfflineLayer / ConfirmLayer
+└── PauseMenu (instance, layer 20)</pre>
+  <table>
+    <thead><tr><th>Piece</th><th>Responsibility</th></tr></thead>
+    <tbody>
+      <tr><td><code>CrumbEconomy</code></td><td>Tick, prices, prestige, offline, achievements, save/load</td></tr>
+      <tr><td><code>EconomyCatalog</code></td><td>Ordered <code>GeneratorDef</code> and <code>UpgradeDef</code> resources</td></tr>
+      <tr><td><code>BigFormat</code></td><td>Suffixes (<code>K</code> through <code>Dc</code>, then scientific) and <code>"%.10g"</code> save text</td></tr>
+      <tr><td><code>SaveManager</code></td><td><code>save_slot(&amp;"run", …)</code>, <code>get_value("best_lifetime")</code>, <code>flush()</code></td></tr>
+      <tr><td><code>SceneRouter</code></td><td>Menu button and the kit's play button. Game scene path stays <code>res://game/game.tscn</code></td></tr>
+      <tr><td><code>Events</code></td><td><code>game_started</code>, <code>achievement_unlocked</code>, <code>toast_requested</code></td></tr>
+      <tr><td><code>Audio</code></td><td><code>play_sfx</code> only. No new bus</td></tr>
+      <tr><td><code>Settings</code></td><td>Locale and volumes, unchanged kit</td></tr>
+    </tbody>
+  </table>
+  <p>Save dictionary keys: <code>crumbs</code>, <code>lifetime</code>, <code>sparks_unspent</code>, <code>sparks_claimed</code>, <code>owned</code>, <code>upgrades</code>, <code>achievements</code>, <code>total_clicks</code>, <code>saved_unix</code>. <code>load_slot</code> returns that dictionary. The on-disk <code>format</code> / <code>saved_at</code> / <code>data</code> envelope stays inside <code>SaveManager</code>.</p>
+
+  <h2 id="assets">Assets and credits</h2>
+  <p>No image pack is required. The screen is a <code>ColorRect</code>, labels, and buttons using <code>res://ui/theme/game_theme.tres</code>. The click is an <code>AudioStreamWAV</code> built in code (16-bit, 22050 Hz, 0.08 s). Optional later: a UI click from a Kenney audio pack on <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a> (CC0; pick by ear, filenames change between pack versions). Credit line if you add one: "UI sounds: Kenney (www.kenney.nl), CC0". Godot's own license files stay in <code>res://licenses/</code> from the Ship Kit. Do not add an ad network or a billing plugin in the course build.</p>
+
+  <h2 id="days">Where you build it</h2>
+  <ul>
+    <li><a href="../days/day17.html">Day 17</a>: copy the kit, portrait project settings, resources, prices, portrait UI, 15-second autosave.</li>
+    <li><a href="../days/day18.html">Day 18</a>: offline pay, sparks, achievements, juice, debug reward, Windows release, signed AAB, Play closed test.</li>
+  </ul>
+
+  <h2 id="stretch">Stretch goals</h2>
+  <ul>
+    <li>An x10 buy that shows <code>bulk_cost</code> (305 crumbs for the first ten sprouts).</li>
+    <li>A big-integer crumb type once you care about digits past the float's 15, still saved as a string, never as an <code>int</code>.</li>
+    <li>Replace the debug button with a real rewarded ad or a Play Billing product, and update the Data safety form. Keep the grant in one function.</li>
+    <li>Cloud save. Do not replace <code>SaveManager</code> until the local slot still round-trips.</li>
+    <li>A second theme color per generator, read from <code>GeneratorDef.color</code>, drawn as a 12-pixel swatch on the row.</li>
+  </ul>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

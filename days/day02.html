@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 2 - Nodes, scenes, GDScript, signals | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day02" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 1 · Day 2</div>
+    <h1>Nodes, scenes, GDScript, signals</h1>
+    <p class="lead">Today you stay in <code>g00-sandbox</code> and build a small clickable toy: a scene you can instance, a typed script, keyboard actions, a score that updates through a signal, one spawned copy of a gem, and a tiny autoload. By the end, <kbd>F5</kbd> runs that toy.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:18</td><td><strong>Concepts.</strong> Scenes, typing, lifecycle, signals (<a href="#concepts">concepts</a>).</td></tr>
+    <tr><td>0:18 – 0:50</td><td><strong>Build 1.</strong> One script that prints types, <code>match</code>, a lambda, <code>await</code>, and the lifecycle (<a href="#build-1">section 1</a>).</td></tr>
+    <tr><td>0:50 – 1:25</td><td><strong>Build 2.</strong> <code>ItemData</code> resource and the gem scene (<a href="#build-2">section 2</a>).</td></tr>
+    <tr><td>1:25 – 2:00</td><td><strong>Build 3.</strong> Chain-link instancing, overrides, Make Unique (<a href="#build-3">section 3</a>).</td></tr>
+    <tr><td>2:00 – 2:15</td><td><strong>Break.</strong> Stand up, drink water.</td></tr>
+    <tr><td>2:15 – 2:40</td><td><strong>Build 4.</strong> Input Map and a moving icon (<a href="#build-4">section 4</a>).</td></tr>
+    <tr><td>2:40 – 3:15</td><td><strong>Build 5.</strong> Signals both ways, groups, unique names (<a href="#build-5">section 5</a>).</td></tr>
+    <tr><td>3:15 – 3:45</td><td><strong>Build 6.</strong> Score autoload, one spawned gem, tween, both timers (<a href="#build-6">section 6</a>).</td></tr>
+    <tr><td>3:45 – 4:00</td><td><strong>Build 7, quiz, wrap-up.</strong> Output vs Debugger. The challenge is optional if you finish early (<a href="#build-7">section 7</a>).</td></tr>
+    <tr class="total"><td>Total</td><td>4 h 0 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Instance <code>gem.tscn</code> with the chain-link button, override one property on a single copy, and use <kbd class="ui">Make Unique</kbd> so one copy of a resource stops sharing data with the others.</li>
+    <li>Write typed GDScript that uses <code>:=</code>, <code>Array[T]</code>, a typed dictionary, <code>match</code>, a lambda, <code>await</code>, <code>class_name</code>, <code>@export</code> and <code>@onready</code>.</li>
+    <li>Say the order <code>_init</code>, <code>_enter_tree</code>, <code>@onready</code>, <code>_ready</code>, and what <code>delta</code> means in <code>_process</code> and <code>_physics_process</code>.</li>
+    <li>Create Input Map actions <code>move_left</code>, <code>move_right</code>, <code>move_up</code>, <code>move_down</code> and <code>jump</code>, and move a sprite with <code>Input.get_vector</code> and <code>Input.is_action_just_pressed</code>.</li>
+    <li>Connect <code>input_event</code> from the Signals dock, connect a custom signal from code with <code>.connect()</code>, emit it with an argument, and append an extra argument with <code>Callable.bind</code>.</li>
+    <li>Run one toy from <kbd>F5</kbd>: click raises a score through a signal, one gem is spawned with <code>PackedScene.instantiate()</code> and <code>add_child()</code>, and the <code>Score</code> autoload survives only for that run.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 1 is done. Godot 4.x <strong>standard</strong> (non-.NET) opens <code>C:\GodotProjects\g00-sandbox</code>. <kbd>F5</kbd> shows <em>Hello Godot</em> from <code>res://day01/hello.tscn</code>. Editor indentation is Spaces, size 4.</li>
+    <li>You will add files only under <code>res://day02/</code>. Leave <code>res://day01/</code> alone. Today changes the project's main scene to <code>res://day02/click_icon.tscn</code>, so <kbd>F5</kbd> will stop showing <em>Hello Godot</em>. <code>hello.tscn</code> stays on disk; <kbd>F6</kbd> still runs whichever scene tab is open.</li>
+    <li>No downloads. The picture is the project's <code>icon.svg</code>, already imported on Day 1.</li>
+    <li>Bring-up if you skipped Day 1: install the latest Godot 4.x stable standard build, create a project at <code>C:\GodotProjects\g00-sandbox</code> with the Forward+ renderer (Compatibility if Vulkan fails), then set <kbd class="menu">Editor &gt; Editor Settings… &gt; Text Editor &gt; Behavior &gt; Indent &gt; Type</kbd> to Spaces and Size to 4. Also turn on <kbd class="menu">Text Editor &gt; Completion &gt; Add Type Hints</kbd>.</li>
+  </ul>
+
+  <div class="callout version"><span class="callout-title">Version note</span>
+    <p>Typed dictionaries (<code>Dictionary[String, int]</code>) arrived in Godot 4.4. Day 1 set 4.4 as the floor for this course. If a script error complains about that syntax, your editor is older than 4.4: install a current 4.x stable before continuing.</p></div>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <p>Read this once (about 15 minutes). The builds afterwards are the clicks. You already know objects, events and prefabs; the new part is where Godot puts each of those.</p>
+
+  <h3>Nodes, scenes, instances</h3>
+  <p>A <strong>node</strong> is one object in a tree (a sprite, a timer, a label). A <strong>scene</strong> is that tree saved as a <code>.tscn</code> file. Instancing drops a live copy of that file into another tree. The copy is one node from the outside; opening it in the Scene dock shows the children.</p>
+  <p>Think of the scene file as a prefab. Editing the file updates every copy. Editing a property on one copy writes an <strong>override</strong> on that copy only: the Inspector shows a grey revert arrow beside the property. A <strong>resource</strong> (a <code>.tres</code>, a texture, a shape, your own <code>ItemData</code>) is shared by default, like a ScriptableObject reference. Two copies that point at the same <code>.tres</code> see each other's edits. <kbd class="ui">Make Unique</kbd> clones that resource for one copy so later edits stay local.</p>
+  <p>From code, a scene file is a <code>PackedScene</code>. <code>preload</code> loads it at parse time. <code>instantiate()</code> builds a node tree. <code>add_child()</code> inserts it, which is what actually runs <code>_enter_tree</code> and <code>_ready</code>. <code>queue_free()</code> deletes the node at the end of the frame, children included.</p>
+
+  <h3>GDScript, short version</h3>
+  <table>
+    <tr><th>You write</th><th>It means</th></tr>
+    <tr><td><code>var speed: float = 280.0</code></td><td>Static type. Do this by default.</td></tr>
+    <tr><td><code>var label := "gem"</code></td><td><code>:=</code> infers the type. Use it when the right-hand side is obviously <code>String</code>, <code>Vector2</code>, a <code>new()</code>, or a cast. Skip it when the value would be an untyped Variant.</td></tr>
+    <tr><td><code>Array[String]</code>, <code>Dictionary[String, int]</code></td><td>Typed collections. A wrong element is an error.</td></tr>
+    <tr><td><code>match n:</code></td><td>A switch. Patterns can list values (<code>2, 3:</code>). <code>_:</code> is the wildcard.</td></tr>
+    <tr><td><code>var f: Callable = func (n: int) -&gt; int: return n * 2</code></td><td>A lambda. Call it with <code>f.call(n)</code>. It captures locals by value.</td></tr>
+    <tr><td><code>await get_tree().create_timer(0.4).timeout</code></td><td>Suspend this function until the one-shot timer fires. The rest of the frame keeps running.</td></tr>
+    <tr><td><code>class_name ItemData</code></td><td>Registers the script as a global type. It then shows up in the Create Resource dialog and in type hints.</td></tr>
+    <tr><td><code>@export</code> / <code>@onready</code></td><td>Inspector property / assign this node reference just before <code>_ready</code>.</td></tr>
+  </table>
+  <p>Script order used for the rest of the course: <code>extends</code>, <code>class_name</code>, signals, constants, <code>@export</code>, variables, <code>@onready</code>, lifecycle, then methods. Names: <code>snake_case</code> for functions and files, <code>PascalCase</code> for classes and node names, <code>SCREAMING_CASE</code> for constants.</p>
+
+  <h3>Initialization and lifecycle</h3>
+  <p>Member setup, in order:</p>
+  <ol>
+    <li>The variable exists (numbers are <code>0</code>, objects are null).</li>
+    <li>Initializers run top to bottom. <code>@onready</code> initializers wait.</li>
+    <li><code>_init()</code> runs. The node is <strong>not</strong> in the tree. <code>$Child</code> fails here.</li>
+    <li>If this object came from a scene or a <code>.tres</code>, saved <code>@export</code> values are applied.</li>
+    <li><code>@onready</code> lines run. <code>$Child</code> and <code>%Unique</code> work.</li>
+    <li><code>_ready()</code> runs.</li>
+  </ol>
+  <p>When a parent enters the tree: the parent's <code>_enter_tree</code>, then each child's <code>_enter_tree</code>, then each child's <code>_ready</code>, then the parent's <code>_ready</code>. Children are ready before the parent is.</p>
+  <table>
+    <tr><th>Callback</th><th>When</th><th>Put here</th></tr>
+    <tr><td><code>_init</code></td><td>Object constructed</td><td>Plain data. No node paths.</td></tr>
+    <tr><td><code>_enter_tree</code></td><td>Joined the tree</td><td>Rare. Parent exists; siblings may not be ready.</td></tr>
+    <tr><td><code>_ready</code></td><td>This node and its children are in the tree</td><td>Connect signals, cache nodes, spawn.</td></tr>
+    <tr><td><code>_process(delta)</code></td><td>Every drawn frame</td><td>Visuals, UI, non-physics motion. <code>delta</code> is seconds since the previous frame and varies.</td></tr>
+    <tr><td><code>_physics_process(delta)</code></td><td>Fixed rate, 60 Hz by default</td><td>Physics and anything that must stay stable if the frame rate drops. <code>delta</code> is <code>1/60</code> unless you change the physics tick rate.</td></tr>
+    <tr><td><code>_unhandled_input(event)</code></td><td>An input event nobody handled yet (UI first)</td><td>Gameplay keys and clicks that a button should be allowed to swallow.</td></tr>
+  </table>
+  <p><code>position += direction * speed * delta</code> keeps speed in pixels per second. Drop <code>delta</code> and the icon moves faster on a 144 Hz monitor than on a 60 Hz one.</p>
+
+  <h3>Signals, groups, names</h3>
+  <p>A <strong>signal</strong> is a typed event. <code>clicked.emit(1)</code> calls every connected function. Connect in the editor (Node tab &gt; Signals, double-click, <kbd class="ui">Connect</kbd>) or in code (<code>icon.clicked.connect(_on_icon_clicked)</code>). <code>Callable.bind</code> appends extra arguments <em>after</em> the ones the signal already sends: <code>clicked(points)</code> connected with <code>.bind("icon")</code> calls <code>_on_icon_clicked(points, "icon")</code>.</p>
+  <p>A <strong>group</strong> is a tag. <code>add_to_group("pickups")</code> or the Groups dock. Later, <code>get_tree().call_group("pickups", "flash")</code> calls <code>flash</code> on every member. The course uses the group name <code>pickups</code> spelled exactly that way.</p>
+  <p><code>$Icon</code> is a path from this node. It breaks if you reparent <code>Icon</code>. <code>%ScoreLabel</code> finds a node you marked <kbd class="ui">Access as Unique Name</kbd> (a <code>%</code> appears beside it in the Scene dock). Unique names are looked up inside the same scene. <code>@onready var score_label: Label = %ScoreLabel</code> stores the reference once, which is what you want; calling <code>$</code> every frame walks the tree again.</p>
+
+  <h3>Input, timers, autoload</h3>
+  <p>An <strong>action</strong> is a name (<code>move_left</code>) mapped to keys or buttons. Read held movement with <code>Input.get_vector("move_left", "move_right", "move_up", "move_down")</code>: negative X, positive X, negative Y, positive Y, length at most 1. Read a tap with <code>Input.is_action_just_pressed("jump")</code>. Inside <code>_unhandled_input</code>, the class reference prefers <code>event.is_action_pressed("jump")</code> for that single event; you will see both today.</p>
+  <p>A <strong>Timer node</strong> lives in the tree. You set <kbd class="ui">Wait Time</kbd>, <kbd class="ui">One Shot</kbd> and <kbd class="ui">Autostart</kbd>, then connect its <code>timeout</code> signal. <code>get_tree().create_timer(2.5)</code> is a one-shot with no node, used as <code>await ...timeout</code> when you only need to pause a function.</p>
+  <p>An <strong>autoload</strong> is a node Godot creates before your scene and keeps until the run ends. Its Node Name (<code>Score</code>) is the global you call. Give the autoload that name in Project Settings; do not also put <code>class_name Score</code> on the script, or the two globals collide.</p>
+
+  <h2 id="build-1">1. A typed script and the lifecycle (about 30 minutes)</h2>
+  <p>You will hang a throwaway node off an empty scene, run it, read six lifecycle lines, then delete the node. The script file stays in the project so you can open it later. The scene you create here becomes the toy.</p>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped. On every listing, click <kbd class="ui">Copy</kbd>, then in the script editor press <kbd>Ctrl</kbd>+<kbd>A</kbd> and paste so the whole file is replaced. Indentation is four spaces.</p>
+  <ol class="steps">
+    <li><strong>Open the sandbox.</strong> From the Project Manager, double-click <code>g00-sandbox</code>. If the editor is already open on that project, you are set. The window title contains <code>g00-sandbox</code>.</li>
+    <li><strong>Make today's folder.</strong> In the <strong>FileSystem</strong> dock (bottom-left), right-click <code>res://</code> and choose <kbd class="ui">New &gt; Folder…</kbd>. Type <code>day02</code> and click <kbd class="ui">OK</kbd>. The folder appears under <code>res://</code>.
+      <div class="callout note"><span class="callout-title">Menu title</span>
+        <p>Day 1's menu is <em>New</em> with <em>Folder…</em>, <em>Scene…</em>, <em>Script…</em>, <em>Resource…</em> and <em>TextFile…</em>. Some versions title that sub-menu <em>Create New</em>. The items are the same.</p></div></li>
+    <li><strong>New scene.</strong> In the menu bar, click <kbd class="menu">Scene &gt; New Scene</kbd>. The <strong>Scene</strong> dock (top-left) shows <kbd class="ui">2D Scene</kbd>, <kbd class="ui">3D Scene</kbd>, <kbd class="ui">User Interface</kbd> and <kbd class="ui">Other Node</kbd>.</li>
+    <li><strong>Root node.</strong> Click <kbd class="ui">2D Scene</kbd>. A <code>Node2D</code> appears and the workspace switches to <kbd class="ui">2D</kbd>.</li>
+    <li><strong>Rename the root.</strong> Click <code>Node2D</code> in the Scene dock, press <kbd>F2</kbd>, type <code>ClickIcon</code>, press <kbd>Enter</kbd>.</li>
+    <li><strong>Save it.</strong> Press <kbd>Ctrl</kbd>+<kbd>S</kbd>. In the dialog, double-click <code>day02</code>, set the file name to <code>click_icon.tscn</code>, click <kbd class="ui">Save</kbd>. The scene tab reads <code>click_icon.tscn</code>.</li>
+    <li><strong>Add the probe node.</strong> Select <code>ClickIcon</code>. At the top of the Scene dock, click <kbd class="ui">Add Child Node</kbd> (the <kbd class="ui">+</kbd>, shortcut <kbd>Ctrl</kbd>+<kbd>A</kbd>). In <em>Create New Node</em>, search <code>Node</code>, select the row whose type is exactly <code>Node</code> (the base class, not <code>Node2D</code>), click <kbd class="ui">Create</kbd>.</li>
+    <li><strong>Name it.</strong> Press <kbd>F2</kbd>, type <code>Tour</code>, press <kbd>Enter</kbd>.</li>
+    <li><strong>Attach the script.</strong> Right-click <code>Tour</code> and choose <kbd class="ui">Attach Script</kbd>. In <em>Attach Node Script</em>: Language <kbd class="ui">GDScript</kbd>, Inherits <code>Node</code>, Template <kbd class="ui">Object: Empty</kbd>, Path <code>res://day02/language_tour.gd</code>. Click <kbd class="ui">Create</kbd>. The <kbd class="ui">Script</kbd> workspace opens.</li>
+    <li><strong>Replace the file.</strong> Click <kbd class="ui">Copy</kbd> on the listing, click the script editor, <kbd>Ctrl</kbd>+<kbd>A</kbd>, paste, <kbd>Ctrl</kbd>+<kbd>S</kbd>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://day02/language_tour.gd">
+extends Node
+
+func _init() -> void:
+    print("1 init | inside tree: ", is_inside_tree())
+
+func _enter_tree() -> void:
+    print("2 enter_tree | parent: ", get_parent().name)
+
+func _ready() -> void:
+    print("3 ready")
+    _tour()
+    var doubled: Array[int] = _double_each([1, 2, 3])
+    print("lambda: ", doubled)
+    await get_tree().create_timer(0.4).timeout
+    print("4 awaited 0.4s")
+
+func _process(delta: float) -> void:
+    print("5 process delta: ", snappedf(delta, 0.0001))
+    set_process(false)
+
+func _physics_process(delta: float) -> void:
+    print("6 physics_process delta: ", snappedf(delta, 0.0001))
+    set_physics_process(false)
+
+func _unhandled_input(event: InputEvent) -> void:
+    if not (event is InputEventKey):
+        return
+    var key := event as InputEventKey
+    if key == null or not key.is_pressed() or key.is_echo():
+        return
+    print("7 unhandled_input: ", key.as_text())
+    set_process_unhandled_input(false)
+
+func _tour() -> void:
+    var speed: float = 280.0
+    var count: int = 3
+    var label := "gem"
+    var flags: Array[String] = ["a", "b"]
+    var worth: Dictionary[String, int] = {"gem": 10, "icon": 1}
+    print("tour: ", label, " speed=", speed, " count=", count, " flags=", flags, " worth=", worth["gem"])
+    print("match: ", _label_for(count))
+
+func _label_for(n: int) -> String:
+    var text: String = "other"
+    match n:
+        0:
+            text = "none"
+        1:
+            text = "one"
+        2, 3:
+            text = "a few"
+        _:
+            text = "many"
+    return text
+
+func _double_each(values: Array[int]) -> Array[int]:
+    var out: Array[int] = []
+    var twice: Callable = func (n: int) -> int:
+        return n * 2
+    for n: int in values:
+        out.append(twice.call(n))
+    return out
+      </script>
+      <p>What this file is for: it prints the construction order, infers a <code>String</code> with <code>:=</code>, stores a typed array and a typed dictionary, branches with <code>match</code>, and runs a lambda through <code>Callable.call</code>. <code>await</code> pauses only <code>_ready</code>; <code>_process</code> still runs on the next frame. Each of <code>_process</code> and <code>_physics_process</code> prints once, then turns itself off so the Output panel stays readable. <code>_unhandled_input</code> ignores the mouse (so clicking the game view to focus it does not consume the one key you are about to press).</p></li>
+  </ol>
+
+  <pre class="scene-tree">ClickIcon (Node2D)
+└── Tour (Node)                     [language_tour.gd]</pre>
+
+  <ol class="steps">
+    <li><strong>Run this scene.</strong> Click the <kbd class="ui">2D</kbd> workspace button so the scene tab is showing, then press <kbd>F6</kbd> (<kbd class="ui">Run Current Scene</kbd>). A game window opens. The <kbd class="ui">Output</kbd> panel (bottom) opens with it. If you do not see it, click <kbd class="ui">Output</kbd> on the bottom panel.</li>
+    <li><strong>Focus the game and press A.</strong> Click once inside the running game view (so the key reaches the game), then press <kbd>A</kbd>. Wait about a second so the awaited line can print. Then press <kbd>F8</kbd> (<kbd class="ui">Stop</kbd>).</li>
+  </ol>
+
+  <div class="checkpoint"><p>Output contains, in this order: line <code>1 init | inside tree: false</code>, line <code>2 enter_tree | parent: ClickIcon</code>, line <code>3 ready</code>, a <code>tour:</code> line with <code>worth=10</code>, <code>match: a few</code>, a <code>lambda:</code> line with 2, 4 and 6, then one <code>process</code> line and one <code>physics_process</code> line (either of those two may come first). About half a second after the start you also get <code>4 awaited 0.4s</code>. After you press A, a line <code>7 unhandled_input:</code> names that key. If you see a parse error on <code>Dictionary[String, int]</code>, the editor is older than 4.4. If line 2 names <code>Node2D</code>, the root was not renamed to <code>ClickIcon</code>. If line 7 never appears, click the game view and press A again before stopping.</p></div>
+
+  <ol class="steps">
+    <li><strong>Remove the probe from the scene.</strong> Select <code>Tour</code> in the Scene dock and press <kbd>Delete</kbd>. Confirm if asked. <code>language_tour.gd</code> remains in the FileSystem dock. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>. The Scene dock shows only <code>ClickIcon</code>.</li>
+  </ol>
+
+  <div class="callout docs"><span class="callout-title">Docs</span>
+    <p><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_basics.html" target="_blank" rel="noopener">GDScript reference</a> (initialization order, <code>match</code>, lambdas, <code>await</code>) and <a href="https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/static_typing.html" target="_blank" rel="noopener">Static typing</a>. Lifecycle callbacks are on <a href="https://docs.godotengine.org/en/stable/classes/class_node.html" target="_blank" rel="noopener">Node</a>; <code>_init</code> is on <a href="https://docs.godotengine.org/en/stable/classes/class_object.html" target="_blank" rel="noopener">Object</a>.</p></div>
+
+  <h2 id="build-2">2. ItemData and the gem scene (about 35 minutes)</h2>
+  <p>A custom resource is a script with <code>class_name</code> that <code>extends Resource</code>, plus a <code>.tres</code> file that stores one set of values. The gem scene is the thing you will instance and, later, spawn.</p>
+  <ol class="steps">
+    <li><strong>Create the script file.</strong> In the FileSystem dock, right-click <code>day02</code> and choose <kbd class="ui">New &gt; Script…</kbd>. Set Language to <kbd class="ui">GDScript</kbd>, Inherits to <code>Resource</code> (click the field and type it if it says <code>Node</code>), Template to <kbd class="ui">Object: Empty</kbd>, Path to <code>res://day02/item_data.gd</code>. Click <kbd class="ui">Create</kbd>.</li>
+    <li><strong>Replace the file</strong> with this listing, then <kbd>Ctrl</kbd>+<kbd>S</kbd>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://day02/item_data.gd">
+extends Resource
+class_name ItemData
+
+@export var display_name: String = "Gem"
+@export var points: int = 10
+
+func _init(p_display_name: String = "Gem", p_points: int = 10) -> void:
+    display_name = p_display_name
+    points = p_points
+      </script>
+      <p><code>class_name ItemData</code> publishes the type. Every <code>_init</code> argument has a default: the Inspector creates resources by calling <code>_init()</code> with no arguments, then writes the saved exports on top. A required parameter here makes the <code>.tres</code> fail to open.</p></li>
+    <li><strong>Confirm the type registered.</strong> Click the <kbd class="ui">2D</kbd> workspace button. In the bottom <kbd class="ui">Output</kbd> panel there should be no red error naming <code>item_data.gd</code>. If there is, the class did not register; fix the script and save again.</li>
+    <li><strong>Create the resource from the FileSystem dock.</strong> Right-click <code>day02</code> and choose <kbd class="ui">New &gt; Resource…</kbd>. In the search box type <code>ItemData</code>. Select <code>ItemData</code> (your class, under the search results). Click <kbd class="ui">Create</kbd>. If <code>ItemData</code> is missing, close the dialog, click the <code>item_data.gd</code> tab once so the parser runs, and open <kbd class="ui">New &gt; Resource…</kbd> again.</li>
+    <li><strong>Save the .tres.</strong> A save dialog opens. Stay inside <code>day02</code>, file name <code>gem_data.tres</code>, click <kbd class="ui">Save</kbd>. The Inspector shows the resource.</li>
+    <li><strong>Set its fields.</strong> In the Inspector set <kbd class="ui">Display Name</kbd> to <code>Gem</code> and <kbd class="ui">Points</kbd> to <code>10</code>. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>. Hover either label: the tooltip shows the script name <code>display_name</code> or <code>points</code>. The Inspector prints those as Title Case.</li>
+  </ol>
+
+  <div class="checkpoint"><p>The FileSystem dock shows <code>day02/item_data.gd</code> and <code>day02/gem_data.tres</code>. Double-click <code>gem_data.tres</code>: the Inspector shows Display Name <code>Gem</code> and Points <code>10</code>. If double-click opens a script error instead, <code>_init</code> is missing defaults or <code>class_name</code> is misspelled.</p></div>
+
+  <ol class="steps">
+    <li><strong>New gem scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>, then <kbd class="ui">2D Scene</kbd>. Press <kbd>F2</kbd>, rename the root to <code>Gem</code>, press <kbd>Enter</kbd>.</li>
+    <li><strong>Save the empty scene</strong> as <code>res://day02/gem.tscn</code> (<kbd>Ctrl</kbd>+<kbd>S</kbd>, folder <code>day02</code>, file name <code>gem.tscn</code>).</li>
+    <li><strong>Add the sprite.</strong> Select <code>Gem</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>Sprite2D</code>, click <kbd class="ui">Create</kbd>. Press <kbd>F2</kbd>, name it <code>Sprite</code>. The code will look up <code>$Sprite</code>, so the name has to match.</li>
+    <li><strong>Give it the icon.</strong> Select <code>Sprite</code>. In the Inspector, find <kbd class="ui">Texture</kbd> (empty). From the FileSystem dock, drag <code>icon.svg</code> onto that <kbd class="ui">Texture</kbd> field. The Godot logo appears in the viewport, centered on the origin.</li>
+    <li><strong>Shrink it.</strong> With <code>Sprite</code> selected, in the Inspector under <kbd class="ui">Transform</kbd> set <kbd class="ui">Scale</kbd> to <code>0.5</code> on X and <code>0.5</code> on Y.</li>
+    <li><strong>Tint it.</strong> Still on <code>Sprite</code>, open <kbd class="ui">Visibility</kbd> and click <kbd class="ui">Modulate</kbd>. Set the color to a light blue (RGB about <code>0.35</code>, <code>0.85</code>, <code>1.0</code>). The logo turns cyan so a gem is obvious next to the white icon you will add later. The script name of that property is <code>modulate</code>.</li>
+    <li><strong>Attach <code>gem.gd</code>.</strong> Right-click <code>Gem</code> (the root, not <code>Sprite</code>) &gt; <kbd class="ui">Attach Script</kbd>. Inherits <code>Node2D</code>, Template <kbd class="ui">Object: Empty</kbd>, Path <code>res://day02/gem.gd</code>, <kbd class="ui">Create</kbd>. Replace the whole file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://day02/gem.gd">
+extends Node2D
+class_name Gem
+
+signal collected(points: int)
+
+const GEM_COLOR: Color = Color(0.35, 0.85, 1.0)
+const LIFETIME_SECONDS: float = 2.5
+
+@export var data: ItemData
+
+@onready var sprite: Sprite2D = $Sprite
+
+func _ready() -> void:
+    add_to_group("pickups")
+    sprite.modulate = GEM_COLOR
+    await get_tree().create_timer(LIFETIME_SECONDS).timeout
+    collected.emit(_points())
+    queue_free()
+
+func flash() -> void:
+    var tween := create_tween()
+    tween.tween_property(sprite, "modulate", Color.WHITE, 0.1)
+    tween.tween_property(sprite, "modulate", GEM_COLOR, 0.25)
+
+func _points() -> int:
+    if data == null:
+        return 5
+    return data.points
+      </script>
+      <p>The scene is a <code>PackedScene</code> of a <code>Gem</code>. On entry it joins the <code>pickups</code> group, tints the sprite, then waits on a scene-tree timer (there is no Timer node in this scene). When the wait ends it emits <code>collected</code> with the resource's points and deletes itself. <code>flash</code> is what the parent will call through the group. <code>create_tween()</code> animates <code>modulate</code> and then frees the tween with the node.</p></li>
+    <li><strong>Assign the resource.</strong> Click <kbd class="ui">2D</kbd>. Select the <code>Gem</code> root. In the Inspector, under the script section, find <kbd class="ui">Data</kbd> (the <code>@export</code>). Drag <code>gem_data.tres</code> from the FileSystem dock onto <kbd class="ui">Data</kbd>. It should read <code>gem_data.tres</code>, not <code>&lt;empty&gt;</code>.</li>
+    <li><strong>Save and run the gem alone.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd>, then <kbd>F6</kbd> with the <code>gem.tscn</code> tab active. You should see a small cyan logo. Leave the window open for about three seconds.</li>
+  </ol>
+
+  <pre class="scene-tree">Gem (Node2D)                        [gem.gd]
+└── Sprite (Sprite2D)               texture = icon.svg, scale 0.5</pre>
+
+  <div class="checkpoint"><p>The cyan logo disappears on its own after about 2.5 seconds, and the Output panel has no red error. That disappearance is <code>await get_tree().create_timer(2.5).timeout</code> followed by <code>queue_free()</code>. If the logo is white and huge, <code>Sprite</code> is missing the scale or the script did not run (check that <code>gem.gd</code> is on <code>Gem</code>, not on <code>Sprite</code>). If it never disappears, the script was not saved. Stop with <kbd>F8</kbd>.</p></div>
+
+  <h2 id="build-3">3. Instancing, overrides, Make Unique (about 35 minutes)</h2>
+  <p>The chain-link button puts a live copy of <code>gem.tscn</code> under <code>ClickIcon</code>. You will override one copy, edit the source scene, then split a shared resource with <kbd class="ui">Make Unique</kbd>. After the checkpoint you delete both copies. The toy spawns its own gem later; these two exist only so you can see the rules.</p>
+  <ol class="steps">
+    <li><strong>Open the toy scene.</strong> In the FileSystem dock, double-click <code>day02/click_icon.tscn</code>. The Scene dock shows <code>ClickIcon</code> and nothing under it.</li>
+    <li><strong>Select the parent.</strong> Click <code>ClickIcon</code> in the Scene dock. The instance becomes a child of whatever is selected.</li>
+    <li><strong>Instance the gem.</strong> At the top of the Scene dock, click the chain-link button <kbd class="ui">Instantiate Child Scene</kbd> (next to the <kbd class="ui">+</kbd>). Choose <code>day02/gem.tscn</code> and click <kbd class="ui">Open</kbd>. A node named <code>Gem</code> appears under <code>ClickIcon</code>. Its children are hidden until you expand it. A cyan logo shows in the viewport.</li>
+    <li><strong>Instance a second copy.</strong> Click <code>ClickIcon</code> again (so the second copy is also a direct child, not a child of the first gem). Click the chain-link button again, choose <code>gem.tscn</code>, <kbd class="ui">Open</kbd>. The new node is named <code>Gem2</code>.</li>
+    <li><strong>Place them.</strong> Select <code>Gem</code>. In the Inspector, <kbd class="ui">Transform &gt; Position</kbd>, set X to <code>480</code> and Y to <code>460</code>. Select <code>Gem2</code>, set Position X to <code>760</code> and Y to <code>460</code>. A grey revert button appears beside Position on each copy. That button means "this value overrides the source scene."</li>
+    <li><strong>Edit the source scene.</strong> Click the <code>gem.tscn</code> tab (or double-click <code>gem.tscn</code> in the FileSystem dock). Select <code>Sprite</code>. Set <kbd class="ui">Transform &gt; Scale</kbd> to <code>0.35</code> and <code>0.35</code>. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+    <li><strong>Look at the copies.</strong> Click the <code>click_icon.tscn</code> tab. Both logos are smaller. <code>Gem2</code> is still at X <code>760</code>: the scale came from the source, the position is an override. Select <code>Gem2</code>, click the revert button beside <kbd class="ui">Position</kbd>. It jumps back to the source position <code>(0, 0)</code>, on top of the origin. Set Position back to <code>760</code>, <code>460</code> so you can still see it.</li>
+    <li><strong>Prove the resource is shared.</strong> Select <code>Gem</code>. In the Inspector, the <kbd class="ui">Data</kbd> property shows <code>gem_data.tres</code>. Change <kbd class="ui">Points</kbd> inside that resource to <code>99</code> (click the resource to expand it, or double-click <code>gem_data.tres</code>). Select <code>Gem2</code> and expand <kbd class="ui">Data</kbd>: Points is <code>99</code> as well. One file, two users.</li>
+    <li><strong>Make one copy unique.</strong> Select <code>Gem2</code>. Right-click the <kbd class="ui">Data</kbd> property row in the Inspector (the row labelled Data, not the file in the FileSystem dock) and click <kbd class="ui">Make Unique</kbd>. The property no longer names <code>gem_data.tres</code>; it is a local sub-resource. Set its <kbd class="ui">Points</kbd> to <code>25</code>.</li>
+    <li><strong>Check the other copy.</strong> Select <code>Gem</code> and expand <kbd class="ui">Data</kbd>. Points is still <code>99</code> (the file). <code>Gem2</code> stays at <code>25</code>. Open <code>gem_data.tres</code> and set <kbd class="ui">Points</kbd> back to <code>10</code>, then <kbd>Ctrl</kbd>+<kbd>S</kbd>. <code>Gem</code> follows the file back to <code>10</code>. <code>Gem2</code> stays at <code>25</code>.</li>
+  </ol>
+
+  <div class="checkpoint"><p><code>Gem</code> Data points is <code>10</code> and still references <code>gem_data.tres</code>. <code>Gem2</code> Data points is <code>25</code> and does not name that file. Both sprites use scale <code>0.35</code> from <code>gem.tscn</code>. Position on <code>Gem2</code> still shows a revert button. If Make Unique was unavailable, you right-clicked the file in the FileSystem dock; right-click the Inspector property instead.</p></div>
+
+  <ol class="steps">
+    <li><strong>Delete both practice copies.</strong> In <code>click_icon.tscn</code>, select <code>Gem</code>, press <kbd>Delete</kbd>. Select <code>Gem2</code>, press <kbd>Delete</kbd>. The Scene dock is <code>ClickIcon</code> alone. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>. <code>gem.tscn</code> and <code>gem_data.tres</code> are unchanged on disk (points <code>10</code>, sprite scale <code>0.35</code>).</li>
+  </ol>
+
+  <div class="callout docs"><span class="callout-title">Docs</span>
+    <p><a href="https://docs.godotengine.org/en/stable/getting_started/step_by_step/nodes_and_scenes.html" target="_blank" rel="noopener">Nodes and scenes</a>, <a href="https://docs.godotengine.org/en/stable/getting_started/step_by_step/instancing.html" target="_blank" rel="noopener">Instancing</a> (the revert icon and Make Unique), and <a href="https://docs.godotengine.org/en/stable/tutorials/scripting/nodes_and_scene_instances.html" target="_blank" rel="noopener">Nodes and scene instances</a> for <code>instantiate()</code> / <code>add_child()</code>.</p></div>
+
+  <h2 id="build-4">4. Input Map and the moving icon (about 25 minutes)</h2>
+  <p>Actions are project-wide names. These five spellings are used again in later projects: <code>move_left</code>, <code>move_right</code>, <code>move_up</code>, <code>move_down</code>, <code>jump</code>. Create them exactly. Leave <code>dash</code>, <code>attack</code>, <code>interact</code>, <code>pause</code>, <code>confirm</code> and <code>cancel</code> for the days that introduce them (the optional challenge adds <code>confirm</code>).</p>
+  <ol class="steps">
+    <li><strong>Open Project Settings.</strong> <kbd class="menu">Project &gt; Project Settings…</kbd></li>
+    <li><strong>Open Input Map.</strong> Click the <kbd class="ui">Input Map</kbd> tab at the top of the window (beside <kbd class="ui">General</kbd>). Leave <kbd class="ui">Show Built-in Actions</kbd> off.</li>
+    <li><strong>Add <code>move_left</code>.</strong> Click the action name field at the top, type <code>move_left</code>, click <kbd class="ui">Add</kbd>. The action appears in the list.</li>
+    <li><strong>Bind Left.</strong> On the <code>move_left</code> row, click the <kbd class="ui">+</kbd> at the right. The event window shows <kbd class="ui">Listening for Input…</kbd>. Press the <kbd>Left</kbd> arrow key. Click <kbd class="ui">OK</kbd>.</li>
+    <li><strong>Bind A as well.</strong> Click <kbd class="ui">+</kbd> on <code>move_left</code> again. Press <kbd>A</kbd>. Click <kbd class="ui">OK</kbd>. One action, two keys. Either key will count as "pressed."</li>
+    <li><strong>Add the other four</strong> with the same clicks (type the name, <kbd class="ui">Add</kbd>, <kbd class="ui">+</kbd>, key, <kbd class="ui">OK</kbd>, then a second key):
+      <table>
+        <tr><th>Action</th><th>Keys</th></tr>
+        <tr><td><code>move_right</code></td><td>Right arrow, <kbd>D</kbd></td></tr>
+        <tr><td><code>move_up</code></td><td>Up arrow, <kbd>W</kbd></td></tr>
+        <tr><td><code>move_down</code></td><td>Down arrow, <kbd>S</kbd></td></tr>
+        <tr><td><code>jump</code></td><td><kbd>Space</kbd> only</td></tr>
+      </table>
+    </li>
+    <li><strong>Close settings.</strong> Click <kbd class="ui">Close</kbd> at the bottom of Project Settings. The map is stored in <code>project.godot</code>.</li>
+  </ol>
+
+  <div class="checkpoint"><p>Input Map lists <code>move_left</code> (Left and A), <code>move_right</code> (Right and D), <code>move_up</code> (Up and W), <code>move_down</code> (Down and S) and <code>jump</code> (Space). Names are snake_case with underscores. <code>moveleft</code> will not match the scripts.</p></div>
+
+  <ol class="steps">
+    <li><strong>Add the icon sprite.</strong> Open <code>click_icon.tscn</code>. Select <code>ClickIcon</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>Sprite2D</code>, rename it <code>Icon</code> with <kbd>F2</kbd>.</li>
+    <li><strong>Texture and position.</strong> Drag <code>icon.svg</code> onto <kbd class="ui">Texture</kbd>. Under <kbd class="ui">Transform &gt; Position</kbd> set X <code>576</code> and Y <code>300</code> so the logo sits near the middle of the default 1152×648 window. Leave Scale at <code>1</code>.</li>
+    <li><strong>Add the click shape.</strong> Select <code>Icon</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add an <code>Area2D</code>, rename it <code>Hit</code>. An <code>Area2D</code> receives mouse events when the pointer is over a collision shape. Select <code>Hit</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>CollisionShape2D</code>. Leave that node's name as <code>CollisionShape2D</code>.</li>
+    <li><strong>Size the rectangle.</strong> Select <code>CollisionShape2D</code>. In the Inspector, <kbd class="ui">Shape</kbd> is empty. Click it and choose <kbd class="ui">New RectangleShape2D</kbd>. Click the new shape resource to expand it. Set <kbd class="ui">Size</kbd> to <code>128</code> and <code>128</code> (the icon is 128 pixels; the shape is centered on the sprite). Leave <kbd class="ui">Input Pickable</kbd> on <code>Hit</code> at its default On, and leave <kbd class="ui">Collision &gt; Layer</kbd> with the first box checked. Picking does nothing if every layer is off.</li>
+    <li><strong>Attach the icon script.</strong> Right-click <code>Icon</code> &gt; <kbd class="ui">Attach Script</kbd>. Inherits <code>Sprite2D</code>, Template <kbd class="ui">Object: Empty</kbd>, Path <code>res://day02/clickable_icon.gd</code>, <kbd class="ui">Create</kbd>. Replace the whole file and save.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://day02/clickable_icon.gd">
+extends Sprite2D
+class_name ClickableIcon
+
+signal clicked(points: int)
+
+const SPEED: float = 280.0
+
+@export var click_points: int = 1
+
+func _process(delta: float) -> void:
+    var direction: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+    position += direction * SPEED * delta
+    if Input.is_action_just_pressed("jump"):
+        _pulse()
+
+func _on_hit_input_event(_viewport: Node, event: InputEvent, _shape_idx: int) -> void:
+    var mouse := event as InputEventMouseButton
+    if mouse == null:
+        return
+    if not mouse.pressed or mouse.button_index != MOUSE_BUTTON_LEFT:
+        return
+    clicked.emit(click_points)
+    _pulse()
+    get_viewport().set_input_as_handled()
+
+func _pulse() -> void:
+    var tween := create_tween()
+    tween.tween_property(self, "scale", Vector2(1.2, 1.2), 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+    tween.tween_property(self, "scale", Vector2.ONE, 0.12)
+      </script>
+      <p><code>get_vector</code> reads the four move actions and returns a <code>Vector2</code> at most length 1, so diagonals are not faster. Multiplying by <code>delta</code> keeps 280 pixels per second. <code>is_action_just_pressed</code> is true on the single frame Space goes down. The click function is not wired yet; you will connect <code>Hit</code>'s <code>input_event</code> signal to this exact function name in the next section. <code>_pulse</code> is a two-step tween on <code>scale</code>.</p></li>
+    <li><strong>Run the scene.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd>, then <kbd>F6</kbd>. Click the game view. Hold <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or the arrow keys. Tap <kbd>Space</kbd>.</li>
+  </ol>
+
+  <div class="checkpoint"><p>The logo moves at a steady speed and stops when you release the keys. Space makes it grow and shrink once. The Output panel does not say the action <code>move_left</code> is missing. Clicks do nothing visible yet: <code>clicked</code> has no listener, and <code>_on_hit_input_event</code> is not connected, so the click tween does not run. If the logo never moves, the game view does not have focus, or an action name differs from the script. Stop with <kbd>F8</kbd>.</p></div>
+
+  <div class="callout warn"><span class="callout-title">Positive Y is down</span>
+    <p><code>move_up</code> is the negative-Y action passed to <code>get_vector</code>. In 2D, negative Y goes up the screen. If you swap <code>move_up</code> and <code>move_down</code> in the call, W moves the logo down.</p></div>
+
+  <h2 id="build-5">5. Signals, groups, unique names (about 35 minutes)</h2>
+  <p>You connect one signal with the mouse and leave the custom signal for code. Both ways end as the same thing: a callable stored on the signal. Doing both for the same signal would run the function twice, so you will not double-click <code>clicked</code>.</p>
+  <ol class="steps">
+    <li><strong>Open Signals.</strong> In <code>click_icon.tscn</code>, select <code>Hit</code>. On the right, next to <kbd class="ui">Inspector</kbd>, open the <kbd class="ui">Node</kbd> tab and the <kbd class="ui">Signals</kbd> sub-tab. If your editor shows a separate <kbd class="ui">Signals</kbd> tab instead of a Node tab, use that. Day 1 noted the rename; the docs call this the Signals dock either way.</li>
+    <li><strong>Double-click the signal.</strong> In the list, double-click <code>input_event(viewport: Node, event: InputEvent, shape_idx: int)</code>. The <kbd class="ui">Connect a Signal</kbd> window opens.</li>
+    <li><strong>Pick the receiver.</strong> In the node tree inside that window, click <code>Icon</code> (the sprite that owns <code>clickable_icon.gd</code>). Leave <kbd class="ui">Receiver Method</kbd> as <code>_on_hit_input_event</code>. That name is already a function in the script, so the editor connects to it. Click <kbd class="ui">Connect</kbd>.
+      <div class="callout note"><span class="callout-title">Advanced</span>
+        <p>The <kbd class="ui">Advanced</kbd> button at the bottom-left of the same window can bind extra arguments and pick any function. You will bind from code instead, which is the same idea: extra values appended after the signal's own arguments.</p></div></li>
+    <li><strong>If a second function appeared.</strong> Open <code>clickable_icon.gd</code>. If the editor appended an empty <code>_on_hit_input_event</code> at the bottom, delete that empty copy. Keep the one from the listing. The connection is stored in the scene by method name; the name has to stay <code>_on_hit_input_event</code>. Save the script.</li>
+    <li><strong>See the connection.</strong> Select <code>Hit</code> again, Signals dock. <code>input_event</code> shows a connection to <code>Icon</code>. In the script editor, the function's left gutter has a connection icon. Clicking it lists the connection. That icon exists for editor connections.</li>
+    <li><strong>See the custom signal, and do not connect it here.</strong> Select <code>Icon</code>. In the Signals dock, <code>clicked(points: int)</code> is listed because the script declares it. Leave it unconnected. Section 6 connects it with <code>clicked.connect</code>.</li>
+    <li><strong>Click test.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd>, <kbd>F6</kbd>, click the logo. It pulses (the handler emits <code>clicked</code> and calls <code>_pulse</code>). The score does not change yet. Stop with <kbd>F8</kbd>. If the click does nothing, turn on <kbd class="menu">Debug &gt; Visible Collision Shapes</kbd>, run again, and check that a rectangle covers the logo. A missing <code>RectangleShape2D</code>, or <kbd class="ui">Collision &gt; Layer</kbd> all unchecked, means the area never sees the mouse.</li>
+  </ol>
+
+  <div class="checkpoint"><p>Clicking the logo pulses its scale. Signals dock on <code>Hit</code> shows <code>input_event</code> connected to <code>Icon._on_hit_input_event</code>. <code>clicked</code> on <code>Icon</code> has no connection yet. If the pulse happens twice per click, the function was connected twice: in the Signals dock, right-click the extra connection and disconnect it.</p></div>
+
+  <p>The code equivalent of what you just clicked, if you ever build the node from a script, is one line: <code>$Hit.input_event.connect(_on_hit_input_event)</code>. You already have the editor connection, so you do not add that line.</p>
+
+  <ol class="steps">
+    <li><strong>Add the score label.</strong> Select <code>ClickIcon</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>Label</code>, rename it <code>ScoreLabel</code>. In the Inspector set <kbd class="ui">Text</kbd> to <code>Score: 0</code>. Set <kbd class="ui">Transform &gt; Position</kbd> (or <kbd class="ui">Layout &gt; Position</kbd>, depending on the section the Inspector uses for this Control) to X <code>24</code>, Y <code>16</code>.</li>
+    <li><strong>Make the name unique.</strong> Right-click <code>ScoreLabel</code> in the Scene dock and choose <kbd class="ui">Access as Unique Name</kbd>. A <code>%</code> appears beside the name. From now on the root script can use <code>%ScoreLabel</code> even if you later parent the label under a container. (Typing <code>%</code> at the start of a rename does the same thing.)</li>
+    <li><strong>Add the spawn marker.</strong> Select <code>ClickIcon</code>, <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>Marker2D</code>, rename it <code>SpawnPoint</code>. Set Position to X <code>576</code>, Y <code>460</code>. A marker is only a position you can read from code; it is invisible in the running game.</li>
+    <li><strong>Add the Timer node.</strong> Select <code>ClickIcon</code>, <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>Timer</code>, rename it <code>Lifetime</code>. In the Inspector set <kbd class="ui">Wait Time</kbd> to <code>1</code>, turn <kbd class="ui">One Shot</kbd> on, leave <kbd class="ui">Autostart</kbd> off. This node is the "wait, then call a function" you can see in the tree. The gem's <code>await create_timer</code> is the other kind: no node, one line, gone when the function resumes.</li>
+    <li><strong>Put the gem in the group from the dock as well.</strong> Open <code>gem.tscn</code>. Select the <code>Gem</code> root. Open the <kbd class="ui">Groups</kbd> sub-tab (same place as Signals, the other sub-tab; or a <kbd class="ui">Groups</kbd> tab if that is how your editor shows it). Click the <kbd class="ui">+</kbd>. In <em>Create New Group</em>, type <code>pickups</code>. Leave <kbd class="ui">Global</kbd> unchecked. Click <kbd class="ui">OK</kbd>. The checkbox beside <code>pickups</code> is on for <code>Gem</code>. Save the scene.
+      <div class="callout note"><span class="callout-title">Same group twice</span>
+        <p><code>gem.gd</code> also calls <code>add_to_group("pickups")</code>. Membership is a set: the node is in <code>pickups</code> once. The dock is how you tag a node without a script; the call is how a spawned node tags itself. The course group name is <code>pickups</code>, plural.</p></div></li>
+  </ol>
+
+  <pre class="scene-tree">ClickIcon (Node2D)
+├── Icon (Sprite2D)                 [clickable_icon.gd]
+│   └── Hit (Area2D)                input_event -&gt; Icon._on_hit_input_event
+│       └── CollisionShape2D        RectangleShape2D 128x128
+├── ScoreLabel (Label)              % unique name
+├── SpawnPoint (Marker2D)
+└── Lifetime (Timer)                wait 1 s, one shot, autostart off</pre>
+
+  <div class="checkpoint"><p><code>ScoreLabel</code> shows a <code>%</code> in the Scene dock. <code>Lifetime</code> has Wait Time 1, One Shot on, Autostart off. <code>gem.tscn</code> root lists group <code>pickups</code>. <code>click_icon.tscn</code> has no <code>Gem</code> child. Save both scenes.</p></div>
+
+  <div class="callout docs"><span class="callout-title">Docs</span>
+    <p><a href="https://docs.godotengine.org/en/stable/getting_started/step_by_step/signals.html" target="_blank" rel="noopener">Using signals</a> (double-click, Connect, and <code>signal.connect</code>), <a href="https://docs.godotengine.org/en/stable/tutorials/scripting/groups.html" target="_blank" rel="noopener">Groups</a>, <a href="https://docs.godotengine.org/en/stable/tutorials/scripting/scene_unique_nodes.html" target="_blank" rel="noopener">Scene unique nodes</a>, <a href="https://docs.godotengine.org/en/stable/classes/class_callable.html" target="_blank" rel="noopener">Callable</a> (<code>bind</code> appends arguments).</p></div>
+
+  <h2 id="build-6">6. Score autoload, one spawn, both timers (about 30 minutes)</h2>
+  <p>The root script is the glue: it listens to the icon, asks <code>Score</code> to add points, spawns one <code>Gem</code>, and uses the Timer node to flash whatever is in <code>pickups</code>.</p>
+  <ol class="steps">
+    <li><strong>Write the autoload script.</strong> FileSystem, right-click <code>day02</code> &gt; <kbd class="ui">New &gt; Script…</kbd>. Inherits <code>Node</code>, Template <kbd class="ui">Object: Empty</kbd>, Path <code>res://day02/score.gd</code>, <kbd class="ui">Create</kbd>. Replace the file. Do not add <code>class_name</code>.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://day02/score.gd">
+extends Node
+
+signal points_changed(total: int)
+
+var total: int = 0
+
+func add_points(amount: int, source: String) -> void:
+    total += amount
+    points_changed.emit(total)
+    print("Score ", total, " from ", source)
+
+func reset() -> void:
+    total = 0
+    points_changed.emit(total)
+      </script>
+      <p><code>add_points</code> is the only writer of <code>total</code>. It emits <code>points_changed</code> so the label can follow along without the icon knowing the label exists. <code>reset</code> is there for the challenge and for a paused debugging session.</p></li>
+    <li><strong>Register the autoload.</strong> <kbd class="menu">Project &gt; Project Settings… &gt; Globals &gt; Autoload</kbd>. In <kbd class="ui">Path</kbd>, click the folder icon and choose <code>res://day02/score.gd</code> (or type that path). Set <kbd class="ui">Node Name</kbd> to <code>Score</code> if the field filled in <code>score</code>. Click <kbd class="ui">Add</kbd>. The row appears with <kbd class="ui">Enable</kbd> checked. Click <kbd class="ui">Close</kbd>.</li>
+    <li><strong>Attach the root script.</strong> Open <code>click_icon.tscn</code>, right-click <code>ClickIcon</code> &gt; <kbd class="ui">Attach Script</kbd>. Inherits <code>Node2D</code>, Template <kbd class="ui">Object: Empty</kbd>, Path <code>res://day02/click_icon.gd</code>, <kbd class="ui">Create</kbd>. Replace the whole file and save.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://day02/click_icon.gd">
+extends Node2D
+
+const GEM_SCENE: PackedScene = preload("res://day02/gem.tscn")
+
+@onready var icon: ClickableIcon = $Icon
+@onready var score_label: Label = %ScoreLabel
+@onready var spawn_point: Marker2D = $SpawnPoint
+@onready var lifetime: Timer = $Lifetime
+
+var _spawned: bool = false
+
+func _ready() -> void:
+    Score.points_changed.connect(_on_score_points_changed)
+    icon.clicked.connect(_on_icon_clicked.bind("icon"))
+    lifetime.timeout.connect(_on_lifetime_timeout)
+    score_label.text = "Score: %d" % Score.total
+
+func _on_icon_clicked(points: int, source: String) -> void:
+    Score.add_points(points, source)
+    if _spawned:
+        return
+    _spawned = true
+    var gem := GEM_SCENE.instantiate() as Gem
+    if gem == null:
+        push_error("day02/gem.tscn did not instantiate as Gem")
+        return
+    gem.position = spawn_point.position
+    gem.collected.connect(_on_gem_collected)
+    add_child(gem)
+    lifetime.start()
+
+func _on_gem_collected(points: int) -> void:
+    Score.add_points(points, "gem")
+
+func _on_lifetime_timeout() -> void:
+    var found: Array[Node] = get_tree().get_nodes_in_group("pickups")
+    print("pickups in group: ", found.size())
+    get_tree().call_group("pickups", "flash")
+
+func _on_score_points_changed(total: int) -> void:
+    score_label.text = "Score: %d" % total
+      </script>
+      <p><code>$Icon</code> is a fixed path, cached with <code>@onready</code> so it is not looked up in <code>_init</code>. <code>%ScoreLabel</code> is the unique name. <code>.bind("icon")</code> makes the handler receive <code>(points, "icon")</code>: the signal argument first, the bound string second. <code>instantiate()</code> builds the gem; <code>add_child</code> is what enters the tree and starts its <code>_ready</code> (including the 2.5 second <code>await</code>). <code>lifetime.start()</code> runs the Timer node you configured. Connecting <code>timeout</code> here is the code version of the double-click you used on <code>input_event</code>; double-clicking <code>timeout</code> in the Signals dock would do the same job, so this one stays in code only.</p></li>
+    <li><strong>Set the main scene.</strong> In the FileSystem dock, right-click <code>day02/click_icon.tscn</code>. If the menu has <kbd class="ui">Set as Main Scene</kbd>, choose it. If that entry is absent, use <kbd class="menu">Project &gt; Project Settings…</kbd>, <kbd class="ui">General</kbd> tab, filter <code>main scene</code>, and set <kbd class="menu">Application &gt; Run &gt; Main Scene</kbd> to <code>res://day02/click_icon.tscn</code>. Close the window.
+      <div class="callout version"><span class="callout-title">Verify: menu wording</span>
+        <p>The FileSystem shortcut is not spelled out in the docs (Day 1 flagged it). The Project Settings path is the documented one. Either one writes <code>application/run/main_scene</code>.</p></div></li>
+    <li><strong>Run the project.</strong> Press <kbd>Ctrl</kbd>+<kbd>S</kbd> on every open scene. Press <kbd>F5</kbd> (<kbd class="ui">Run Project</kbd>), not F6. Click the game view.</li>
+    <li><strong>Play the toy once.</strong> Move the logo with the arrows or WASD. Tap Space (a pulse, score unchanged). Click the logo. Wait three seconds. Click the logo again. Press <kbd>F8</kbd>.</li>
+  </ol>
+
+  <div class="checkpoint"><p>First click: the label becomes <code>Score: 1</code>, Output prints <code>Score 1 from icon</code>, and one smaller cyan logo appears near the bottom center. About a second later Output prints <code>pickups in group: 1</code> and the gem flashes white, then cyan. About 2.5 seconds after the click the gem vanishes, the label reads <code>Score: 11</code>, and Output prints <code>Score 11 from gem</code>. A second click prints <code>Score 12 from icon</code> and does not spawn another gem. If F5 still shows <em>Hello Godot</em>, the main scene is still <code>hello.tscn</code>. If the count is greater than 1, practice gems are still children of <code>ClickIcon</code>. If the label errors with <code>Node not found</code> and <code>%ScoreLabel</code>, unique name is off or the node is not named <code>ScoreLabel</code>.</p></div>
+
+  <ol class="steps">
+    <li><strong>See the autoload in the live tree.</strong> Press <kbd>F5</kbd> again. While the game runs, look at the top of the <strong>Scene</strong> dock and click <kbd class="ui">Remote</kbd>. Expand <code>root</code>. <code>Score</code> is a child of <code>root</code>, and so is <code>ClickIcon</code>. Click the logo. Expand <code>ClickIcon</code>: a <code>Gem</code> node appears, then disappears after the wait. Click <kbd class="ui">Local</kbd> before you edit anything. Editing while Remote is selected shows the running tree, which is discarded when you stop. Press <kbd>F8</kbd>.</li>
+  </ol>
+
+  <h2 id="build-7">7. Output versus Debugger (about 15 minutes)</h2>
+  <p><code>print</code> is a log line. <code>push_error</code> is a failure with a stack. A breakpoint pauses on a line you choose. You will try each once, then put the scripts back.</p>
+  <ol class="steps">
+    <li><strong>Breakpoint.</strong> Open <code>click_icon.gd</code>. Click the gutter immediately left of the line number on <code>Score.add_points(points, source)</code> inside <code>_on_icon_clicked</code>. A red dot appears. That dot is stored by the editor.</li>
+    <li><strong>Hit it.</strong> <kbd>F5</kbd>, click the logo. The game pauses. The bottom panel switches to <kbd class="ui">Debugger</kbd>, <kbd class="ui">Stack Trace</kbd>. A green arrow in the script gutter marks the line. In the stack variables you can read <code>points</code> and <code>source</code> (<code>source</code> is <code>icon</code>, which is the bound argument).</li>
+    <li><strong>Continue.</strong> In the Debugger toolbar click <kbd class="ui">Continue</kbd>. The toy finishes the click (score, spawn). Press <kbd>F8</kbd>. Click the red dot again so the breakpoint is gone. If you leave it, every future click pauses.</li>
+    <li><strong>Force an error.</strong> In <code>_ready</code>, as the first line inside the function, add <code>push_error("Day 2: error on purpose")</code>. Save. <kbd>F5</kbd>. Open <kbd class="ui">Debugger</kbd> &gt; <kbd class="ui">Errors</kbd>. The message is listed there with a stack. <code>print</code> lines stay on the <kbd class="ui">Output</kbd> panel's log. Stop with <kbd>F8</kbd>.</li>
+    <li><strong>Remove the error line.</strong> Delete <code>push_error(...)</code> so <code>_ready</code> matches the listing again. Save. <kbd>F5</kbd> once more: the Errors tab does not add that message, and the toy still scores. Stop.</li>
+  </ol>
+
+  <div class="checkpoint"><p>With the breakpoint removed and the <code>push_error</code> line gone, <kbd>F5</kbd> plays the toy with no new error. Output still shows the <code>Score ... from ...</code> lines. If the game pauses on click, the red dot is still in the gutter.</p></div>
+
+  <div class="callout docs"><span class="callout-title">Docs</span>
+    <p><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/debug/output_panel.html" target="_blank" rel="noopener">Output panel</a> (<code>print</code> vs <code>push_error</code>) and <a href="https://docs.godotengine.org/en/stable/tutorials/scripting/debug/debugger_panel.html" target="_blank" rel="noopener">Debugger panel</a> (Stack Trace, Errors, Continue). The Remote/Local switch is in <a href="https://docs.godotengine.org/en/stable/tutorials/scripting/debug/overview_of_debugging_tools.html" target="_blank" rel="noopener">Overview of debugging tools</a>.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong><kbd>F5</kbd> still shows <em>Hello Godot</em>.</strong> The main scene is still <code>res://day01/hello.tscn</code>. Set <code>click_icon.tscn</code> as the main scene. <kbd>F6</kbd> never consults that setting.</li>
+    <li><strong>The click adds 2 points.</strong> <code>input_event</code> or <code>clicked</code> is connected twice (once in the Signals dock and once in <code>_ready</code>, or two editor connections). Disconnect the extra one. The listing connects <code>clicked</code> only in code, and <code>input_event</code> only in the editor.</li>
+    <li><strong><code>Node not found</code> for <code>$Icon</code> or <code>%ScoreLabel</code>.</strong> The node was renamed, the unique-name toggle is off, or the path is used inside <code>_init</code>. <code>@onready</code> and <code>_ready</code> are the places those paths work. Renaming a node in the Scene dock updates editor signal paths; renaming the <code>.gd</code> file in File Explorer does not.</li>
+    <li><strong>Every gem's points change together.</strong> They still share <code>gem_data.tres</code>. Right-click that instance's <kbd class="ui">Data</kbd> property and choose <kbd class="ui">Make Unique</kbd> before editing.</li>
+    <li><strong>The icon does not move, and Output names a missing action.</strong> The Input Map entry is spelled differently from the string in <code>get_vector</code>. The five names are <code>move_left</code>, <code>move_right</code>, <code>move_up</code>, <code>move_down</code>, <code>jump</code>.</li>
+    <li><strong>Clicks miss the logo.</strong> <code>Hit</code> has no <code>RectangleShape2D</code>, the shape is tiny (default size is 20×20 until you set 128), or <kbd class="ui">Collision &gt; Layer</kbd> has every box cleared. <code>input_pickable</code> must stay on.</li>
+    <li><strong>The editor connection does nothing after you replaced the script.</strong> The receiver method was renamed. The scene still calls <code>_on_hit_input_event</code>.</li>
+    <li><strong><code>await</code> inside <code>_ready</code> feels like it froze the game.</strong> Only that function is suspended. The icon keeps moving. Code you place after the <code>await</code> in <code>gem.gd</code> runs 2.5 seconds later, which is why <code>emit</code> and <code>queue_free</code> happen then.</li>
+    <li><strong>A new <code>.tres</code> will not open.</strong> <code>ItemData._init</code> has a parameter without a default. The Inspector calls <code>_init()</code> with zero arguments.</li>
+    <li><strong><code>Score</code> is an error, or there are two Score types.</strong> The autoload Node Name must be <code>Score</code>, and <code>score.gd</code> must not declare <code>class_name Score</code>. Do not <code>queue_free()</code> an autoload; the engine crashes if you remove it that way.</li>
+    <li><strong>The Scene dock looks empty of your nodes while the game runs.</strong> It is on <kbd class="ui">Remote</kbd>. Click <kbd class="ui">Local</kbd>.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 20-30 min)</h2>
+  <div class="challenge">
+    <h3>Spawn another gem on purpose</h3>
+    <p>The toy spawns one gem, then ignores further spawns. Add the course action <code>confirm</code> (Enter) and make Enter spawn an extra gem that also adds its points when it disappears. Keep the click behaviour.</p>
+    <details>
+      <summary>Hints</summary>
+      <ul>
+        <li>Input Map: action name <code>confirm</code>, key Enter. Later days use that same name.</li>
+        <li>The boolean <code>_spawned</code> is what blocks the second spawn. A second call needs a way around that flag without spawning a gem on every click.</li>
+        <li>Poll <code>Input.is_action_just_pressed("confirm")</code> from <code>_process</code> on the icon or on <code>ClickIcon</code>. The icon can emit another signal; the root already knows how to <code>instantiate</code>, <code>connect</code> <code>collected</code>, and <code>add_child</code>.</li>
+        <li><code>Callable.bind</code> can pass a different source string than <code>"icon"</code> so Output tells the two spawns apart.</li>
+        <li><code>Score.reset()</code> already exists if you want a third key to zero the label. Connect it the same way as <code>points_changed</code>.</li>
+        <li>Each gem waits 2.5 seconds on its own <code>create_timer</code>. Two gems in group <code>pickups</code> both receive <code>flash</code> from <code>call_group</code>.</li>
+      </ul>
+    </details>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>You instance <code>gem.tscn</code> twice and change Position on one copy. A grey revert button appears beside Position. What is true?</p>
+      <ul>
+        <li>The source scene's Position is now the value you typed, and both copies move.</li>
+        <li>Only this copy stores an override. Other copies, and the source scene, keep their own Position. The revert button writes the source value back onto this copy.</li>
+        <li>Make Unique ran automatically, so the sprite texture was duplicated on disk.</li>
+      </ul>
+      <p class="explain">A property override is per instance. Saving the source updates copies only where they do not override that property. Make Unique is a separate action, used when the thing you are editing is a shared resource such as <code>gem_data.tres</code>.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Where can <code>$Sprite</code> succeed on a node that owns a child named <code>Sprite</code>?</p>
+      <ul>
+        <li>Inside <code>_init</code>, because the children are constructed first.</li>
+        <li>In an <code>@onready</code> variable and inside <code>_ready</code>, after this node has entered the tree.</li>
+        <li>Only inside <code>_physics_process</code>, because <code>$</code> is a physics lookup.</li>
+      </ul>
+      <p class="explain"><code>_init</code> runs before the node is in the tree, so child paths fail. <code>@onready</code> assignments run after enter-tree setup and before <code>_ready</code>. <code>$</code> is <code>get_node</code>, not a physics call.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p><code>signal clicked(points: int)</code> is connected with <code>_on_icon_clicked.bind("icon")</code>. The icon runs <code>clicked.emit(1)</code>. What does <code>_on_icon_clicked</code> receive?</p>
+      <ul>
+        <li>Only the string <code>"icon"</code>. Bind replaces the signal arguments.</li>
+        <li><code>points</code> = 1, then <code>"icon"</code>. Bound arguments are passed after the ones the signal emitted.</li>
+        <li><code>"icon"</code> first, then 1. Bind always inserts at the front.</li>
+      </ul>
+      <p class="explain"><code>Callable.bind</code> appends. The handler is <code>_on_icon_clicked(points: int, source: String)</code>. The Advanced mode of the Connect a Signal window binds extra arguments the same way.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>What does <code>Input.get_vector("move_left", "move_right", "move_up", "move_down")</code> use each string for?</p>
+      <ul>
+        <li>Negative X, positive X, negative Y, positive Y, in that order. The result's length is at most 1.</li>
+        <li>Up, down, left, right. The parameter names in the call are just comments.</li>
+        <li>Four keyboard scancodes, read from the operating system, ignoring the Input Map.</li>
+      </ul>
+      <p class="explain">The signature is <code>get_vector(negative_x, positive_x, negative_y, positive_y)</code>. In 2D, negative Y is up, which is why <code>move_up</code> is the third argument. The strings are Input Map actions, so the keys can change without editing the script.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>While the game runs, where do <code>print("hi")</code> and <code>push_error("hi")</code> show up?</p>
+      <ul>
+        <li>Both only in the script editor gutter, as red dots.</li>
+        <li><code>print</code> is a log line on the Output panel. <code>push_error</code> is listed on Debugger &gt; Errors with a stack trace.</li>
+        <li>Both only on Debugger &gt; Stack Trace, and only after a breakpoint.</li>
+      </ul>
+      <p class="explain">Output is for <code>print</code>. <code>push_error</code> and <code>push_warning</code> are reported on the Debugger Errors tab so they stay distinct from logs. A breakpoint is a third tool: it pauses on a line and opens Stack Trace.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/getting_started/step_by_step/nodes_and_scenes.html" target="_blank" rel="noopener">Nodes and scenes</a>: what a node is, and the first scene.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/getting_started/step_by_step/instancing.html" target="_blank" rel="noopener">Instancing scenes</a>: overrides, the revert button, Make Unique.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_basics.html" target="_blank" rel="noopener">GDScript reference</a>: types, <code>match</code>, lambdas, <code>await</code>, initialization order.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/static_typing.html" target="_blank" rel="noopener">Static typing</a>: <code>:=</code> and typed arrays.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/getting_started/step_by_step/signals.html" target="_blank" rel="noopener">Using signals</a>: the Connect a Signal window and <code>connect</code> from code.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/groups.html" target="_blank" rel="noopener">Groups</a>: the Groups dock and <code>call_group</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/resources.html" target="_blank" rel="noopener">Resources</a>: custom <code>class_name</code> resources and <code>.tres</code> files.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/scripting/singletons_autoload.html" target="_blank" rel="noopener">Singletons (Autoload)</a>: Project Settings &gt; Globals &gt; Autoload.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <p>Files in <code>g00-sandbox</code> after today:</p>
+  <table>
+    <tr><th>Path</th><th>Role</th></tr>
+    <tr><td><code>res://day02/language_tour.gd</code></td><td>Lifecycle and syntax probe. Not in the running scene.</td></tr>
+    <tr><td><code>res://day02/item_data.gd</code></td><td><code>class_name ItemData</code>, extends <code>Resource</code>.</td></tr>
+    <tr><td><code>res://day02/gem_data.tres</code></td><td>One <code>ItemData</code>: display name Gem, points 10.</td></tr>
+    <tr><td><code>res://day02/gem.tscn</code> + <code>gem.gd</code></td><td><code>class_name Gem</code>. Group <code>pickups</code>. Signal <code>collected(points)</code>.</td></tr>
+    <tr><td><code>res://day02/clickable_icon.gd</code></td><td><code>class_name ClickableIcon</code> on the <code>Icon</code> sprite. Signal <code>clicked(points)</code>.</td></tr>
+    <tr><td><code>res://day02/click_icon.tscn</code> + <code>click_icon.gd</code></td><td>Main scene. Nodes <code>Icon</code>, <code>Hit</code>, <code>ScoreLabel</code> (<code>%</code>), <code>SpawnPoint</code>, <code>Lifetime</code>.</td></tr>
+    <tr><td><code>res://day02/score.gd</code></td><td>Autoload node name <code>Score</code>. No <code>class_name</code>.</td></tr>
+  </table>
+  <ul class="checklist">
+    <li><kbd>F5</kbd> runs <code>click_icon.tscn</code>: the logo moves, Space pulses, a click sets the score to 1 and spawns one gem, the gem flashes, then the score becomes 11 and the gem is gone.</li>
+    <li>Input Map has <code>move_left</code>, <code>move_right</code>, <code>move_up</code>, <code>move_down</code> and <code>jump</code> with the keys from section 4.</li>
+    <li><code>Hit.input_event</code> is connected in the editor to <code>_on_hit_input_event</code>. <code>clicked</code>, <code>points_changed</code>, <code>collected</code> and <code>timeout</code> are connected in code.</li>
+    <li>Autoload <code>Score</code> is enabled. While the game runs, Scene dock &gt; Remote shows it under <code>root</code>.</li>
+    <li>No breakpoint remains in <code>click_icon.gd</code>, and <code>_ready</code> does not call <code>push_error</code>.</li>
+    <li>I saved every scene and made a backup (Git commit or a zip, same as Day 1).</li>
+  </ul>
+  <p><strong>Tomorrow (Day 3):</strong> a new project, <code>C:\GodotProjects\g01-dodger</code>. You rebuild <code>move_left</code>, <code>move_right</code>, <code>move_up</code> and <code>move_down</code> with the same spelling, then make an <code>Area2D</code> player, creeps, and a spawner. The sandbox project stays as you left it; Dodger does not open <code>g00-sandbox</code>.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>
+

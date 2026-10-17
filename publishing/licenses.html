@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Licenses and credits | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="publishing" data-id="licenses" data-root="../">
+<main>
+  <header class="lesson-head">
+    <div class="eyebrow">Publishing</div>
+    <h1>Licenses and credits</h1>
+    <p class="lead">Godot is MIT licensed. Shipping a game means the license text is somewhere the player can read it. This page is the course rule for that text, for Godot's third-party notices, and for asset credits. It follows the official "Complying with licenses" page. It is not legal advice.</p>
+    <div class="chips"><span class="chip blue">Engine.get_license_text()</span><span class="chip green">GODOT_COPYRIGHT.txt</span></div>
+  </header>
+
+  <h2 id="mit">What the MIT line actually requires</h2>
+  <div class="callout warn"><span class="callout-title">Not legal advice</span>
+    <p>The Godot docs say the same thing: the notes below are there so you do not ship a commercial game and forget the copyright notice. If a publisher's lawyer disagrees, the lawyer wins.</p></div>
+  <p>Godot's license does not force your game to be MIT. You can sell it. The requirement that does travel with the engine is the notice: the copyright lines and the permission text have to ship with the game, in a place a player can open. One of the approaches on the docs page is enough. This course uses two, because they are cheap: the credits screen, and a file next to the Windows exe.</p>
+  <p>The notice the docs print is this. <code>Engine.get_license_text()</code> returns the same text from the binary you exported, so it stays current when you update Godot. Prefer the method over pasting this block into a label by hand.</p>
+  <pre class="plain">This game uses Godot Engine, available under the following license:
+
+Copyright (c) 2014-present Godot Engine contributors.
+Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre>
+  <p>The docs also accept a credits screen, a licenses screen, an output log on desktop and Android, a file beside the installed program, a printed manual, or a link to <code>godotengine.org/license</code> in the game's documentation. The credits screen in the Ship Kit is the one you should keep. Do not delete it when you reskin a game.</p>
+
+  <h2 id="engine-api">Read the text from the engine</h2>
+  <p>These three calls are on the <code>Engine</code> singleton. They read the binary, so they do not go stale when you move from one stable Godot to the next.</p>
+  <table>
+    <tr><th>Call</th><th>What you show</th></tr>
+    <tr><td><code>Engine.get_license_text()</code></td><td>The Godot MIT notice. The credits scene assigns this to <code>%LicenseLabel</code>.</td></tr>
+    <tr><td><code>Engine.get_license_info()</code></td><td>A dictionary of license name to license text for components linked into the engine.</td></tr>
+    <tr><td><code>Engine.get_copyright_info()</code></td><td>An array of dictionaries. Each has <code>name</code> and <code>parts</code>. The credits scene lists <code>name</code>.</td></tr>
+  </table>
+  <p>The first editor run of the credits scene writes <code>res://licenses/GODOT_LICENSE.txt</code> if that file is missing, using <code>get_license_text()</code>. Exported players cannot write <code>res://</code>. Create the file in the editor before you export, which that first run does.</p>
+  <script type="text/x-code" data-lang="gdscript" data-file="credits excerpt">
+var license_text: String = Engine.get_license_text()
+license_label.text = license_text
+</script>
+
+  <h2 id="copyright-file">GODOT_COPYRIGHT.txt</h2>
+  <p>Godot also contains third-party libraries. Their licenses are compatible with MIT and still ask for their own copyright and license text. The engine repo keeps that list in <code>COPYRIGHT.txt</code>. The docs' advice for games is to ship that file, renamed so nobody confuses it with your own copyright. This course uses <code>GODOT_COPYRIGHT.txt</code>.</p>
+  <ol class="steps">
+    <li>Open the official page <a href="https://docs.godotengine.org/en/stable/about/complying_with_licenses.html" target="_blank" rel="noopener">Complying with licenses</a>. In the third-party section, follow its link to <code>COPYRIGHT.txt</code> in the Godot repository. The URL lives on that page so you are not guessing a path.</li>
+    <li>On GitHub, use the Raw button and save the file. Steps on GitHub move. You want the file contents, not the webpage around them.</li>
+    <li>Save it as <code>C:\GodotProjects\ship-kit\licenses\GODOT_COPYRIGHT.txt</code>. Godot will import it as a text resource. That is fine. It is also packed into the export, which covers the "inside the game" copy.</li>
+    <li>For the Windows build, also copy that file next to <code>ShipKit.exe</code> in <code>C:\GodotProjects\ship-kit-build\windows</code>. The docs call this the accompanying file. Do it again after every release export, or add the copy to the same script you use for <code>--export-release</code>.</li>
+    <li>Repeat per copied game. The file is about the engine, so the contents match across games built with the same Godot version. Refresh it when you upgrade Godot.</li>
+  </ol>
+  <div class="callout docs"><span class="callout-title">Why both the screen and the file</span>
+    <p><code>get_copyright_info()</code> is the structured view. <code>COPYRIGHT.txt</code> is the document the project itself publishes. The docs recommend shipping the file because covering every dependency by hand is easy to get wrong. The credits screen satisfies the engine MIT notice. The file covers the third-party list.</p></div>
+
+  <h2 id="assets">Asset credits</h2>
+  <p>The Ship Kit template has no third-party art, audio, or fonts. <code>res://licenses/THIRD_PARTY.txt</code> says that. The moment a game adds a pack, that file and the credits screen both gain a line. Free does not mean "no credit". CC0 still deserves a thanks line so you can prove what you used.</p>
+  <div class="callout external"><span class="callout-title">External resource</span>
+    <p>Kenney packs used later in the course are downloaded from <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a>. Filenames inside a pack change between uploads. Pick the file by the description on the game page, and write the credit as the pack name plus "Kenney" plus the URL. Confirm the license on the pack page the day you download it. Do not invent a filename.</p></div>
+  <p>A credit line is one sentence a player can read. Put the same sentence in <code>THIRD_PARTY.txt</code> and in the credits scene, under the engine notice. Example shape, not a claim about a specific pack:</p>
+  <pre class="plain">Kenney "1-Bit Pack" (the pack you actually downloaded), CC0.
+https://kenney.nl/assets
+</pre>
+  <p>Godot's <code>icon.svg</code> is part of the project template. You do not need a separate credit for it beyond the engine license. Fonts are the usual miss: if you drop a <code>.ttf</code> into <code>assets/fonts</code>, read its license and add a line before you export.</p>
+
+  <h2 id="checklist">Before you upload</h2>
+  <ul class="checklist">
+    <li>Credits screen shows <code>Engine.get_license_text()</code> and is reachable from the main menu.</li>
+    <li><code>res://licenses/GODOT_LICENSE.txt</code> exists in the project.</li>
+    <li><code>res://licenses/GODOT_COPYRIGHT.txt</code> is the current <code>COPYRIGHT.txt</code> from the Godot version you exported with.</li>
+    <li>The Windows folder you upload contains <code>GODOT_COPYRIGHT.txt</code> beside the exe.</li>
+    <li><code>THIRD_PARTY.txt</code> lists every non-engine asset, or states that there are none.</li>
+    <li>No paid asset is in the project. This course stays on CC0 and engine built-ins.</li>
+  </ul>
+  <p>Related pages: <a href="ship-kit.html">Ship Kit</a>, <a href="launch-checklist.html">launch checklist</a>, <a href="../days/day16.html">Day 16</a>.</p>
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

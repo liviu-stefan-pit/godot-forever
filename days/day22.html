@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 22 - Physics Merge I: drop, merge, score | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day22" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 22 · Game 8: Physics Merge</div>
+    <h1>Physics Merge I: drop, merge, score</h1>
+    <p class="lead">You copy the Ship Kit into a portrait jar, drop <code>RigidBody2D</code> fruits with real radii and masses, and merge two of a kind into the next tier exactly once.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:25</td><td><strong>Block 1: Concepts.</strong> Why only one body may spawn the merge, and the numbers the jar uses.</td></tr>
+    <tr><td>0:25 – 0:55</td><td><strong>Block 2: Project.</strong> Copy the kit, portrait window, gravity, collision layers.</td></tr>
+    <tr><td>0:55 – 1:35</td><td><strong>Block 3: The jar.</strong> Walls, floor, physics material, fruit scene.</td></tr>
+    <tr><td>1:35 – 1:50</td><td><strong>Break.</strong></td></tr>
+    <tr><td>1:50 – 2:35</td><td><strong>Block 4: Scripts.</strong> Tier table and the fruit body.</td></tr>
+    <tr><td>2:35 – 3:10</td><td><strong>Block 5: Play.</strong> Preview, drop, combo, danger line, game over.</td></tr>
+    <tr><td>3:10 – 3:30</td><td><strong>Quiz and wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>3 h 30 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Run a 720×1280 jar at gravity 1600 with fruits whose radii and masses match the table, not a guess.</li>
+    <li>Drop a preview that stays inside the walls, using mouse press and touch release.</li>
+    <li>Merge two fruits of the same tier into one, with the lower <code>get_instance_id()</code> doing the spawn so a pair cannot become two.</li>
+    <li>Score <code>tier * tier * 2 * combo</code>, with the combo window at 1.5 seconds.</li>
+    <li>End the run when a settled fruit's center stays above y = 250 for 2 seconds, then save the best int score through <code>SaveManager</code>.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>The Ship Kit at <code>C:\GodotProjects\ship-kit</code> still opens. Days 15–16 built it. Do not recreate <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, or <code>SceneRouter</code>.</li>
+    <li>Idle Clicker, if you built it, stays in its own folder. This is a new copy.</li>
+    <li>Bring-up if the copy already exists and only the game scene is empty: skip the PowerShell copy and start at the project settings.</li>
+    <li>No download. Fruits are <code>Polygon2D</code> circles. A Kenney food pack is optional and not used today.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>One collision, two signals</h3>
+  <p><code>body_entered</code> fires on both <code>RigidBody2D</code> nodes. If each one spawns the next fruit, one pair becomes two, and those two immediately merge again. The fix is synchronous and uses no timer: both scripts set <code>merging = true</code> on both bodies before any <code>await</code>, and only the body with the lower <code>get_instance_id()</code> emits <code>merge_requested</code>. The other returns as soon as it sees the flag. Collision layers are cleared with <code>set_deferred</code>, because changing physics state inside a physics callback is unsafe. The new fruit is spawned with <code>call_deferred</code> for the same reason.</p>
+  <h3>The jar, in pixels</h3>
+  <p>The playfield is 720 by 1280, the same as the viewport. Y grows downward. Inner walls sit at x = 48 and x = 672, so the gap is 624 px. The floor surface is y = 1168. Fruits are dropped with their center at y = 150. The danger line is y = 250. A fruit whose center stays above that line (a smaller y) for 2.0 seconds after its grace period loses. Dropped fruits get 0.75 seconds of grace so the drop itself is not an instant loss. Merged fruits get 0.4 seconds.</p>
+  <p>Radius is <code>round(18 * 1.22 ^ tier)</code> and mass is <code>0.35 * 1.25 ^ tier</code>, rounded to two decimals. Those expressions are how the table was chosen. The game reads the table, not <code>pow</code>, so every machine uses the same circle. The largest fruit has radius 131 (diameter 262), which fits in the 624 px gap. Two of them fit side by side. Score for producing tier <code>t</code> is <code>t * t * 2</code>, multiplied by the combo. Combo starts at 1 and increases by 1 when another merge happens within 1.5 seconds.</p>
+  <p>Project gravity is 1600 px/s² straight down, not the default 980, so a fruit dropped at y = 150 reaches the danger line in about a third of a second and the floor in a bit over a second. Each body replaces linear damp with 0.8 and angular damp with 2.0 so the stack sleeps instead of shivering. Shared material: friction 0.40, bounce 0.12. Continuous CD is <code>CCD_MODE_CAST_SHAPE</code> so a fast drop does not tunnel through the floor.</p>
+  <div class="callout tip"><span class="callout-title">Coming from Unity</span>
+    <p>This is a dynamic rigidbody, not a kinematic character. You do not call <code>move_and_slide()</code>. You set <code>mass</code>, damp, and a shape, then let the solver move it. The preview ghost is not a body at all.</p></div>
+
+  <h2 id="build-1">Block 2: Copy the kit and set physics</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <ol class="steps">
+    <li><strong>Close Godot</strong> if it has another project open (<kbd class="menu">Project &gt; Quit to Project List</kbd>, then close the manager).</li>
+    <li><strong>Copy the template.</strong>
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+if (Test-Path C:\GodotProjects\physics-merge) {
+    Write-Host "STOP: C:\GodotProjects\physics-merge already exists."
+} elseif (-not (Test-Path C:\GodotProjects\ship-kit\project.godot)) {
+    Write-Host "STOP: ship-kit is missing. Finish Days 15 and 16 first."
+} else {
+    Copy-Item -Path C:\GodotProjects\ship-kit -Destination C:\GodotProjects\physics-merge -Recurse
+    Write-Host "Copied."
+}
+      </script>
+    </li>
+    <li><strong>Import</strong> <code>C:\GodotProjects\physics-merge\project.godot</code> from the Project Manager (<kbd class="ui">Import</kbd>, select the file, <kbd class="ui">Import &amp; Edit</kbd>).</li>
+    <li><strong>Check autoloads</strong> under <kbd class="menu">Project &gt; Project Settings &gt; Globals &gt; Autoload</kbd>. Order: <code>Events</code>, <code>Settings</code>, <code>SaveManager</code>, <code>Audio</code>, <code>SceneRouter</code>. Do not add one.</li>
+    <li><strong>Name and main scene.</strong> Search <code>name</code>. Application Config Name = <code>Fruit Jar</code>, Version = <code>0.1.0</code>. Search <code>main scene</code>. Main Scene = <code>res://ui/main_menu.tscn</code>.</li>
+    <li><strong>Portrait window.</strong> Search <code>viewport</code>. Viewport Width <code>720</code>, Viewport Height <code>1280</code>, Window Width Override <code>360</code>, Window Height Override <code>640</code>. Search <code>stretch</code>. Mode <code>canvas_items</code>, Aspect <code>expand</code>. Search <code>orientation</code>. Handheld Orientation = <kbd class="ui">Portrait</kbd>.</li>
+    <li><strong>Mobile renderer.</strong> Search <code>rendering method</code>. Set Rendering Method to <kbd class="ui">Mobile</kbd>. Restart the editor if it asks.</li>
+    <li><strong>Gravity.</strong> Search <code>default gravity</code>. Set <kbd class="ui">Physics &gt; 2D &gt; Default Gravity</kbd> to <code>1600</code>. Leave Default Gravity Vector at <code>(0, 1)</code>. Search <code>solver iterations</code> and confirm <kbd class="ui">Physics &gt; 2D &gt; Solver &gt; Solver Iterations</kbd> is <code>16</code>. If it is lower, set 16.</li>
+    <li><strong>Layer names.</strong> In Project Settings open <kbd class="ui">Layer Names &gt; 2D Physics</kbd>. Set layer 1 to <code>world</code>, layer 2 to <code>player</code>, layer 3 to <code>enemies</code>, layer 4 to <code>player_attacks</code>, layer 5 to <code>enemy_attacks</code>, layer 6 to <code>pickups</code>, layer 7 to <code>triggers</code>. This jar has no player. Fruits sit on <code>pickups</code> (layer 6, value 32) and scan <code>world</code> plus <code>pickups</code> (mask value 33). Close Project Settings.</li>
+  </ol>
+  <div class="checkpoint"><p>Press <kbd>F5</kbd>. A tall window shows the Ship Kit main menu and Output has no error. <kbd>F8</kbd> stops it. If gravity still says 980, the search box was filtering the wrong category; clear the search and open Physics, then 2D.</p></div>
+
+  <h2 id="build-2">Block 3: Walls, material, fruit scene</h2>
+  <p>Build the scene in <code>res://game/game.tscn</code>. If the root is not a <code>Node2D</code> named <code>Game</code>, use <kbd class="menu">Scene &gt; New Scene</kbd>, choose <code>Node2D</code>, rename it <code>Game</code>, and save over <code>res://game/game.tscn</code>. <code>SceneRouter.GAME_SCENE</code> is that path.</p>
+  <pre class="scene-tree">Game (Node2D) [game.gd]
+├── Jar (Node2D)
+│   ├── Background (Polygon2D)
+│   ├── Walls (StaticBody2D)          layer world, mask pickups
+│   │   ├── Left (CollisionShape2D)    pos (24, 640), size (48, 1280)
+│   │   ├── Right (CollisionShape2D)   pos (696, 640), size (48, 1280)
+│   │   └── Floor (CollisionShape2D)   pos (360, 1208), size (624, 80)
+│   ├── Fruits (Node2D)                %
+│   ├── Ghost (Polygon2D)              %
+│   └── Danger (Line2D)                %
+├── HUD (CanvasLayer)                  layer 1
+│   ├── HudRoot (Control)              Full Rect, mouse Ignore
+│   │   ├── ScoreLabel (Label)         %
+│   │   ├── ComboLabel (Label)         %
+│   │   ├── NextCaption (Label)
+│   │   └── GameOver (CenterContainer) %  eye closed, mouse Stop
+│   │       └── OverPanel (PanelContainer)
+│   │           └── OverVBox (VBoxContainer)
+│   │               ├── OverTitle (Label)
+│   │               ├── OverScore (Label)    %
+│   │               ├── RetryButton (Button) %
+│   │               └── MenuButton (Button)  %
+│   └── NextSwatch (Polygon2D)         %
+└── PauseMenu (instance)               layer 20
+
+fruit.tscn
+Fruit (RigidBody2D) [fruit.gd]
+├── Visual (Polygon2D)
+└── CollisionShape2D                   CircleShape2D, placeholder radius 18</pre>
+
+  <ol class="steps">
+    <li><strong>Add Jar.</strong> Select <code>Game</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add <code>Node2D</code>, rename it <code>Jar</code>. Leave it at position (0, 0). The script centers it when the window is wider than 720 because aspect <code>expand</code> adds pixels.</li>
+    <li><strong>Add Background</strong> under <code>Jar</code>: a <code>Polygon2D</code> named <code>Background</code>. You will not edit its points by hand; the script fills a 720×1280 quad.</li>
+    <li><strong>Add Walls.</strong> Under <code>Jar</code>, add a <code>StaticBody2D</code> named <code>Walls</code>. In the Inspector, open <kbd class="ui">Collision &gt; Layer</kbd> and enable only <kbd class="ui">world</kbd>. Open <kbd class="ui">Collision &gt; Mask</kbd> and enable only <kbd class="ui">pickups</kbd>. If the mask stays on world, fruits never hit the glass.</li>
+    <li><strong>Add three shapes.</strong> Select <code>Walls</code>, add a <code>CollisionShape2D</code>, rename it <code>Left</code>. In the Inspector set <kbd class="ui">Position</kbd> to <code>(24, 640)</code>. Click <kbd class="ui">Shape</kbd>, choose <kbd class="ui">New RectangleShape2D</kbd>. Click the new shape to open it, and set <kbd class="ui">Size</kbd> to <code>(48, 1280)</code>. Size is the full width and height, not a half-extent.</li>
+    <li><strong>Right wall.</strong> Add another <code>CollisionShape2D</code> named <code>Right</code>. Give it its own <kbd class="ui">New RectangleShape2D</kbd> (do not reuse Left's shape resource). Position <code>(696, 640)</code>, Size <code>(48, 1280)</code>.</li>
+    <li><strong>Floor.</strong> A third <code>CollisionShape2D</code> named <code>Floor</code>, its own rectangle, position <code>(360, 1208)</code>, size <code>(624, 80)</code>. The top of that rectangle is y = 1168. The floor spans x = 48 to x = 672, meeting the inner face of each wall.</li>
+    <li><strong>Add Fruits, Ghost, Danger</strong> under <code>Jar</code>: <code>Node2D</code> named <code>Fruits</code>, <code>Polygon2D</code> named <code>Ghost</code>, <code>Line2D</code> named <code>Danger</code>. Right-click each → <kbd class="ui">Access as Unique Name</kbd>.</li>
+    <li><strong>Add the HUD.</strong> Select <code>Game</code>, add a <code>CanvasLayer</code> named <code>HUD</code>, set <kbd class="ui">Layer</kbd> to <code>1</code>. Under it add a <code>Control</code> named <code>HudRoot</code>, Anchors Preset <kbd class="ui">Full Rect</kbd>, mouse Filter <kbd class="ui">Ignore</kbd> so taps pass through to the jar. Buttons you add later keep the default Stop and still receive clicks.</li>
+    <li><strong>Add labels.</strong> Under <code>HudRoot</code>, add <code>ScoreLabel</code> and <code>ComboLabel</code> (both <code>Label</code>, unique names, Auto Translate Mode <kbd class="ui">Disabled</kbd>). Place ScoreLabel near the top-left: Layout offsets about Left 16, Top 16, Right 400, Bottom 56. ComboLabel just under it, Top 60, Bottom 100. Add <code>NextCaption</code> (<code>Label</code>, Text <code>Next</code>, not unique) at the top-right, roughly Left 520, Top 16.</li>
+    <li><strong>Add the swatch.</strong> Select <code>HUD</code> (the CanvasLayer, not HudRoot), add a <code>Polygon2D</code> named <code>NextSwatch</code>, unique name. Position will be set in code.</li>
+    <li><strong>Add game over.</strong> Under <code>HudRoot</code>, add a <code>CenterContainer</code> named <code>GameOver</code>, unique, Full Rect, mouse Filter <kbd class="ui">Stop</kbd>. Click the eye icon so it starts hidden. Inside it: <code>PanelContainer</code> named <code>OverPanel</code> (custom minimum size 480×280), then <code>VBoxContainer</code> <code>OverVBox</code>, then <code>OverTitle</code> (Label, Text <code>Game over</code>), <code>OverScore</code> (Label, unique, auto-translate Disabled, autowrap Word Smart), <code>RetryButton</code> (Button, unique, Text <code>Retry</code>), <code>MenuButton</code> (Button, unique, Text <code>Menu</code>).</li>
+    <li><strong>Instance pause.</strong> Select <code>Game</code>, click the chain icon <kbd class="ui">Instantiate Child Scene</kbd>, pick <code>res://ui/pause_menu.tscn</code>. Set that node's <kbd class="ui">Layer</kbd> to <code>20</code>.</li>
+    <li><strong>Physics material.</strong> FileSystem, right-click <code>data</code> (create the folder if the kit does not have it) → <kbd class="ui">Create New &gt; Resource</kbd>. Search <code>PhysicsMaterial</code>, create it, save as <code>res://data/fruit_material.tres</code>. Inspector: <kbd class="ui">Friction</kbd> <code>0.4</code>, <kbd class="ui">Bounce</kbd> <code>0.12</code>, <kbd class="ui">Absorbent</kbd> off. Save.</li>
+    <li><strong>Fruit scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>. Root <code>RigidBody2D</code>, rename <code>Fruit</code>. Add child <code>Polygon2D</code> named <code>Visual</code> and child <code>CollisionShape2D</code>. On the collision node, Shape → <kbd class="ui">New CircleShape2D</kbd>, click it, set <kbd class="ui">Radius</kbd> to <code>18</code>. This circle is only a placeholder: the script replaces it with a new <code>CircleShape2D</code> per fruit so radii are not shared. On <code>Fruit</code>, Collision Layer = <kbd class="ui">pickups</kbd> only, Mask = <kbd class="ui">world</kbd> and <kbd class="ui">pickups</kbd>. Save as <code>res://game/fruit.tscn</code>.</li>
+  </ol>
+  <div class="callout warn"><span class="callout-title">Shared shapes</span>
+    <p>If you duplicate a <code>CircleShape2D</code> and then change its radius, every fruit that points at that same sub-resource changes size. <code>setup()</code> assigns <code>CircleShape2D.new()</code> so that cannot happen. Do not "optimize" it by editing the scene shape at runtime.</p></div>
+
+  <h2 id="build-3">Block 4: Tier table and fruit script</h2>
+  <p>Type the arrays. They are the rounded formulas, in tier order 0 through 10.</p>
+  <table>
+    <thead><tr><th>Tier</th><th>Name</th><th>Radius</th><th>Mass</th><th>Score if this tier is created</th><th>Color</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>Grape</td><td>18</td><td>0.35</td><td>0 (not created by a merge)</td><td>#6b4c9a</td></tr>
+      <tr><td>1</td><td>Cherry</td><td>22</td><td>0.44</td><td>2</td><td>#c23b42</td></tr>
+      <tr><td>2</td><td>Plum</td><td>27</td><td>0.55</td><td>8</td><td>#7a3e8a</td></tr>
+      <tr><td>3</td><td>Orange</td><td>33</td><td>0.68</td><td>18</td><td>#e07a2f</td></tr>
+      <tr><td>4</td><td>Lemon</td><td>40</td><td>0.85</td><td>32</td><td>#e2c044</td></tr>
+      <tr><td>5</td><td>Apple</td><td>49</td><td>1.07</td><td>50</td><td>#d64545</td></tr>
+      <tr><td>6</td><td>Peach</td><td>59</td><td>1.34</td><td>72</td><td>#f0a0b0</td></tr>
+      <tr><td>7</td><td>Melon</td><td>72</td><td>1.67</td><td>98</td><td>#7dba4a</td></tr>
+      <tr><td>8</td><td>Coconut</td><td>88</td><td>2.09</td><td>128</td><td>#8a5a3a</td></tr>
+      <tr><td>9</td><td>Watermelon</td><td>108</td><td>2.61</td><td>162</td><td>#2f8f4e</td></tr>
+      <tr><td>10</td><td>Planet</td><td>131</td><td>3.26</td><td>200</td><td>#f2d15a</td></tr>
+    </tbody>
+  </table>
+  <p>Drops roll tier 0 through 4 only (<code>randi_range(0, 4)</code>). Tiers 5–10 appear only from merges. Planet does not merge further.</p>
+  <ol class="steps">
+    <li><strong>Create <code>res://game/fruit_table.gd</code></strong> (FileSystem, right-click <code>game</code> → Create New → Script, template Empty). Replace all and save.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/fruit_table.gd">
+extends RefCounted
+class_name FruitTable
+
+const MAX_TIER := 10
+const RADII: PackedFloat32Array = [18, 22, 27, 33, 40, 49, 59, 72, 88, 108, 131]
+const MASSES: PackedFloat32Array = [0.35, 0.44, 0.55, 0.68, 0.85, 1.07, 1.34, 1.67, 2.09, 2.61, 3.26]
+const NAMES: PackedStringArray = [
+    "Grape", "Cherry", "Plum", "Orange", "Lemon", "Apple",
+    "Peach", "Melon", "Coconut", "Watermelon", "Planet",
+]
+
+static func radius_of(tier: int) -> float:
+    return RADII[clampi(tier, 0, MAX_TIER)]
+
+static func mass_of(tier: int) -> float:
+    return MASSES[clampi(tier, 0, MAX_TIER)]
+
+static func display_name(tier: int) -> String:
+    return NAMES[clampi(tier, 0, MAX_TIER)]
+
+static func score_for(tier: int) -> int:
+    return tier * tier * 2
+
+static func circle(radius: float, n: int = 20) -> PackedVector2Array:
+    var pts := PackedVector2Array()
+    pts.resize(n)
+    for i in n:
+        var angle := TAU * float(i) / float(n)
+        pts[i] = Vector2(cos(angle), sin(angle)) * radius
+    return pts
+
+static func color_of(tier: int) -> Color:
+    match tier:
+        0:
+            return Color.html("#6b4c9a")
+        1:
+            return Color.html("#c23b42")
+        2:
+            return Color.html("#7a3e8a")
+        3:
+            return Color.html("#e07a2f")
+        4:
+            return Color.html("#e2c044")
+        5:
+            return Color.html("#d64545")
+        6:
+            return Color.html("#f0a0b0")
+        7:
+            return Color.html("#7dba4a")
+        8:
+            return Color.html("#8a5a3a")
+        9:
+            return Color.html("#2f8f4e")
+        _:
+            return Color.html("#f2d15a")
+      </script>
+    </li>
+    <li><strong>Attach <code>res://game/fruit.gd</code></strong> to the <code>Fruit</code> root (right-click Fruit → Attach Script, template Empty). Replace all and save.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/fruit.gd">
+extends RigidBody2D
+class_name Fruit
+
+signal merge_requested(at: Vector2, next_tier: int)
+
+const MATERIAL: PhysicsMaterial = preload("res://data/fruit_material.tres")
+
+var tier: int = 0
+var merging: bool = false
+var grace: float = 0.75
+var danger_time: float = 0.0
+
+func setup(next_tier: int) -> void:
+    tier = next_tier
+    mass = FruitTable.mass_of(next_tier)
+    gravity_scale = 1.0
+    linear_damp_mode = DAMP_MODE_REPLACE
+    linear_damp = 0.8
+    angular_damp_mode = DAMP_MODE_REPLACE
+    angular_damp = 2.0
+    continuous_cd = CCD_MODE_CAST_SHAPE
+    contact_monitor = true
+    max_contacts_reported = 6
+    lock_rotation = false
+    physics_material_override = MATERIAL
+    collision_layer = 32
+    collision_mask = 33
+    var shape := CircleShape2D.new()
+    shape.radius = FruitTable.radius_of(next_tier)
+    var collision := $CollisionShape2D as CollisionShape2D
+    collision.shape = shape
+    var visual := $Visual as Polygon2D
+    visual.polygon = FruitTable.circle(FruitTable.radius_of(next_tier), 20)
+    visual.color = FruitTable.color_of(next_tier)
+    visual.scale = Vector2.ONE
+    add_to_group("fruits")
+
+func _ready() -> void:
+    body_entered.connect(_on_body_entered)
+
+func _on_body_entered(body: Node) -> void:
+    if merging:
+        return
+    var other := body as Fruit
+    if other == null or other.merging:
+        return
+    if tier != other.tier or tier >= FruitTable.MAX_TIER:
+        return
+    if get_instance_id() > other.get_instance_id():
+        return
+    merging = true
+    other.merging = true
+    set_deferred("collision_layer", 0)
+    set_deferred("collision_mask", 0)
+    other.set_deferred("collision_layer", 0)
+    other.set_deferred("collision_mask", 0)
+    var mid := (global_position + other.global_position) * 0.5
+    merge_requested.emit(mid, tier + 1)
+    queue_free()
+    other.queue_free()
+      </script>
+    </li>
+  </ol>
+  <div class="checkpoint"><p>Open <code>fruit.tscn</code> and press <kbd>F6</kbd>. You should see an empty window (no setup call, so no circle yet) and no parser error. Output must not say <code>fruit_material.tres</code> failed to load. If it does, the material was saved somewhere else. <kbd>F8</kbd> to stop. Reopen <code>game.tscn</code> afterward or the next script lands on the wrong scene.</p></div>
+
+  <h2 id="build-4">Block 5: Drop, combo, danger, game over</h2>
+  <ol class="steps">
+    <li><strong>Attach <code>res://game/game.gd</code></strong> to the <code>Game</code> root of <code>game.tscn</code>. Replace all and save the script and the scene.
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/game.gd">
+extends Node2D
+
+const FRUIT_SCENE: PackedScene = preload("res://game/fruit.tscn")
+const JAR_SIZE := Vector2(720, 1280)
+const LEFT_X := 48.0
+const RIGHT_X := 672.0
+const DROP_Y := 150.0
+const DANGER_Y := 250.0
+const DANGER_SECONDS := 2.0
+const COMBO_WINDOW := 1.5
+const DROP_TIER_MAX := 4
+
+@onready var _jar: Node2D = $Jar
+@onready var _fruits: Node2D = %Fruits
+
+var _rng := RandomNumberGenerator.new()
+var _blip: AudioStreamWAV
+var _current_tier: int = 0
+var _next_tier: int = 0
+var _score: int = 0
+var _best: int = 0
+var _combo: int = 0
+var _combo_left: float = 0.0
+var _over: bool = false
+var _drop_lock: bool = false
+
+func _ready() -> void:
+    _rng.randomize()
+    _blip = _make_blip(440.0)
+    _best = int(SaveManager.get_value("best_score", 0))
+    _layout_jar()
+    _current_tier = _roll()
+    _next_tier = _roll()
+    %Ghost.position = Vector2(360, DROP_Y)
+    _refresh_ghost()
+    %GameOver.visible = false
+    %RetryButton.pressed.connect(_on_retry)
+    %MenuButton.pressed.connect(_on_menu)
+    Events.game_started.emit()
+    _refresh_hud()
+    print("Fruit Jar ready. First tiers: ", _current_tier, " then ", _next_tier)
+
+func _process(delta: float) -> void:
+    if _combo_left > 0.0:
+        _combo_left = maxf(_combo_left - delta, 0.0)
+        if _combo_left == 0.0:
+            _combo = 0
+            _refresh_hud()
+
+func _physics_process(delta: float) -> void:
+    if _over:
+        return
+    var line_y := _jar.global_position.y + DANGER_Y
+    var hot := false
+    for node in _fruits.get_children():
+        var fruit := node as Fruit
+        if fruit == null or fruit.merging:
+            continue
+        if fruit.grace > 0.0:
+            fruit.grace = maxf(fruit.grace - delta, 0.0)
+            continue
+        if fruit.global_position.y < line_y:
+            fruit.danger_time += delta
+            hot = true
+            if fruit.danger_time >= DANGER_SECONDS:
+                _lose()
+                return
+        else:
+            fruit.danger_time = 0.0
+    %Danger.modulate = Color(1, 0.35, 0.35, 1) if hot else Color(1, 1, 1, 0.45)
+
+func _unhandled_input(event: InputEvent) -> void:
+    if _over:
+        return
+    var screen := Vector2(-1, -1)
+    var drop := false
+    if event is InputEventMouseMotion:
+        screen = event.position
+    elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+        screen = event.position
+        drop = true
+    elif event is InputEventScreenDrag:
+        screen = event.position
+    elif event is InputEventScreenTouch:
+        screen = event.position
+        drop = not event.pressed
+    else:
+        return
+    if screen.x < 0.0:
+        return
+    _aim(screen)
+    if drop:
+        _drop()
+
+func _layout_jar() -> void:
+    var visible := get_viewport().get_visible_rect().size
+    _jar.position = (visible - JAR_SIZE) * 0.5
+    var background := $Jar/Background as Polygon2D
+    background.color = Color.html("#241a33")
+    background.polygon = PackedVector2Array([
+        Vector2(0, 0), Vector2(720, 0), Vector2(720, 1280), Vector2(0, 1280),
+    ])
+    %Danger.points = PackedVector2Array([
+        Vector2(LEFT_X, DANGER_Y), Vector2(RIGHT_X, DANGER_Y),
+    ])
+    %Danger.width = 6.0
+    %Danger.default_color = Color(0.9, 0.25, 0.3, 0.95)
+
+func _aim(screen: Vector2) -> void:
+    var local_x := screen.x - _jar.global_position.x
+    var radius := FruitTable.radius_of(_current_tier)
+    local_x = clampf(local_x, LEFT_X + radius, RIGHT_X - radius)
+    %Ghost.position = Vector2(local_x, DROP_Y)
+
+func _drop() -> void:
+    if _over or _drop_lock:
+        return
+    _spawn(_current_tier, %Ghost.position, false)
+    _current_tier = _next_tier
+    _next_tier = _roll()
+    _refresh_ghost()
+    _drop_lock = true
+    await get_tree().create_timer(0.35).timeout
+    _drop_lock = false
+
+func _roll() -> int:
+    return _rng.randi_range(0, DROP_TIER_MAX)
+
+func _spawn(tier: int, local_pos: Vector2, from_merge: bool) -> void:
+    var fruit := FRUIT_SCENE.instantiate() as Fruit
+    fruit.setup(tier)
+    fruit.merge_requested.connect(_on_merge_requested)
+    if from_merge:
+        fruit.grace = 0.4
+    _fruits.add_child(fruit)
+    fruit.position = local_pos
+    if from_merge:
+        var visual := fruit.get_node("Visual") as Polygon2D
+        visual.scale = Vector2(0.45, 0.45)
+        var tween := create_tween()
+        tween.tween_property(visual, "scale", Vector2.ONE, 0.12)
+
+func _on_merge_requested(at: Vector2, next_tier: int) -> void:
+    if _over:
+        return
+    if _combo_left > 0.0:
+        _combo += 1
+    else:
+        _combo = 1
+    _combo_left = COMBO_WINDOW
+    var gained := FruitTable.score_for(next_tier) * _combo
+    _score += gained
+    Events.score_changed.emit(_score)
+    Audio.play_sfx(_blip, -6.0, 1.0)
+    _spawn.call_deferred(next_tier, _fruits.to_local(at), true)
+    _refresh_hud()
+    print("merged into ", FruitTable.display_name(next_tier), " +", gained, " combo ", _combo)
+
+func _lose() -> void:
+    if _over:
+        return
+    _over = true
+    _best = maxi(_best, _score)
+    SaveManager.set_value("best_score", _best)
+    SaveManager.flush()
+    Events.game_over.emit(_score)
+    %Ghost.visible = false
+    %OverScore.text = "Score %d\nBest %d" % [_score, _best]
+    %GameOver.visible = true
+    print("game over ", _score, " best ", _best)
+
+func _on_retry() -> void:
+    SceneRouter.reload_current()
+
+func _on_menu() -> void:
+    SceneRouter.go_to(SceneRouter.MAIN_MENU_SCENE)
+
+func _refresh_ghost() -> void:
+    var radius := FruitTable.radius_of(_current_tier)
+    %Ghost.polygon = FruitTable.circle(radius, 20)
+    %Ghost.color = FruitTable.color_of(_current_tier)
+    %Ghost.modulate = Color(1, 1, 1, 0.45)
+    %NextSwatch.polygon = FruitTable.circle(FruitTable.radius_of(_next_tier), 16)
+    %NextSwatch.color = FruitTable.color_of(_next_tier)
+    %NextSwatch.position = Vector2(640, 110)
+
+func _refresh_hud() -> void:
+    %ScoreLabel.text = "Score %d   Best %d" % [_score, maxi(_best, _score)]
+    if _combo > 1:
+        %ComboLabel.text = "Combo x%d" % _combo
+    else:
+        %ComboLabel.text = ""
+
+func _make_blip(freq: float) -> AudioStreamWAV:
+    var stream := AudioStreamWAV.new()
+    stream.format = AudioStreamWAV.FORMAT_16_BITS
+    stream.mix_rate = 22050
+    stream.stereo = false
+    var count := 1764
+    var bytes := PackedByteArray()
+    bytes.resize(count * 2)
+    for i in count:
+        var t := float(i) / 22050.0
+        var env := clampf(1.0 - (t / 0.08), 0.0, 1.0)
+        var sample := int(clampf(sin(TAU * freq * t) * env, -1.0, 1.0) * 32767.0)
+        bytes.encode_s16(i * 2, sample)
+    stream.data = bytes
+    return stream
+      </script>
+    </li>
+    <li><strong>Save the scene</strong> with <kbd>Ctrl</kbd>+<kbd>S</kbd> while <code>game.tscn</code> is the open scene.</li>
+  </ol>
+  <div class="checkpoint"><p>Press <kbd>F6</kbd> on <code>game.tscn</code>. Output prints <code>Fruit Jar ready. First tiers:</code> and two numbers from 0 to 4. A translucent circle follows the mouse and never crosses the side walls. Click to drop. The body falls, hits the floor, and stays. The red line sits near the top. Drop until two of the same size touch: Output prints <code>merged into</code> exactly once for that pair, the score jumps by <code>tier² * 2</code> (cherry = 2, plum = 8, orange = 18), and you hear one blip. If fruits fall through the floor, Floor's rectangle is missing or Walls mask does not include pickups. If a pair becomes two fruits, <code>merging</code> is not set on both bodies before the spawn.</p></div>
+  <ol class="steps">
+    <li><strong>Prove game over, then put the constant back.</strong> In <code>game.gd</code>, temporarily set <code>DANGER_SECONDS</code> to <code>0.2</code>. Save, press <kbd>F6</kbd>, and drop one fruit so it rests in the jar, then drop more until one sits with its center above the red line. Within a moment the panel shows Score and Best. Press Retry: <code>SceneRouter.reload_current()</code> starts a fresh jar and the best number remains. Stop the game. Set <code>DANGER_SECONDS</code> back to <code>2.0</code> and save. Press <kbd>F5</kbd>, use the kit's play button, and confirm the same jar opens under the menu.</li>
+    <li><strong>Pause.</strong> During a run, press the <code>pause</code> action (Input Map shows the key; the kit default is often Esc). The pause menu covers the jar. Resume. Fruits must not have fallen through the floor while paused.</li>
+  </ol>
+  <div class="checkpoint"><p><code>DANGER_SECONDS</code> is <code>2.0</code> again. A second launch still shows the best score, which lives in <code>SaveManager</code>'s profile, not in the fruit scene. If Retry does nothing, <code>RetryButton</code> is missing Access as Unique Name.</p></div>
+
+  <div class="callout external"><span class="callout-title">External resource (optional)</span>
+    <p>Circles are enough. If you want painted fruit later, open <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a> and search for a food pack. Pick round sprites by looking at them. Pack updates rename files, so do not copy a filename from memory. Credit: "Fruit sprites: Kenney (www.kenney.nl), CC0" on the kit credits screen. Verify the license on Kenney's page.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Both bodies spawn.</strong> The instance-id test and the <code>merging</code> flag have to run before <code>queue_free</code>, with no <code>await</code> in between. A deferred spawn of the result is still one spawn.</li>
+    <li><strong>Mask on the wrong bit.</strong> Walls mask pickups (layer 6). Fruits mask world and pickups (<code>collision_mask = 33</code>). Two fruits that pass through each other are both on mask world only.</li>
+    <li><strong>Editing the scene's CircleShape2D radius</strong> resizes every fruit that still shares it. <code>setup()</code> replaces the shape. Keep that line.</li>
+    <li><strong>Scaling <code>Fruit</code> itself</strong> scales the collider and the mass distribution. The pop tween scales <code>Visual</code> only.</li>
+    <li><strong>Danger uses the drop point.</strong> Center y = 150 is above the line y = 250, so without <code>grace</code> the drop would lose immediately. Do not set grace to 0.</li>
+    <li><strong><code>HudRoot</code> mouse Filter left on Stop</strong> eats every click and the ghost never drops. The root ignores; the game-over container stops.</li>
+    <li><strong>Running <code>F6</code> on <code>fruit.tscn</code></strong> after you meant to test the jar. Check the window title and the scene tab.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 20–30 min)</h2>
+  <div class="challenge">
+    <h3>Hold to aim on desktop</h3>
+    <p>Right now a mouse press drops immediately, which matches a phone tap badly if you wanted to drag. Change <code>_unhandled_input</code> so a mouse press only aims, and the release drops, the same way <code>InputEventScreenTouch</code> already does. Hint: <code>event.pressed</code> is true on press and false on release. Keep the 0.35 second <code>_drop_lock</code> or two releases will stack two fruits in one spot.</p>
+    <p>Do not also randomize the physics. Tomorrow's daily seed only fixes the upcoming tier list. Godot's physics solver is not the same number on every CPU.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>Two lemons (tier 4) touch. Who spawns the apple, and what is the base score before combo?</p>
+      <ul>
+        <li>Both spawn an apple, score 32 each.</li>
+        <li>Only the lower <code>get_instance_id()</code> spawns one apple (tier 5). Base score is 50.</li>
+        <li>The heavier one spawns it. Base score is 32.</li>
+        <li>Neither, because lemons are tier 4 and only tier 0 merges.</li>
+      </ul>
+      <p class="explain">Score is for the fruit that appears: <code>5 * 5 * 2 = 50</code>. The other body sees <code>merging</code> and returns. Planet (tier 10) is the one that refuses to merge.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>Why set <code>contact_monitor</code> and <code>max_contacts_reported</code>?</p>
+      <ul>
+        <li>They turn on gravity.</li>
+        <li>They are required for <code>move_and_slide()</code>.</li>
+        <li><code>body_entered</code> is not emitted unless contact monitor is on and the reported-contact count is above 0.</li>
+        <li>They replace the collision shape.</li>
+      </ul>
+      <p class="explain">The fruit uses 6 reported contacts. Monitor defaults to off, and the max defaults to 0, which records nothing.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>Why is the merged fruit created with <code>call_deferred</code>?</p>
+      <ul>
+        <li>Adding a rigid body inside a physics callback is unsafe; defer it to after the step.</li>
+        <li>Deferred calls run on a network peer.</li>
+        <li>It makes the merge happen twice, which the combo wants.</li>
+        <li>It converts the body into a character body.</li>
+      </ul>
+      <p class="explain">The same rule is why <code>collision_layer</code> is changed with <code>set_deferred</code> rather than assigned directly in <code>body_entered</code>.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>A grape is dropped at center y = 150 and the danger line is y = 250. Why is that not an instant loss?</p>
+      <ul>
+        <li>Danger checks the floor, not the line.</li>
+        <li>Gravity is 0 until the first merge.</li>
+        <li>The line only sees planets.</li>
+        <li>The new fruit has 0.75 seconds of grace, and the loss needs 2.0 seconds above the line after that.</li>
+      </ul>
+      <p class="explain">Smaller y is higher on the screen. The drop starts above the line on purpose. Grace covers the fall through it.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>What is the watermelon radius and mass in the table this game actually uses?</p>
+      <ul>
+        <li>Radius 100, mass 10, because round numbers are easier.</li>
+        <li>Radius 108, mass 2.61.</li>
+        <li>Radius 131, mass 0.35.</li>
+        <li>Whatever <code>pow</code> returns on that phone, recomputed every launch.</li>
+      </ul>
+      <p class="explain">Tier 9 is stored as 108 and 2.61. The formula explains the table; the array is what the collider uses, so two machines do not disagree about a rounding edge.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/physics/rigid_body.html" target="_blank" rel="noopener">Using RigidBody</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/physics/physics_introduction.html" target="_blank" rel="noopener">Physics introduction</a>: layers, masks, and the solver step.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/physics/collision_shapes_2d.html" target="_blank" rel="noopener">Collision shapes 2D</a>: rectangle size is the full size.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_rigidbody2d.html" target="_blank" rel="noopener">RigidBody2D</a>: <code>contact_monitor</code>, <code>continuous_cd</code>, damp modes.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_physicsmaterial.html" target="_blank" rel="noopener">PhysicsMaterial</a></li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_randomnumbergenerator.html" target="_blank" rel="noopener">RandomNumberGenerator</a>: tomorrow's seed uses the same object.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/inputs/inputevent.html" target="_blank" rel="noopener">InputEvent</a>: mouse press versus screen touch.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li><kbd>F6</kbd> prints two drop tiers in 0..4. The ghost stays between the inner walls.</li>
+    <li>A same-tier pair prints one <code>merged into</code> line and adds <code>tier² * 2</code> times the combo.</li>
+    <li>With <code>DANGER_SECONDS</code> back at 2.0, a fruit parked above the line ends the run, Retry reloads, and Best survives.</li>
+    <li>Pause menu opens. Main scene is still the kit menu. No new autoload.</li>
+    <li>Gravity is 1600, material is friction 0.4 and bounce 0.12, fruit mass and radius match the table.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> particles, a pitch ladder on the blip, screen shake, a daily seeded queue, <code>MERGE_</code> strings, and release exports. The design sheet is the <a href="../games/g08-physics-merge.html">Physics Merge game page</a>.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

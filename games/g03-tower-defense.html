@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game 3 - Bastion Defense | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="game" data-id="g03" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Training game 3 · 2D · Tower defense</div>
+    <h1>Bastion Defense</h1>
+    <p class="lead">A fixed-lane tower defense. Enemies walk a hand-drawn path, leaks cost lives, and you spend gold on four towers with three levels each. Clear eight waves or lose the base. The only persistent number is the best wave you have cleared.</p>
+    <div class="chips"><span class="chip blue">Built on Days 8–9</span><span class="chip green">TileMapLayer, Path2D, Resource, Area2D</span></div>
+  </header>
+
+  <h2 id="design">Game design</h2>
+  <p>The player never steers a character. The skill is where a tower sits and when you can afford the next one. Enemies enter off the left edge, follow <code>GroundPath</code> (or <code>AirPath</code> if they fly), and either die or reach the base at cell <code>(14, 6)</code>. The route does not change when you build. Grass is the only legal foundation; path and rock are not.</p>
+  <p><strong>Controls.</strong> Mouse only. Left-click a build button, then left-click a grass cell. Left-click an existing tower to select it. Right-click cancels placement and clears the selection. The bottom bar upgrades, sells, cycles targeting (First, Last, Closest, Strongest), and toggles speed. Restart is on the end overlay. There is no keyboard map.</p>
+  <p><strong>Win.</strong> All eight waves of <code>level_01.tres</code> spawn and leave the map while lives are still above 0. The Victory overlay pauses the tree.</p>
+  <p><strong>Lose.</strong> Lives hit 0. The current wave pays no clear bonus and does not count as cleared. Restart reloads the scene at 1× speed without wiping the best-wave record.</p>
+  <p><strong>Economy.</strong> Start at 150 gold and 20 lives. A kill pays that enemy's <code>reward</code>. A leak subtracts <code>damage_to_base</code> and pays nothing. When a wave is empty, you gain its <code>clear_bonus</code> plus 10% of the gold you hold at that moment, truncated, capped at 50. Selling returns <code>int(spent * 0.6)</code> for that tower's build plus upgrades. One tower per cell.</p>
+  <table>
+    <tr><th>Enemy</th><th>HP</th><th>Speed</th><th>Reward</th><th>Leak</th><th>Route</th></tr>
+    <tr><td>Grunt</td><td>40</td><td>60</td><td>5</td><td>1</td><td>Ground, 1,944 px</td></tr>
+    <tr><td>Runner</td><td>25</td><td>120</td><td>4</td><td>1</td><td>Ground</td></tr>
+    <tr><td>Tank</td><td>220</td><td>40</td><td>14</td><td>2</td><td>Ground</td></tr>
+    <tr><td>Flyer</td><td>60</td><td>100</td><td>8</td><td>2</td><td>Air, about 1,118 px</td></tr>
+    <tr><td>Boss</td><td>1200</td><td>30</td><td>100</td><td>10</td><td>Ground, wave 8 only</td></tr>
+  </table>
+  <p>Tower prices and combat stats (damage, range, cooldown, shot speed, splash radius, slow factor, slow duration) are the twelve-row table in <a href="../days/day09.html">Day 9</a>. Arrow is the opener (50 gold, 15 damage, 190 px). Cannon is full-damage splash. Frost slows (level 3 also splashes). Sniper is the long-range single shot. A measured opening: one Arrow on cell <code>(2, 3)</code> that kills all six wave-1 grunts with no leaks ends that wave at 168 gold.</p>
+
+  <h2 id="scope">Scope: what "done" means</h2>
+  <p>Training-game done is the list below, all of it in <code>C:\GodotProjects\g03-bastion-defense</code>. Days 8 and 9 are the build. This page is the contract those days fulfill.</p>
+  <ul class="checklist">
+    <li>16×8 map on a <code>TileMapLayer</code>, 72 px tiles, <code>buildable</code> custom data true only on grass</li>
+    <li><code>GroundPath</code> (eight points) and <code>AirPath</code> (spawn to base) under <code>Paths</code></li>
+    <li>Five <code>EnemyData</code> resources with the stats in the design table</li>
+    <li>Enemies are <code>PathFollow2D</code> children of the matching path; a leak emits <code>reached_end</code> and costs lives</li>
+    <li>Kills pay <code>reward</code>; damaged enemies draw a health bar and a hit flash; slowed enemies draw a blue ring</li>
+    <li><code>WaveGroup</code>, <code>WaveData</code> and <code>LevelData</code>, with <code>level_01.tres</code> holding eight waves</li>
+    <li><code>WaveSpawner</code> awaits prep and spawn gaps with <code>create_timer(..., false)</code> so pause freezes the wave</li>
+    <li>Start at 150 gold and 20 lives; a clear pays <code>clear_bonus</code> plus 10% interest capped at 50</li>
+    <li>Game Over overlay pauses the tree; Restart reloads the scene</li>
+    <li>Four <code>TowerData</code> resources, three <code>TowerLevel</code> rows each, matching Day 9's numbers</li>
+    <li>Placement uses <code>local_to_map</code>, refuses non-buildable cells, and allows one tower per cell</li>
+    <li>Targeting cycles First, Last, Closest and Strongest</li>
+    <li>Projectiles and tower ranges use layer 4 (<code>player_attacks</code>) and mask layer 3 (<code>enemies</code>)</li>
+    <li>Cannon deals full splash damage; Frost applies <code>apply_slow</code>; Frost level 3 also splashes</li>
+    <li>Upgrade spends the next level's cost; Sell refunds 60% of gold spent on that tower, rounded down</li>
+    <li>Speed toggles <code>Engine.time_scale</code> between 1 and 2, and a new run starts at 1</li>
+    <li>Victory overlay after wave 8 if lives remain</li>
+    <li>Best cleared wave is stored in <code>user://best_wave.json</code> and shown on the HUD across restarts</li>
+  </ul>
+
+  <h2 id="architecture">Architecture</h2>
+  <pre class="scene-tree">Main (Node2D)                    [main.gd]
+├── Map (TileMapLayer)           %Map
+├── Towers (Node2D)              placed towers
+├── Paths (Node2D)
+│   ├── GroundPath (Path2D)
+│   ├── AirPath (Path2D)
+│   └── (Enemy instances at runtime)
+├── Base (Node2D)                [base.gd]
+├── WaveSpawner (Node)           [wave_spawner.gd]
+├── Projectiles (Node2D)
+└── HUD (CanvasLayer)            [hud.gd]  process mode Always</pre>
+  <table>
+    <tr><th>Piece</th><th>Owns</th></tr>
+    <tr><td><code>EnemyData</code>, <code>WaveGroup</code>, <code>WaveData</code>, <code>LevelData</code>, <code>TowerLevel</code>, <code>TowerData</code></td><td>Numbers only. Never written at runtime.</td></tr>
+    <tr><td><code>Enemy</code></td><td>Progress along its parent path, health, slow timer. Signals <code>died</code> and <code>reached_end</code>.</td></tr>
+    <tr><td><code>WaveSpawner</code></td><td>Spawn order, <code>health_scale</code> applied before <code>add_child</code>, wave bonus, best-wave notice.</td></tr>
+    <tr><td><code>Game</code> autoload</td><td>Gold, lives, wave index, ended flag, 10% interest, <code>user://best_wave.json</code>. Signals <code>gold_changed</code>, <code>lives_changed</code>, <code>wave_changed</code>, <code>best_wave_changed</code>, <code>game_over</code>, <code>victory</code>.</td></tr>
+    <tr><td><code>Tower</code> / <code>Projectile</code></td><td>Targeting, shots, splash query, slow. Gold spends happen in <code>Main</code>.</td></tr>
+    <tr><td><code>Main</code></td><td>Cell under the mouse, occupied-cell map, selection.</td></tr>
+    <tr><td><code>HUD</code></td><td>Labels and buttons. Reads <code>Game</code> and the selected <code>Tower</code>. Does not store the real gold.</td></tr>
+  </table>
+  <p>Physics layers, named in Project Settings: 1 <code>world</code>, 2 <code>player</code>, 3 <code>enemies</code>, 4 <code>player_attacks</code>, 5 <code>enemy_attacks</code>, 6 <code>pickups</code>, 7 <code>triggers</code>. Enemy hitboxes are layer 3, mask empty, monitoring off. Tower ranges and projectiles are layer 4, mask layer 3. In code those bits are <code>4</code> and <code>8</code>. Groups used: <code>enemies</code>, <code>towers</code>, <code>projectiles</code>.</p>
+
+  <h2 id="assets">Assets and credits</h2>
+  <p>No third-party art is required. <code>res://tools/make_tiles.gd</code> paints <code>res://art/tiles.png</code> (grass, path, rock, 72 px). Enemies, towers, the base and projectiles are drawn with <code>_draw</code>. Paste this into a credits line if you show one:</p>
+  <pre class="plain">Bastion Defense
+Made with Godot Engine — https://godotengine.org
+Tiles generated in-project by tools/make_tiles.gd. No third-party sprites.</pre>
+  <div class="callout external"><span class="callout-title">External resource (not in the Godot docs)</span>
+    <p>Optional skin, not used by any step: the CC0 pack "Tower Defense (Top-Down)" by Kenney, from <a href="https://kenney.nl/assets" target="_blank" rel="noopener">kenney.nl/assets</a>. Search the site for that pack name. Filenames inside the pack change between releases; pick files by description. Verify the license on the official page. If you ship a skin, add a credit line naming Kenney and the pack.</p></div>
+
+  <h2 id="days">Where you build it</h2>
+  <ul>
+    <li><a href="../days/day08.html">Day 8</a>: project, tiles, <code>buildable</code> data, <code>GroundPath</code> and <code>AirPath</code>, <code>EnemyData</code>, the <code>Enemy</code> scene, waves, <code>WaveSpawner</code>, <code>Game</code>, base, HUD, game over and the leak-only victory.</li>
+    <li><a href="../days/day09.html">Day 9</a>: <code>TowerData</code>, four towers, targeting, projectiles, splash and slow, placement, upgrade and sell, 1×/2×, the eight-wave level, real victory, best-wave save.</li>
+  </ul>
+
+  <h2 id="stretch">Stretch goals</h2>
+  <ul>
+    <li>A second <code>LevelData</code> with a new curve, picked from a one-button menu.</li>
+    <li>Maze mode: the optional <code>NavigationAgent2D</code> snippet on Day 8, plus a check that the goal is still reachable before a tile is allowed to become a wall.</li>
+    <li>One more tower, a poison damage-over-time, as another <code>TowerData</code> rather than a new scene.</li>
+    <li>Muzzle and leak sounds through a small player pool. Keep them off <code>Engine.time_scale</code> or set <code>AudioServer.playback_speed_scale</code> on purpose.</li>
+    <li>Object-pool the projectiles once a full wave of cannons makes <code>instantiate</code> show up in the profiler.</li>
+    <li>Show the ghost cell from the Day 9 challenge, and a range circle while the build button is armed, before you spend the gold.</li>
+  </ul>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 25 - Deckbuilder II: card UI, drag and drop, effects | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day25" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 2 · Day 25 · Deckbuilder</div>
+    <h1>Deckbuilder II: card UI, drag and drop, effects</h1>
+    <p class="lead">Replace the button column with a real card <code>Control</code>, lay the hand out in code, and play cards by dragging them onto the fighter they target. Hits and hover use <code>create_tween()</code>. The rules in <code>battle.gd</code> stay as they were yesterday.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Concepts.</strong> Drag data, drop targets, why the hand is not an <code>HBoxContainer</code>.</td></tr>
+    <tr><td>0:20 – 1:25</td><td><strong>Card scene.</strong> Click-by-click <code>Panel</code>, <code>ColorRect</code>, labels, script.</td></tr>
+    <tr><td>1:25 – 1:40</td><td><strong>Break.</strong></td></tr>
+    <tr><td>1:40 – 2:35</td><td><strong>Hand, enemy view, drop zones.</strong></td></tr>
+    <tr><td>2:35 – 3:35</td><td><strong>Wire combat, tweens, play a full turn with the mouse.</strong></td></tr>
+    <tr><td>3:35 – 4:00</td><td><strong>Pitfalls, challenge, quiz, wrap-up.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>4 h 0 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Build <code>card_view.tscn</code> from a <code>Panel</code>, a <code>ColorRect</code>, and labels, with mouse filter Ignore on every child.</li>
+    <li>Drag a card with <code>_get_drag_data</code> and <code>set_drag_preview</code>, and accept it only in <code>_can_drop_data</code> / <code>_drop_data</code> on the matching fighter.</li>
+    <li>Center the hand in a plain <code>Control</code>, lift the card under the cursor, and flash a hit with a tween on scale and modulate.</li>
+    <li>Play Strike onto Jaw Worm and Defend onto your panel. The other drop snaps the card back.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 24's project at <code>C:\GodotProjects\deckbuilder</code> runs. <kbd>F6</kbd> on <code>res://game/combat/combat.tscn</code> shows five buttons and Jaw Worm.</li>
+    <li><code>battle.gd</code> is unchanged today. If you skipped Day 24, paste that file and the data scripts first, then return here.</li>
+    <li>You will delete the runtime button list. The piles, energy, and intents stay.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>Three methods, one preview</h3>
+  <p>Godot asks the control under the pointer for drag data by calling <code>_get_drag_data(at_position)</code>. <code>at_position</code> is local to that control. Return <code>null</code> and nothing starts. Return a <code>Dictionary</code> and the drag starts. Call <code>set_drag_preview</code> in that method with a <code>Control</code> that is <em>not</em> in the scene tree. Do not <code>free()</code> the preview and do not keep a variable pointing at it: the engine deletes it when the drag ends.</p>
+  <p>The control under the cursor at release gets <code>_can_drop_data(at_position, data)</code> first. That method only answers yes or no. <code>_drop_data</code> is where you play the card. The class reference also lists <code>force_drag</code> for starting a drag from code; this game does not need it. A keyboard drag passes <code>Vector2.INF</code> as the position; ignoring the position means that path still returns the same dictionary.</p>
+  <div class="callout docs"><span class="callout-title">What the card dictionary contains</span>
+    <p><code>from_hand</code> (bool), <code>uid</code> (int), <code>target</code> (the <code>CardData.Target</code> enum as an int). Drop zones read those keys. They do not search the hand themselves.</p></div>
+
+  <h3>Mouse filter decides who hears the click</h3>
+  <p>The topmost <code>Control</code> with <kbd class="ui">Mouse &gt; Filter</kbd> set to Stop receives the click. A <code>Label</code> defaults to Stop, so a label on top of the card steals the drag and <code>_get_drag_data</code> on the card never runs. Every child of the card and of the enemy panel is set to Ignore. The root panel stays Stop.</p>
+
+  <h3>Layout versus containers</h3>
+  <p>An <code>HBoxContainer</code> writes each child's position every layout pass. A hover tween on <code>position</code> loses that fight. The hand is a plain <code>Control</code> that places cards once per rebuild and on <code>resized</code>. Enemy panels stay in an <code>HBoxContainer</code>, so their hit reaction tweens <code>scale</code> and <code>modulate</code>, which a container does not own. Set <code>pivot_offset</code> to half the size or the scale grows from the top-left corner.</p>
+
+  <h2 id="build-1">Block 2: The card scene</h2>
+  <p class="steps-hint">One node at a time. After each node, look at the Scene dock and confirm the name before you add the next.</p>
+  <ol class="steps">
+    <li><strong>New scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>. Click <kbd class="ui">Other Node</kbd>, search <code>Panel</code>, select it, click <kbd class="ui">Create</kbd>. Press <kbd>F2</kbd>, rename it <code>CardView</code>.</li>
+    <li><strong>Size.</strong> Select <code>CardView</code>. In the Inspector filter, type <code>custom minimum</code>. Set <kbd class="ui">Custom Minimum Size</kbd> to <code>150 x 210</code>. Filter <code>clip</code> and enable <kbd class="ui">Clip Contents</kbd>. Filter <code>mouse filter</code> and set <kbd class="ui">Filter</kbd> to <kbd class="ui">Stop</kbd>.</li>
+    <li><strong>Face.</strong> Select <code>CardView</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>ColorRect</code>, rename it <code>Background</code>. In the toolbar above the 2D viewport, open <kbd class="ui">Anchor</kbd> and choose <kbd class="ui">Full Rect</kbd>. Filter <code>offset</code>. Set <kbd class="ui">Offset Left</kbd> <code>4</code>, <kbd class="ui">Offset Top</kbd> <code>4</code>, <kbd class="ui">Offset Right</kbd> <code>-4</code>, <kbd class="ui">Offset Bottom</kbd> <code>-4</code>. The four pixels left around the edge are where the panel border will show. Filter <code>color</code> and set <kbd class="ui">Color</kbd> to a dull red, about <code>#c24334</code>. The script overwrites this per card type.</li>
+    <li><strong>Cost chip.</strong> Add another <code>ColorRect</code> child of <code>CardView</code> (not of Background) named <code>CostBg</code>. Anchor menu → <kbd class="ui">Top Left</kbd>. Filter <code>position</code>, set Position to <code>10, 10</code>. Filter <code>size</code>, set Size to <code>36 x 36</code>. If you only see offsets, the anchors are not top-left: choose Top Left again, then set position and size. Set Color to <code>#d9ad32</code>.</li>
+    <li><strong>Cost text.</strong> Add a <code>Label</code> child of <code>CardView</code> named <code>Cost</code>. Top Left anchors. Position <code>10, 14</code>, size <code>36 x 28</code>. Filter <code>horizontal alignment</code> and set <kbd class="ui">Horizontal Alignment</kbd> to <kbd class="ui">Center</kbd>. Filter <code>vertical alignment</code> and set <kbd class="ui">Vertical Alignment</kbd> to <kbd class="ui">Center</kbd>. Set <kbd class="ui">Text</kbd> to <code>1</code> so you can see it in the editor; the script replaces it.</li>
+    <li><strong>Type and name.</strong> Add <code>Label</code> <code>TypeLabel</code>. Top Left, position <code>52, 12</code>, size <code>88 x 24</code>, text <code>Attack</code>. Add <code>Label</code> <code>NameLabel</code>. Top Left, position <code>10, 52</code>, size <code>130 x 40</code>. Filter <code>autowrap</code>, set <kbd class="ui">Autowrap Mode</kbd> to <kbd class="ui">Word Smart</kbd>. Text <code>Strike</code>.</li>
+    <li><strong>Body.</strong> Add <code>Label</code> <code>BodyLabel</code>. Top Left, position <code>10, 98</code>, size <code>130 x 100</code>, Autowrap Mode <kbd class="ui">Word Smart</kbd>, Vertical Alignment <kbd class="ui">Top</kbd>. Text <code>Deal 6 damage.</code></li>
+    <li><strong>Unique names.</strong> Right-click <code>Background</code> → <kbd class="ui">Access as Unique Name</kbd>. Repeat for <code>CostBg</code>, <code>Cost</code>, <code>TypeLabel</code>, <code>NameLabel</code>, and <code>BodyLabel</code>. Each shows a <code>%</code> in the Scene dock.</li>
+    <li><strong>Ignore the mouse on children.</strong> Select <code>Background</code>. Filter <code>mouse filter</code>, set <kbd class="ui">Filter</kbd> to <kbd class="ui">Ignore</kbd>. Do the same for <code>CostBg</code>, <code>Cost</code>, <code>TypeLabel</code>, <code>NameLabel</code>, and <code>BodyLabel</code>. The card root stays Stop. The script sets this again in <code>_ready</code> so a label you add later does not silently steal the drag.</li>
+    <li><strong>Save.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd> as <code>res://game/combat/card_view.tscn</code>. If asked to make it the main scene, click <kbd class="ui">No</kbd>.</li>
+  </ol>
+  <pre class="scene-tree">CardView (Panel)                 [card_view.gd]
+├── %Background (ColorRect)      mouse Ignore, inset 4 px
+├── %CostBg (ColorRect)          mouse Ignore
+├── %Cost (Label)                mouse Ignore
+├── %TypeLabel (Label)           mouse Ignore
+├── %NameLabel (Label)           mouse Ignore
+└── %BodyLabel (Label)           mouse Ignore</pre>
+  <ol class="steps">
+    <li><strong>Card script.</strong> Select <code>CardView</code>, click <kbd class="ui">Attach Script</kbd> (scroll icon on the Scene dock). Path <code>res://game/combat/card_view.gd</code>, template Empty, inherits <code>Panel</code>. Class name <code>CardView</code> if the field is shown. Replace the file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/combat/card_view.gd">
+extends Panel
+class_name CardView
+
+signal hovered(is_on: bool)
+
+var _card: CardInstance
+var _playable: bool = false
+var _lift: Tween
+
+
+func _ready() -> void:
+    mouse_filter = Control.MOUSE_FILTER_STOP
+    mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+    _ignore_tree(self)
+    mouse_filter = Control.MOUSE_FILTER_STOP
+    var border := StyleBoxFlat.new()
+    border.bg_color = Color(0, 0, 0, 0)
+    border.border_color = Color(0.95, 0.88, 0.7)
+    border.set_border_width_all(4)
+    border.set_corner_radius_all(8)
+    add_theme_stylebox_override("panel", border)
+    mouse_entered.connect(_on_mouse_entered)
+    mouse_exited.connect(_on_mouse_exited)
+
+
+func setup(card: CardInstance) -> void:
+    _card = card
+    %Cost.text = str(card.data.cost)
+    %NameLabel.text = tr(card.data.name_key)
+    %TypeLabel.text = tr(card.data.type_key())
+    %BodyLabel.text = card.data.rules_text()
+    %Background.color = _type_color()
+
+
+func set_playable(on: bool) -> void:
+    _playable = on
+    modulate = Color.WHITE if on else Color(0.55, 0.55, 0.55, 1)
+
+
+func lift(up: bool, rest_y: float) -> void:
+    if _lift != null and _lift.is_valid():
+        _lift.kill()
+    _lift = create_tween()
+    var target_y: float = 0.0 if up else rest_y
+    _lift.tween_property(self, "position:y", target_y, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+
+func _get_drag_data(_at_position: Vector2) -> Variant:
+    if _card == null or not _playable:
+        return null
+    var preview := Panel.new()
+    preview.custom_minimum_size = Vector2(150, 210)
+    preview.size = Vector2(150, 210)
+    var face := ColorRect.new()
+    face.color = _type_color()
+    face.size = Vector2(150, 210)
+    face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    preview.add_child(face)
+    var title := Label.new()
+    title.text = tr(_card.data.name_key)
+    title.position = Vector2(12, 48)
+    title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    preview.add_child(title)
+    set_drag_preview(preview)
+    return {
+        "from_hand": true,
+        "uid": _card.uid,
+        "target": int(_card.data.target),
+    }
+
+
+func _on_mouse_entered() -> void:
+    hovered.emit(true)
+
+
+func _on_mouse_exited() -> void:
+    hovered.emit(false)
+
+
+func _type_color() -> Color:
+    if _card == null:
+        return Color(0.3, 0.3, 0.3)
+    match _card.data.type:
+        CardData.CardType.ATTACK:
+            return Color(0.76, 0.26, 0.2)
+        CardData.CardType.SKILL:
+            return Color(0.18, 0.36, 0.72)
+        _:
+            return Color(0.16, 0.48, 0.32)
+
+
+func _ignore_tree(node: Node) -> void:
+    for child in node.get_children():
+        if child is Control:
+            child.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        _ignore_tree(child)
+      </script>
+    </li>
+  </ol>
+  <div class="checkpoint"><p>Open <code>card_view.tscn</code> and press <kbd>F6</kbd>. A red card sits at the top-left of a grey window (this scene has no hand to position it). The title still says Strike until a fight calls <code>setup</code>. Output has no errors. Close the window with <kbd>F8</kbd>.</p></div>
+  <div class="callout warn"><span class="callout-title">If the drag preview is parented</span>
+    <p><code>set_drag_preview</code> requires a control that is not in the tree. <code>Panel.new()</code> plus <code>add_child</code> on that panel is fine: the panel itself was never added to the scene. Do not <code>add_child(preview)</code> on the card.</p></div>
+
+  <h2 id="build-2">Block 3: Hand, enemy panel, drop zone</h2>
+  <ol class="steps">
+    <li><strong>Hand script.</strong> In the FileSystem dock, right-click <code>res://game/combat</code> → <kbd class="ui">Create New</kbd> → <kbd class="ui">Script</kbd>. Path <code>res://game/combat/hand_view.gd</code>, template Empty, inherits <code>Control</code>, class name <code>HandView</code>. Replace the file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/combat/hand_view.gd">
+extends Control
+class_name HandView
+
+const CARD_SCENE: PackedScene = preload("res://game/combat/card_view.tscn")
+const CARD_SIZE: Vector2 = Vector2(150, 210)
+const REST_Y: float = 36.0
+
+
+func _ready() -> void:
+    mouse_filter = Control.MOUSE_FILTER_IGNORE
+    resized.connect(_on_resized)
+
+
+func show_hand(cards: Array[CardInstance], energy_left: int, player_turn: bool) -> void:
+    for child in get_children():
+        remove_child(child)
+        child.queue_free()
+    for card in cards:
+        var view: CardView = CARD_SCENE.instantiate() as CardView
+        add_child(view)
+        view.setup(card)
+        view.set_playable(player_turn and card.data.cost <= energy_left)
+        view.hovered.connect(_on_hovered.bind(view))
+    call_deferred("_layout")
+
+
+func _on_resized() -> void:
+    _layout()
+
+
+func _layout() -> void:
+    var count: int = get_child_count()
+    if count == 0:
+        return
+    var gap: float = 12.0
+    var total: float = float(count) * CARD_SIZE.x + float(count - 1) * gap
+    if total > size.x and count > 1:
+        gap = (size.x - float(count) * CARD_SIZE.x) / float(count - 1)
+        if gap < -70.0:
+            gap = -70.0
+        total = float(count) * CARD_SIZE.x + float(count - 1) * gap
+    var x: float = maxf(0.0, (size.x - total) * 0.5)
+    for child in get_children():
+        var view: CardView = child as CardView
+        if view == null:
+            continue
+        view.size = CARD_SIZE
+        view.position = Vector2(x, REST_Y)
+        view.z_index = 0
+        x += CARD_SIZE.x + gap
+
+
+func _on_hovered(is_on: bool, card: CardView) -> void:
+    for child in get_children():
+        var other: CardView = child as CardView
+        if other != null:
+            other.z_index = 0
+    if is_on:
+        card.z_index = 10
+    card.lift(is_on, REST_Y)
+      </script>
+    </li>
+    <li><strong>Swap the hand node.</strong> Open <code>res://game/combat/combat.tscn</code>. In the Scene dock select <code>HandMount</code> and press <kbd>Delete</kbd>. Select <code>Column</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add a <code>Control</code>, rename it <code>Hand</code>. Right-click <code>Hand</code> → <kbd class="ui">Access as Unique Name</kbd>. Drag it in the Scene dock so it is the last child of <code>Column</code> (below <code>LogLabel</code>).</li>
+    <li><strong>Hand layout flags.</strong> Select <code>%Hand</code>. Attach <code>res://game/combat/hand_view.gd</code> (the file already exists: in the Attach Script dialog, click the folder icon beside Path and pick that file, or choose it from the path field). Filter <code>custom minimum</code>, set Custom Minimum Size to <code>0 x 260</code>. Filter <code>size flags</code>. Horizontal: <kbd class="ui">Fill</kbd> and <kbd class="ui">Expand</kbd>. Vertical: <kbd class="ui">Fill</kbd> only, not Expand, so the battlefield keeps the spare height. Filter <code>mouse filter</code>, set Filter to <kbd class="ui">Ignore</kbd>.</li>
+    <li><strong>Enemy scene.</strong> <kbd class="menu">Scene &gt; New Scene</kbd> → <kbd class="ui">Other Node</kbd> → <code>Panel</code> named <code>EnemyView</code>. Custom Minimum Size <code>260 x 200</code>. Mouse Filter <kbd class="ui">Stop</kbd>.</li>
+    <li><strong>Backdrop.</strong> Add a <code>ColorRect</code> child named <code>Backdrop</code>. Anchor <kbd class="ui">Full Rect</kbd>. Offsets all 0. Color <code>#734832</code>. Mouse Filter <kbd class="ui">Ignore</kbd>. Unique name.</li>
+    <li><strong>Text column.</strong> Add a <code>MarginContainer</code> child of <code>EnemyView</code> named <code>Margin</code>. Anchor Full Rect. Theme Overrides → Constants: Margin Left, Top, Right, and Bottom each <code>10</code> (click each override arrow, same as Day 24). Mouse Filter <kbd class="ui">Ignore</kbd>. Add a <code>VBoxContainer</code> child of <code>Margin</code> named <code>Column</code>. Size flags Horizontal and Vertical: Fill and Expand. Mouse Filter Ignore.</li>
+    <li><strong>Four labels.</strong> Add four <code>Label</code> children of <code>Column</code>, in order: <code>NameLabel</code>, <code>HpLabel</code>, <code>IntentLabel</code>, <code>StatusLabel</code>. On each: Mouse Filter <kbd class="ui">Ignore</kbd>, Autowrap Mode <kbd class="ui">Word Smart</kbd>, and <kbd class="ui">Access as Unique Name</kbd>. Set NameLabel text to <code>Jaw Worm</code> so the editor is readable. Save as <code>res://game/combat/enemy_view.tscn</code>. Not the main scene.</li>
+  </ol>
+  <pre class="scene-tree">EnemyView (Panel)                [enemy_view.gd]
+├── %Backdrop (ColorRect)        mouse Ignore
+└── Margin (MarginContainer)     mouse Ignore
+    └── Column (VBoxContainer)   mouse Ignore
+        ├── %NameLabel (Label)
+        ├── %HpLabel (Label)
+        ├── %IntentLabel (Label)
+        └── %StatusLabel (Label)</pre>
+  <ol class="steps">
+    <li><strong>Enemy script.</strong> Attach <code>res://game/combat/enemy_view.gd</code> to <code>EnemyView</code>, inherits <code>Panel</code>, class name <code>EnemyView</code>. Replace the file:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/combat/enemy_view.gd">
+extends Panel
+class_name EnemyView
+
+signal card_dropped(uid: int, enemy_index: int)
+
+var host: Combat
+var enemy_index: int = 0
+var _punch: Tween
+
+
+func _ready() -> void:
+    mouse_filter = Control.MOUSE_FILTER_STOP
+    _ignore_children(self)
+    mouse_filter = Control.MOUSE_FILTER_STOP
+
+
+func bind_host(combat_host: Combat, index: int) -> void:
+    host = combat_host
+    enemy_index = index
+
+
+func show_enemy(battle: Battle, index: int) -> void:
+    enemy_index = index
+    var enemy: Battle.Combatant = battle.enemies[index]
+    var title: String = enemy.enemy_id
+    if enemy.data != null:
+        title = tr(enemy.data.name_key)
+    %NameLabel.text = title
+    %HpLabel.text = tr("DECK_HP") % [enemy.hp, enemy.max_hp]
+    %HpLabel.text += "   " + (tr("DECK_BLOCK") % enemy.block)
+    %IntentLabel.text = battle.intent_lines(enemy)
+    %StatusLabel.text = tr("DECK_STATUS") % [enemy.strength, enemy.weak, enemy.vulnerable]
+    %Backdrop.color = _color_for(enemy.enemy_id)
+    modulate = Color.WHITE if enemy.hp > 0 else Color(0.4, 0.4, 0.4, 1)
+
+
+func punch() -> void:
+    if _punch != null and _punch.is_valid():
+        _punch.kill()
+    pivot_offset = size * 0.5
+    scale = Vector2.ONE
+    _punch = create_tween()
+    _punch.tween_property(self, "scale", Vector2(1.06, 1.06), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+    _punch.parallel().tween_property(self, "modulate", Color(1.0, 0.55, 0.45), 0.08)
+    _punch.tween_property(self, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+    _punch.parallel().tween_property(self, "modulate", Color.WHITE, 0.12)
+
+
+func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
+    if host == null or not host.can_accept(data, false, true):
+        return false
+    var target_kind: int = int(data.get("target", -1))
+    if target_kind == int(CardData.Target.ALL):
+        return host.any_enemy_alive()
+    return host.enemy_alive(enemy_index)
+
+
+func _drop_data(_at_position: Vector2, data: Variant) -> void:
+    card_dropped.emit(int(data.get("uid", -1)), enemy_index)
+
+
+func _color_for(enemy_id: String) -> Color:
+    match enemy_id:
+        "jaw_worm":
+            return Color(0.45, 0.28, 0.18)
+        "cultist":
+            return Color(0.28, 0.2, 0.42)
+        "blue_slaver":
+            return Color(0.12, 0.28, 0.48)
+        "ash_titan":
+            return Color(0.38, 0.14, 0.12)
+        _:
+            return Color(0.22, 0.22, 0.26)
+
+
+func _ignore_children(node: Node) -> void:
+    for child in node.get_children():
+        if child is Control:
+            child.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        _ignore_children(child)
+      </script>
+    </li>
+    <li><strong>Player drop script.</strong> Create <code>res://game/combat/drop_zone.gd</code>, inherits <code>Panel</code>, class name <code>DropZone</code>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://game/combat/drop_zone.gd">
+extends Panel
+class_name DropZone
+
+signal card_dropped(uid: int)
+
+var host: Combat
+var accepts_self: bool = false
+var accepts_enemy: bool = false
+var _punch: Tween
+
+
+func _ready() -> void:
+    mouse_filter = Control.MOUSE_FILTER_STOP
+
+
+func bind_host(combat_host: Combat, self_zone: bool, enemy_zone: bool) -> void:
+    host = combat_host
+    accepts_self = self_zone
+    accepts_enemy = enemy_zone
+
+
+func punch() -> void:
+    if _punch != null and _punch.is_valid():
+        _punch.kill()
+    _punch = create_tween()
+    _punch.tween_property(self, "modulate", Color(1.0, 0.45, 0.4), 0.08)
+    _punch.tween_property(self, "modulate", Color.WHITE, 0.16)
+
+
+func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
+    if host == null:
+        return false
+    return host.can_accept(data, accepts_self, accepts_enemy)
+
+
+func _drop_data(_at_position: Vector2, data: Variant) -> void:
+    card_dropped.emit(int(data.get("uid", -1)))
+      </script>
+    </li>
+    <li><strong>Attach it to the player panel.</strong> Open <code>combat.tscn</code>. Select <code>%PlayerDrop</code>. Click <kbd class="ui">Attach Script</kbd>, path <code>res://game/combat/drop_zone.gd</code> (pick the existing file), inherits <code>Panel</code>. Do not let the dialog overwrite the file with a template: if it opens a generated stub, close it without saving, then drag <code>drop_zone.gd</code> from the FileSystem dock onto <code>PlayerDrop</code> in the Scene dock. The Inspector should list the script path.</li>
+    <li><strong>Hint strings.</strong> Open <code>res://i18n/translations.csv</code> and append:
+      <script type="text/x-code" data-lang="csv" data-file="res://i18n/translations.csv">
+DECK_DROP_SELF,Skills and powers,Habilidades y poderes,Fähigkeiten und Mächte,Skills and powers,Skills and powers,Skills and powers,Skills and powers
+DECK_DROP_ENEMY,Attacks,Ataques,Angriffe,Attacks,Attacks,Attacks,Attacks
+      </script>
+      Select the csv in the FileSystem dock and click <kbd class="ui">Reimport</kbd> on the Import dock if that button is enabled.</li>
+    <li><strong>Hint label.</strong> Select <code>%PlayerDrop</code>, add a child <code>Label</code> named <code>Hint</code>. Anchor Full Rect. Offsets 8 on every side (Left 8, Top 8, Right -8, Bottom -8). Autowrap Word Smart. Vertical Alignment Center. Horizontal Alignment Center. Mouse Filter Ignore. Unique name. Text can stay empty; the combat script sets it.</li>
+  </ol>
+  <div class="checkpoint"><p>Scene dock for <code>combat.tscn</code> shows <code>%Hand</code> with <code>hand_view.gd</code>, and <code>%PlayerDrop</code> with <code>drop_zone.gd</code>. <code>enemy_view.tscn</code> and <code>card_view.tscn</code> each open without errors. There is no <code>HandMount</code> node left.</p></div>
+
+  <h2 id="build-3">Block 4: Combat view</h2>
+  <p><code>battle.gd</code> still resolves damage, Block, Weak, Vulnerable, Strength, draw, and exhaust. This script only shows that state and forwards a uid when a drop is legal. Rebuilding the hand is deferred so the dragged card is not freed inside <code>_drop_data</code>.</p>
+  <ol class="steps">
+    <li><strong>Replace <code>combat.gd</code>.</strong> Open <code>res://game/combat/combat.gd</code>. Select all, paste the file below, save. The class name stays <code>Combat</code>.
+      <details>
+        <summary>combat.gd (replace the whole file)</summary>
+        <script type="text/x-code" data-lang="gdscript" data-file="res://game/combat/combat.gd">
+extends Control
+class_name Combat
+
+signal battle_ended(victory: bool)
+
+const ENEMY_SCENE: PackedScene = preload("res://game/combat/enemy_view.tscn")
+
+var battle: Battle = Battle.new()
+var _hand_queued: bool = false
+
+
+func _ready() -> void:
+    battle.state_changed.connect(_refresh)
+    battle.log_line.connect(_on_log)
+    battle.battle_ended.connect(_on_battle_ended)
+    battle.impact.connect(_on_impact)
+    %EndTurn.pressed.connect(_on_end_turn_pressed)
+    var drop: DropZone = %PlayerDrop
+    drop.bind_host(self, true, false)
+    drop.card_dropped.connect(_on_self_drop)
+    %Hint.text = tr("DECK_DROP_SELF")
+    Events.settings_changed.connect(_refresh)
+    if get_parent() == get_tree().root:
+        _debug_start()
+
+
+func _debug_start() -> void:
+    var relics: Array[String] = []
+    start_battle(Database.starter_deck(), ["jaw_worm"], relics, 70, 70)
+
+
+func start_battle(deck_ids: Array[String], enemy_ids: Array[String], relics: Array[String], hp: int, max_hp: int) -> void:
+    %LogLabel.text = ""
+    %ResultLabel.text = ""
+    visible = true
+    process_mode = Node.PROCESS_MODE_INHERIT
+    _clear(%EnemyRow)
+    battle.start_battle(deck_ids, enemy_ids, relics, hp, max_hp)
+
+
+func load_battle(data: Dictionary) -> void:
+    %LogLabel.text = ""
+    %ResultLabel.text = ""
+    visible = true
+    process_mode = Node.PROCESS_MODE_INHERIT
+    _clear(%EnemyRow)
+    battle.from_dictionary(data)
+
+
+func export_battle() -> Dictionary:
+    return battle.to_dictionary()
+
+
+func current_hp() -> int:
+    if battle.player == null:
+        return 0
+    return battle.player.hp
+
+
+func can_accept(data: Variant, self_zone: bool, enemy_zone: bool) -> bool:
+    if typeof(data) != TYPE_DICTIONARY:
+        return false
+    if not bool(data.get("from_hand", false)):
+        return false
+    var uid: int = int(data.get("uid", -1))
+    if not battle.can_play(uid):
+        return false
+    var target_kind: int = int(data.get("target", -1))
+    if self_zone and target_kind == int(CardData.Target.SELF):
+        return true
+    if enemy_zone and (target_kind == int(CardData.Target.SINGLE) or target_kind == int(CardData.Target.ALL)):
+        return true
+    return false
+
+
+func enemy_alive(index: int) -> bool:
+    if index < 0 or index >= battle.enemies.size():
+        return false
+    return battle.enemies[index].hp > 0
+
+
+func any_enemy_alive() -> bool:
+    for enemy in battle.enemies:
+        if enemy.hp > 0:
+            return true
+    return false
+
+
+func _on_end_turn_pressed() -> void:
+    battle.end_turn()
+
+
+func _on_self_drop(uid: int) -> void:
+    battle.play(uid, -1)
+
+
+func _on_enemy_drop(uid: int, enemy_index: int) -> void:
+    battle.play(uid, enemy_index)
+
+
+func _on_log(text: String) -> void:
+    %LogLabel.append_text(text)
+    %LogLabel.newline()
+
+
+func _on_battle_ended(victory: bool) -> void:
+    if victory:
+        %ResultLabel.text = tr("DECK_WIN")
+    else:
+        %ResultLabel.text = tr("DECK_LOSE")
+    battle_ended.emit(victory)
+    _refresh()
+
+
+func _on_impact(on_player: bool, enemy_index: int, _amount: int) -> void:
+    if on_player:
+        var drop: DropZone = %PlayerDrop
+        drop.punch()
+        return
+    if enemy_index < 0 or enemy_index >= %EnemyRow.get_child_count():
+        return
+    var view: EnemyView = %EnemyRow.get_child(enemy_index) as EnemyView
+    if view != null:
+        view.punch()
+
+
+func _refresh() -> void:
+    if battle.player == null:
+        return
+    var fighter: Battle.Combatant = battle.player
+    %PlayerLabel.text = tr("DECK_HP") % [fighter.hp, fighter.max_hp]
+    %PlayerLabel.text += "  " + (tr("DECK_BLOCK") % fighter.block)
+    %PlayerLabel.text += "  " + (tr("DECK_STATUS") % [fighter.strength, fighter.weak, fighter.vulnerable])
+    %EnergyLabel.text = tr("DECK_ENERGY") % battle.energy
+    %PileLabel.text = tr("DECK_PILES") % [battle.draw_pile.size(), battle.discard_pile.size(), battle.exhaust_pile.size()]
+    %EndTurn.disabled = battle.phase != Battle.Phase.PLAYER
+    %Hint.text = tr("DECK_DROP_SELF")
+    _sync_enemies()
+    if not _hand_queued:
+        _hand_queued = true
+        call_deferred("_rebuild_hand")
+
+
+func _rebuild_hand() -> void:
+    _hand_queued = false
+    if battle.player == null:
+        return
+    var hand: HandView = %Hand
+    var player_turn: bool = battle.phase == Battle.Phase.PLAYER
+    hand.show_hand(battle.hand, battle.energy, player_turn)
+
+
+func _sync_enemies() -> void:
+    var row: HBoxContainer = %EnemyRow
+    if row.get_child_count() != battle.enemies.size():
+        _clear(row)
+        for i in battle.enemies.size():
+            var view: EnemyView = ENEMY_SCENE.instantiate() as EnemyView
+            row.add_child(view)
+            view.bind_host(self, i)
+            view.card_dropped.connect(_on_enemy_drop)
+    for i in battle.enemies.size():
+        var view: EnemyView = row.get_child(i) as EnemyView
+        if view != null:
+            view.show_enemy(battle, i)
+
+
+func _clear(node: Node) -> void:
+    for child in node.get_children():
+        node.remove_child(child)
+        child.queue_free()
+        </script>
+      </details>
+    </li>
+    <li><strong>Run the scene.</strong> Save every open tab. Open <code>combat.tscn</code> and press <kbd>F6</kbd>. Five cards sit in a row along the bottom. Jaw Worm is a brown panel, not a plain label. Your panel reads "Skills and powers".</li>
+    <li><strong>Legal drops.</strong> Drag Strike onto Jaw Worm. Energy drops by 1, the log shows 6 damage, and the enemy panel scales up and flashes. Drag Defend onto your panel. Block becomes 5. Drag Defend onto Jaw Worm: the card snaps back and energy does not change. Drag Strike onto your panel: same refusal.</li>
+    <li><strong>Hover and end turn.</strong> Rest the cursor on a card. It rises and draws above its neighbors. Move off: it returns. Click <kbd class="ui">End turn</kbd>. The enemy hits (your panel flashes red), Block is spent, and a new hand appears at 3 energy.</li>
+    <li><strong>Menu path.</strong> Press <kbd>F5</kbd>, click Play. The same cards appear after the menu. Pause still opens. <code>game.gd</code> does not need an edit today.</li>
+  </ol>
+  <div class="checkpoint"><p>A refused drop does not change energy or the log. A Strike on Jaw Worm does. If the card never leaves your hand and the cursor shows no preview, a child still has Mouse Filter Stop: select the card scene and check Background and every label. If the drop highlights the enemy but the card snaps back, <code>_can_drop_data</code> returned false: the card is a skill, energy is too low, or it is not your turn.</p></div>
+  <div class="callout tip"><span class="callout-title">Two enemies</span>
+    <p>Cleave's target is All. Dropping it on any living enemy deals 8 to each. A single-target card dropped on a dead enemy is refused. Day 26's map has one fight with two Jaw Worms; this view already builds one panel per enemy id.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Label eats the drag.</strong> Filter Stop on a child means <code>_get_drag_data</code> on the panel never runs. Ignore on children, Stop on the root.</li>
+    <li><strong>Preview added to the card.</strong> The preview must not be in the tree. Build it with <code>.new()</code> and pass it only to <code>set_drag_preview</code>.</li>
+    <li><strong>Playing the card inside <code>_can_drop_data</code>.</strong> That method is the test. <code>_drop_data</code> emits the uid. A test that spends energy will spend it when the cursor merely enters the panel.</li>
+    <li><strong>Freeing the card during the drop.</strong> The hand rebuild is deferred with <code>call_deferred</code>. An immediate <code>queue_free</code> of the source inside <code>_drop_data</code> can upset the drag.</li>
+    <li><strong>Tweening <code>position</code> on an <code>HBoxContainer</code> child.</strong> The container puts it back next layout. Enemy hits use <code>scale</code> and <code>modulate</code>. The hand is not a container, so the lift tween on <code>position:y</code> sticks.</li>
+    <li><strong><code>pivot_offset</code> left at zero.</strong> Scale then grows from the corner and the panel slides. <code>punch</code> sets <code>pivot_offset = size * 0.5</code> first.</li>
+    <li><strong>Unique name missing.</strong> <code>%Hand</code> or <code>%Hint</code> errors at ready if Access as Unique Name was skipped. The <code>%</code> must be visible in the Scene dock.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 25 min)</h2>
+  <div class="challenge">
+    <h3>Fan the hand</h3>
+    <p>In <code>HandView._layout</code>, after you set <code>position</code>, set <code>pivot_offset</code> to the bottom center of the card (<code>Vector2(CARD_SIZE.x * 0.5, CARD_SIZE.y)</code>) and set <code>rotation</code> from the card's distance to the middle index. Keep the angle small, a few degrees per step. Reset <code>rotation</code> to 0 on the hovered card so the lifted card stays upright.</p>
+    <p>Hint: do this only in <code>_layout</code>. The lift tween should still own <code>position:y</code> alone. If the fan fights the lift, you are tweening rotation and position in two places.</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="0">
+      <p>What does returning <code>null</code> from <code>_get_drag_data</code> do?</p>
+      <ul>
+        <li>No drag starts. That is how an unaffordable card refuses the mouse.</li>
+        <li>The last card in the hand is dragged instead.</li>
+        <li>Godot deletes the control that returned null.</li>
+        <li>The drop target receives an empty dictionary.</li>
+      </ul>
+      <p class="explain">The Control class reference: return null when there is no data to drag. <code>set_playable(false)</code> makes <code>_get_drag_data</code> return null.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>Which preview is valid to pass to <code>set_drag_preview</code>?</p>
+      <ul>
+        <li>The card node itself, so the original follows the cursor.</li>
+        <li>A <code>ColorRect</code> you already added under <code>CardView</code> in the scene.</li>
+        <li>A <code>Panel</code> created with <code>Panel.new()</code>, never added to the scene, and not stored in a member variable.</li>
+        <li>A preview you <code>queue_free()</code> at the end of <code>_get_drag_data</code>.</li>
+      </ul>
+      <p class="explain">The preview must not be in the tree. The engine frees it when the drag ends. Freeing it yourself, or keeping the reference, fights that.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Defend is dropped on Jaw Worm and the card snaps back. Which method caused the refusal?</p>
+      <ul>
+        <li><code>_drop_data</code> played the card, then undid it.</li>
+        <li><code>_can_drop_data</code> returned false because the target enum is Self and the enemy zone only accepts Single or All.</li>
+        <li><code>_get_drag_data</code> returned null, so there was no dictionary.</li>
+        <li><code>battle.gd</code> deleted the card before the drop.</li>
+      </ul>
+      <p class="explain"><code>can_accept</code> compares <code>data["target"]</code> with the zone. A false test means <code>_drop_data</code> is not called and energy is untouched.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>Why does the enemy hit tween <code>scale</code> instead of <code>position</code>?</p>
+      <ul>
+        <li>Tweens cannot animate <code>position</code>.</li>
+        <li><code>modulate</code> is deprecated.</li>
+        <li><code>EnemyRow</code> is a <code>Control</code> with no layout, so position is ignored.</li>
+        <li><code>EnemyRow</code> is an <code>HBoxContainer</code>. It overwrites child positions. Scale and modulate are left alone.</li>
+      </ul>
+      <p class="explain">The hand is a plain Control, so its lift tween may own <code>position:y</code>. The enemy row may not.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>A new icon <code>Label</code> is added on top of the card and left at the default mouse filter. Dragging does nothing. Why?</p>
+      <ul>
+        <li>The label is Stop, so it receives the click. The card's <code>_get_drag_data</code> never runs.</li>
+        <li><code>set_drag_preview</code> only works on nodes named Background.</li>
+        <li>Labels cannot be children of a Panel.</li>
+        <li>Unique names disable drag and drop.</li>
+      </ul>
+      <p class="explain"><code>_ignore_tree</code> fixes this for children that exist at <code>_ready</code>. A label added at runtime still needs Filter Ignore, or a second pass of that helper.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_control.html" target="_blank" rel="noopener">Control</a>: <code>_get_drag_data</code>, <code>_can_drop_data</code>, <code>_drop_data</code>, <code>set_drag_preview</code>, and mouse filter.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/ui/gui_containers.html" target="_blank" rel="noopener">Using containers</a>: why <code>HBoxContainer</code> owns child positions.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/ui/size_and_anchors.html" target="_blank" rel="noopener">Size and anchors</a>: Full Rect, offsets, and the Anchor menu above the viewport.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_tween.html" target="_blank" rel="noopener">Tween</a>: <code>tween_property</code>, <code>parallel</code>, <code>kill</code>, <code>set_trans</code>, <code>set_ease</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_styleboxflat.html" target="_blank" rel="noopener">StyleBoxFlat</a>: the card border (<code>set_border_width_all</code>, <code>set_corner_radius_all</code>).</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/ui/gui_skinning.html" target="_blank" rel="noopener">GUI skinning</a>: <code>add_theme_stylebox_override</code> and the <code>panel</code> style name.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li>Cards are ColorRects and labels. Strike is red, Defend is blue, and a power would be green.</li>
+    <li>Strike drops on Jaw Worm for 6 damage. Defend drops on the player for 5 Block. The crossed pairing snaps back.</li>
+    <li>Hover lifts the card. A hit flashes the enemy. End Turn still draws and lets the intent resolve.</li>
+    <li><kbd>F5</kbd> → Play shows this fight. Pause still works.</li>
+    <li><code>battle.gd</code> was not rewritten. <code>combat.gd</code> only displays it and forwards uids.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> a branching map, rewards, relics, a shop, and saving the run with <code>SaveManager.save_slot</code> so Continue can resume mid-fight.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

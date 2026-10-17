@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 4 - Dodger II: HUD, juice, saving, first export | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day04" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 1 · Day 4 · Training game 1: Dodger</div>
+    <h1>Dodger II: HUD, juice, saving, first export</h1>
+    <p class="lead">Yesterday's loop works but looks like a prototype. Today you give it a real interface (anchors, containers, a theme and the Xolonium font), then make it feel good: animated score and messages, a particle trail, screen shake, music and a death sound. You add a difficulty ramp, a saved best score, a pause, and finish by exporting your first Windows <code>.exe</code>.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:15</td><td><strong>Block 1: Concepts.</strong> Anchors vs containers, tweens, pausing, <code>user://</code>, what an export is (no editor needed).</td></tr>
+    <tr><td>0:15 – 1:05</td><td><strong>Block 2: The HUD scene.</strong> Theme and font, CanvasLayer, containers, anchor presets, size flags, <code>hud.gd</code>, its signals.</td></tr>
+    <tr><td>1:05 – 1:30</td><td><strong>Block 3: Plug it into Main.</strong> Background, Camera2D, music and sound nodes, the <code>mobs</code> group, <code>high_score.gd</code>, the new <code>main.gd</code>, first full run.</td></tr>
+    <tr><td>1:30 – 1:45</td><td><strong>Break.</strong> Walk away from the screen for a few minutes.</td></tr>
+    <tr><td>1:45 – 2:40</td><td><strong>Block 4: Juice and game feel.</strong> Particle trail (ParticleProcessMaterial), tweens, screen shake, difficulty ramp, saved high score and reset, pause.</td></tr>
+    <tr><td>2:40 – 3:15</td><td><strong>Block 5: First Windows export.</strong> Export templates, preset, <code>.exe</code> + <code>.pck</code>, where <code>user://</code> lives.</td></tr>
+    <tr><td>3:15 – 3:55</td><td><strong>Block 6: Phone-shaped window, quiz, wrap-up.</strong> Preview portrait, check yourself, tick the Dodger feature list. The challenge is optional extra time.</td></tr>
+    <tr class="total"><td>Total</td><td>3 h 55 min</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Build a <code>HUD</code> scene on a <code>CanvasLayer</code> using anchor presets, <code>MarginContainer</code>/<code>HBoxContainer</code>/<code>VBoxContainer</code>/<code>CenterContainer</code>, size flags and a project-wide <code>Theme</code> with a custom font.</li>
+    <li>Drive the game flow with signals and <code>await</code>: <code>start_game</code>, <code>show_message</code>, <code>show_game_over</code>, and clear old mobs with a <code>mobs</code> group and <code>call_group</code>.</li>
+    <li>Add game feel with <code>Tween</code> (score pop, message pop/fade, camera shake), a <code>GPUParticles2D</code> trail configured through a <code>ParticleProcessMaterial</code>, looping music and a death sound.</li>
+    <li>Ramp the difficulty with a formula, save and show a best score in <code>user://</code> with <code>ConfigFile</code>, and pause the game with <code>ui_cancel</code> using <code>process_mode</code> and <code>get_tree().paused</code>.</li>
+    <li>Install export templates, create a Windows Desktop export preset, export <code>Dodger.exe</code> and run it, and say what ships (<code>.exe</code> + <code>.pck</code>), where <code>user://</code> is, and the difference between a debug and a release export.</li>
+    <li>Preview the portrait game in a phone-shaped window and explain what the stretch aspect settings do.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 3 is complete: <code>C:\GodotProjects\g01-dodger</code> opens, and <kbd>F5</kbd> runs <code>main.tscn</code> with a playable loop (move, creeps, game over, restart with Enter).</li>
+    <li>The project contains <code>player.tscn/.gd</code>, <code>mob.tscn/.gd</code>, <code>main.tscn/.gd</code>, <code>art/</code> and <code>fonts/</code>; the Input Map has <code>move_left/right/up/down</code>; physics layers 1-3 are named <code>world</code>, <code>player</code>, <code>enemies</code>; Player is Layer 2 / Mask 3, Mob is Layer 3 / no Mask.</li>
+    <li>You have about 1.5 GB of free disk space and internet access for the export templates (the manager downloads only what you select, but Godot's template archive is large).</li>
+    <li>Optional: headphones. Today the game finally makes sound.</li>
+  </ul>
+  <div class="callout tip"><span class="callout-title">Bring-up: you skipped or broke Day 3</span>
+    <p>Build the end state from <a href="day03.html">Day 3</a>: a project named <code>g01-dodger</code> (480x720 viewport, <code>canvas_items</code>, <code>keep</code>, assets imported), the three scenes with exactly the node names in Day 3's scene trees, the four <code>move_*</code> actions, and the three scripts from Day 3. Do the mini-checks on Day 3's final checkpoint before starting. Today's page replaces <code>player.gd</code> and <code>main.gd</code> with complete new listings, so you do not need to preserve their exact Day 3 text.</p></div>
+
+  <h2 id="concepts">Concepts you need first</h2>
+
+  <h3>UI in Godot: Control nodes, anchors and containers</h3>
+  <p>Everything in a user interface extends <code>Control</code>: Label, Button, panels, containers. A Control has a rectangle (position + size) and, unlike a Node2D, can be <em>positioned relative to its parent's edges</em>. Godot gives you two layout tools and you mix them:</p>
+  <ul>
+    <li><strong>Anchors.</strong> Four anchor values (left, top, right, bottom, each 0.0 to 1.0) say which point of the parent's rectangle each edge is pinned to; four offsets say how far from that point. <em>Anchor presets</em> are one-click combinations: <kbd class="ui">Top Wide</kbd> (pinned to the top edge, stretching across the full width), <kbd class="ui">Bottom Wide</kbd>, <kbd class="ui">Center</kbd>, <kbd class="ui">Full Rect</kbd> (pinned to all four edges). Use them to pin big chunks of UI to screen edges, so the layout survives different window shapes.</li>
+    <li><strong>Containers.</strong> A <code>Container</code> node (<code>VBoxContainer</code>, <code>HBoxContainer</code>, <code>MarginContainer</code>, <code>CenterContainer</code>, <code>GridContainer</code>...) owns the position and size of its children and lays them out for you. Inside a container you do not set position or size by hand; you set <em>size flags</em> and <em>minimum size</em> instead. Use containers for everything that flows: a row of labels, a column of buttons, padding.</li>
+    <li><strong>Size flags</strong> (Inspector &gt; <kbd class="ui">Layout &gt; Container Sizing</kbd>, horizontal and vertical): <em>Fill</em> (use the whole slot given to me), <em>Expand</em> (ask the container for the free space; several expanders share it), <em>Shrink Begin/Center/End</em> (when expanded, hug the start, middle or end of the slot).</li>
+    <li><strong>Theme.</strong> A <code>Theme</code> resource stores default fonts, font sizes, colors and styleboxes per control type. Controls look for a theme in their parents, then in the <em>project theme</em> (<kbd class="menu">Project Settings &gt; GUI &gt; Theme &gt; Custom</kbd>). Per-node <kbd class="ui">Theme Overrides</kbd> in the Inspector beat the theme for just that node.</li>
+  </ul>
+  <div class="callout tip"><span class="callout-title">Rule of thumb</span>
+    <p><strong>Anchors place the big blocks; containers arrange what is inside them.</strong> Today's HUD: a <code>MarginContainer</code> pinned to the top (<kbd class="ui">Top Wide</kbd>) holds an <code>HBoxContainer</code> with score and best score; a <code>CenterContainer</code> pinned <kbd class="ui">Full Rect</kbd> centers the message; a <code>MarginContainer</code> pinned <kbd class="ui">Bottom Wide</kbd> holds a <code>VBoxContainer</code> of buttons.</p></div>
+  <div class="callout tip"><span class="callout-title">Coming from Unity/Unreal?</span>
+    <p>Anchors work like Unity's RectTransform anchors. Containers are Unity's Layout Groups (Vertical/Horizontal Layout Group + Content Size Fitter) and Unreal's Vertical/Horizontal Box and Size Box widgets. A <code>CanvasLayer</code> is a screen-space overlay canvas.</p></div>
+
+  <h3>Why a CanvasLayer for the HUD?</h3>
+  <p>A <code>CanvasLayer</code> draws its children on a separate canvas that is <em>not</em> affected by the camera. Today you add a <code>Camera2D</code> and shake it when the player dies; the world shakes, but the score text stays rock-steady because it lives on the HUD's layer. The layer also keeps UI above all gameplay nodes without fighting over draw order.</p>
+
+  <h3>Tweens in one minute</h3>
+  <p><code>create_tween()</code> returns a <code>Tween</code> bound to the node. Each <code>tween_property(object, "property", final_value, duration)</code> animates a property from its current value; calls are <em>chained</em> (run one after another) unless you call <code>set_parallel(true)</code>. <code>set_trans()</code> and <code>set_ease()</code> shape the curve: <code>Tween.TRANS_BACK</code> with <code>Tween.EASE_OUT</code> overshoots slightly and settles, the classic "pop". A subproperty path such as <code>"modulate:a"</code> animates only the alpha channel. You used tweens on Day 2; today they carry most of the game feel. Do not tween the <em>position or size</em> of a child inside a container: the container owns those. Tween <code>scale</code> and <code>modulate</code> instead, which are free.</p>
+
+  <h3>Pausing and process modes</h3>
+  <p>Setting <code>get_tree().paused = true</code> stops physics and the processing of every node whose <kbd class="ui">Process &gt; Mode</kbd> is <code>Pausable</code>, which is what the default <code>Inherit</code> resolves to. Particles, audio streams and tweens bound to paused nodes freeze too. A node (and its children, if they Inherit) set to <code>Always</code> keeps running while paused. That is how a pause menu or the HUD can react to "unpause" while the game below is frozen. Signals still fire on paused nodes.</p>
+
+  <h3><code>user://</code> and saving a best score</h3>
+  <p><code>res://</code> is your project, read-only in an exported game. <code>user://</code> is a per-user writable folder, created automatically. On Windows the default location is <code>%APPDATA%\Godot\app_userdata\&lt;project name&gt;</code>, so for this project <code>%APPDATA%\Godot\app_userdata\g01-dodger</code>. Today you store the best score in a small INI-style file with <code>ConfigFile</code> (sections, keys, <code>load()</code>, <code>save()</code>). <code>ConfigFile</code> keeps integers as integers, which is why it is a good fit for settings and tiny saves; the larger saves of later days use JSON.</p>
+
+  <h3>What "export" means</h3>
+  <p>Running from the editor uses the editor binary and your <code>res://</code> files. Exporting packs your resources into a <code>.pck</code> file and pairs it with a prebuilt, trimmed <em>export template</em> runtime (a game executable without the editor). You install templates once per Godot version and create an <em>export preset</em> per platform in <kbd class="menu">Project &gt; Export...</kbd>. Details are in Block 5.</p>
+
+  <div class="callout version"><span class="callout-title">Version note</span>
+    <p>The embedded game window and its Game workspace (used in Block 6) exist since Godot 4.4. The Windows icon/product-name step works without extra tools in recent versions; Godot 4.4 and older required a separate tool called <em>rcedit</em> for that (see the note in Block 5). Everything else today works on any Godot 4.3+.</p></div>
+
+  <h2 id="build-1">Block 2: The HUD scene</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped. Open <code>C:\GodotProjects\g01-dodger</code> in Godot first.</p>
+
+  <h3>A project-wide theme with the Xolonium font</h3>
+  <p>Instead of overriding the font on every label, create one <code>Theme</code> resource and make it the project theme. Every Label and Button in the game then uses Xolonium at a sensible size.</p>
+  <ol class="steps">
+    <li><strong>Create the Theme file.</strong> In the <strong>FileSystem dock</strong> (bottom-left) right-click an empty area (or on <code>res://</code>) and choose <kbd class="ui">New</kbd> &gt; <kbd class="ui">Resource...</kbd>. In the <kbd class="ui">Create New Resource</kbd> dialog type <code>Theme</code> in the search box, select <kbd class="ui">Theme</kbd>, click <kbd class="ui">Create</kbd>. In the save dialog name it <code>game_theme.tres</code> in <code>res://</code> and click <kbd class="ui">Save</kbd>.</li>
+    <li><strong>Open it.</strong> Double-click <code>game_theme.tres</code>. The <strong>Inspector</strong> (right side) shows the theme's properties: <kbd class="ui">Default Base Scale</kbd>, <kbd class="ui">Default Font</kbd>, <kbd class="ui">Default Font Size</kbd>. (A Theme editor may also open in the bottom panel; you do not need it today.)</li>
+    <li><strong>Set the font.</strong> Expand <code>fonts</code> in the FileSystem dock and drag <code>Xolonium-Regular.ttf</code> onto the <kbd class="ui">Default Font</kbd> field. (Or click the field, choose <kbd class="ui">Quick Load</kbd> and pick the file.)</li>
+    <li><strong>Set the size.</strong> Set <kbd class="ui">Default Font Size</kbd> to <code>36</code>. Press <kbd>Ctrl</kbd>+<kbd>S</kbd> to save the resource.</li>
+    <li><strong>Make it the project theme.</strong> Menu bar: <kbd class="menu">Project &gt; Project Settings...</kbd>. In the left tree open <kbd class="ui">GUI</kbd> and click <kbd class="ui">Theme</kbd>. Click the folder icon next to <kbd class="ui">Custom</kbd> (setting <code>gui/theme/custom</code>), choose <code>game_theme.tres</code> and click <kbd class="ui">Open</kbd>. (If the setting is hidden, switch on <kbd class="ui">Advanced Settings</kbd> at the top right of the window.) Close the window.</li>
+  </ol>
+  <div class="callout note"><span class="callout-title">Editor preview</span>
+    <p>The editor viewport may keep previewing the default font while you edit UI scenes, but the running game uses your theme. Always judge the look with <kbd>F6</kbd>/<kbd>F5</kbd>, not the viewport.</p></div>
+
+  <h3>The Start shortcut action</h3>
+  <ol class="steps">
+    <li><strong>Add the action.</strong> <kbd class="menu">Project &gt; Project Settings...</kbd> &gt; <kbd class="ui">Input Map</kbd> tab. In <kbd class="ui">Add New Action</kbd> type <code>start_game</code>, click <kbd class="ui">Add</kbd>. On its row click <kbd class="ui">+</kbd>, press the <kbd>Enter</kbd> key while it says <kbd class="ui">Listening for Input...</kbd>, click <kbd class="ui">OK</kbd>, then <kbd class="ui">Close</kbd>. You will attach it to the Start button's shortcut in a moment; it lets the player start with <kbd>Enter</kbd> as well as the mouse.</li>
+  </ol>
+
+  <h3>Create the HUD scene and its nodes</h3>
+  <ol class="steps">
+    <li><strong>New scene with a CanvasLayer root.</strong> <kbd class="menu">Scene &gt; New Scene</kbd>. In the Scene dock click <kbd class="ui">Other Node</kbd>, search <code>CanvasLayer</code>, select it, click <kbd class="ui">Create</kbd>. Rename it <code>HUD</code> (<kbd>F2</kbd>). Press <kbd>Ctrl</kbd>+<kbd>S</kbd> and save as <code>res://hud.tscn</code>.</li>
+    <li><strong>Make the HUD work while the game is paused.</strong> With <code>HUD</code> selected, in the Inspector open the <kbd class="ui">Node</kbd> section (the last group of the list) and under <kbd class="ui">Process</kbd> set <kbd class="ui">Mode</kbd> to <code>Always</code> (<code>process_mode</code>). Why: pausing freezes the game, but the HUD must still react to the pause key and show the "Paused" text. Its children inherit this.</li>
+    <li><strong>Top bar container.</strong> With <code>HUD</code> selected press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>MarginContainer</code>, click <kbd class="ui">Create</kbd>. Rename it <code>TopBar</code>. In the Inspector open <kbd class="ui">Layout</kbd>, click the <kbd class="ui">Anchors Preset</kbd> dropdown and choose <kbd class="ui">Top Wide</kbd>. The bar now spans the top of the window. (The toolbar <kbd class="ui">Layout</kbd> menu above the viewport offers the same presets.)</li>
+    <li><strong>Padding for the top bar.</strong> Still on <code>TopBar</code>, scroll to <kbd class="ui">Theme Overrides &gt; Constants</kbd> and set <kbd class="ui">Margin Left</kbd> = <code>24</code>, <kbd class="ui">Margin Top</kbd> = <code>20</code>, <kbd class="ui">Margin Right</kbd> = <code>24</code>. A MarginContainer pads its single child by these values.</li>
+    <li><strong>Score row.</strong> Select <code>TopBar</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, add an <code>HBoxContainer</code>, rename it <code>ScoreRow</code>. An HBoxContainer lays its children out left to right.</li>
+    <li><strong>Score label.</strong> Select <code>ScoreRow</code>, add a <code>Label</code>, rename it <code>ScoreLabel</code>. In the Inspector set <kbd class="ui">Text</kbd> to <code>0</code>; under <kbd class="ui">Theme Overrides &gt; Font Sizes</kbd> set <kbd class="ui">Font Size</kbd> to <code>64</code>.</li>
+    <li><strong>Best label.</strong> Select <code>ScoreRow</code> again, add a second <code>Label</code>, rename it <code>BestLabel</code>. Set <kbd class="ui">Text</kbd> to <code>Best: 0</code>, <kbd class="ui">Horizontal Alignment</kbd> to <code>Right</code>, <kbd class="ui">Vertical Alignment</kbd> to <code>Center</code>, and <kbd class="ui">Theme Overrides &gt; Font Sizes &gt; Font Size</kbd> to <code>28</code>.</li>
+    <li><strong>Let the best label take the free space.</strong> With <code>BestLabel</code> selected, open <kbd class="ui">Layout &gt; Container Sizing</kbd>. For <kbd class="ui">Horizontal</kbd>, tick <kbd class="ui">Expand</kbd> (leave <kbd class="ui">Fill</kbd> ticked). Now the score hugs the left edge, the best score is pushed to the right edge, and the right-aligned text sits flush right. This is a size-flag in action: <code>BestLabel</code> is the only expander, so it receives all the free width.</li>
+    <li><strong>Message centering container.</strong> Select <code>HUD</code>, add a <code>CenterContainer</code>, rename it <code>MessageCenter</code>, and set <kbd class="ui">Layout &gt; Anchors Preset</kbd> to <kbd class="ui">Full Rect</kbd>. A CenterContainer keeps its child centered in whatever size it has.</li>
+    <li><strong>Message label.</strong> Select <code>MessageCenter</code>, add a <code>Label</code>, rename it <code>Message</code>. Set <kbd class="ui">Text</kbd> to <code>Dodge the Creeps!</code>, <kbd class="ui">Horizontal Alignment</kbd> = <code>Center</code>, <kbd class="ui">Vertical Alignment</kbd> = <code>Center</code>, <kbd class="ui">Autowrap Mode</kbd> = <code>Word</code> (so long text wraps instead of running off the screen), <kbd class="ui">Theme Overrides &gt; Font Sizes &gt; Font Size</kbd> = <code>56</code>. Under <kbd class="ui">Layout &gt; Custom Minimum Size</kbd> set <kbd class="ui">X</kbd> = <code>400</code> and <kbd class="ui">Y</kbd> = <code>160</code>. Why: the wrapping width and a fixed height give the label a stable box, which keeps the pop-in animation centered and the layout from jumping between one-line and two-line messages.</li>
+    <li><strong>Bottom bar container.</strong> Select <code>HUD</code>, add a <code>MarginContainer</code>, rename it <code>BottomBar</code>, set <kbd class="ui">Layout &gt; Anchors Preset</kbd> to <kbd class="ui">Bottom Wide</kbd>. In <kbd class="ui">Theme Overrides &gt; Constants</kbd> set <kbd class="ui">Margin Left</kbd> = <code>24</code>, <kbd class="ui">Margin Right</kbd> = <code>24</code>, <kbd class="ui">Margin Bottom</kbd> = <code>48</code>.</li>
+    <li><strong>Button column.</strong> Select <code>BottomBar</code>, add a <code>VBoxContainer</code>, rename it <code>Buttons</code>, and set <kbd class="ui">Theme Overrides &gt; Constants &gt; Separation</kbd> to <code>16</code>. A VBoxContainer stacks children top to bottom.</li>
+    <li><strong>Start button.</strong> Select <code>Buttons</code>, add a <code>Button</code>, rename it <code>StartButton</code>. Set <kbd class="ui">Text</kbd> to <code>Start</code> and <kbd class="ui">Layout &gt; Custom Minimum Size &gt; Y</kbd> to <code>90</code>. Buttons in a VBoxContainer fill the full width by default, so it becomes a big, easy target.</li>
+    <li><strong>Reset button.</strong> Select <code>Buttons</code>, add a second <code>Button</code>, rename it <code>ResetButton</code>. Set <kbd class="ui">Text</kbd> to <code>Reset best score</code>, <kbd class="ui">Layout &gt; Custom Minimum Size &gt; Y</kbd> to <code>56</code>, and <kbd class="ui">Theme Overrides &gt; Font Sizes &gt; Font Size</kbd> to <code>24</code>.</li>
+    <li><strong>Message timer.</strong> Select <code>HUD</code>, add a <code>Timer</code>, rename it <code>MessageTimer</code>, set <kbd class="ui">Wait Time</kbd> to <code>2</code> and tick <kbd class="ui">One Shot</kbd>.</li>
+  </ol>
+
+  <pre class="scene-tree">HUD (CanvasLayer)                       [hud.gd]   Process Mode: Always
+├── TopBar (MarginContainer)            Top Wide
+│   └── ScoreRow (HBoxContainer)
+│       ├── ScoreLabel (Label)          "0", size 64
+│       └── BestLabel (Label)           "Best: 0", right-aligned, Expand
+├── MessageCenter (CenterContainer)     Full Rect
+│   └── Message (Label)                 "Dodge the Creeps!", min size 400 x 160, wrap
+├── BottomBar (MarginContainer)         Bottom Wide
+│   └── Buttons (VBoxContainer)
+│       ├── StartButton (Button)        "Start", min height 90
+│       └── ResetButton (Button)        "Reset best score"
+└── MessageTimer (Timer)                Wait Time 2, One Shot</pre>
+
+  <h3>Unique names, the start shortcut, and the preview</h3>
+  <p>The script will refer to UI nodes with <code>%Name</code> instead of a long path such as <code>$TopBar/ScoreRow/ScoreLabel</code>. A <em>unique name</em> makes a node reachable by <code>%Name</code> from anywhere inside the same scene, even if you later move it to a different parent. This is the recommended way to reach UI nodes.</p>
+  <ol class="steps">
+    <li><strong>Mark six nodes as unique.</strong> In the Scene dock right-click <code>ScoreLabel</code> and choose <kbd class="ui">Access as Unique Name</kbd>. A small <code>%</code> icon appears beside the node. Repeat for <code>BestLabel</code>, <code>Message</code>, <code>BottomBar</code>, <code>ResetButton</code> and <code>MessageTimer</code> (six nodes in total). <code>StartButton</code> does not need it because the script never touches it: the button calls its own handler.</li>
+    <li><strong>Create the Start shortcut.</strong> Select <code>StartButton</code>. In the Inspector find <kbd class="ui">Shortcut</kbd> (in the <code>BaseButton</code> section). Click the <code>[empty]</code> field and choose <kbd class="ui">New Shortcut</kbd>. Click the new <code>Shortcut</code> to expand it. Click <kbd class="ui">Events</kbd> (<code>Array[InputEvent] (size 0)</code>) to open it and click <kbd class="ui">Add Element</kbd>. On the new element click the <code>[empty]</code> dropdown and choose <kbd class="ui">New InputEventAction</kbd>. Click it to expand, and type <code>start_game</code> into <kbd class="ui">Action</kbd>. The button now also "presses" when <kbd>Enter</kbd> is pressed while it is visible.</li>
+    <li><strong>Save.</strong> <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+    <li><strong>Preview the layout.</strong> Press <kbd>F6</kbd> (Run Current Scene). The window shows <code>0</code> top-left, <code>Best: 0</code> top-right, the message in the middle (wrapping onto two lines), and the two buttons along the bottom with a margin. Close it with <kbd>F8</kbd>.</li>
+  </ol>
+  <div class="checkpoint"><p>F6 on <code>hud.tscn</code> shows: big score top-left, small best score right-aligned in the same row, the wrapped title in the center, a full-width Start button and a smaller Reset button at the bottom, all in the Xolonium font. <em>If the font looks like the default editor font:</em> <code>gui/theme/custom</code> is not set or <code>game_theme.tres</code> has no Default Font. <em>If the message sticks to the top-left corner:</em> the CenterContainer is not Full Rect. <em>If the bottom bar is off-screen:</em> the preset must be <kbd class="ui">Bottom Wide</kbd> on a node whose parent is the CanvasLayer.</p></div>
+
+  <h3>hud.gd</h3>
+  <p>The HUD never knows about mobs, timers or the player. It exposes a small public interface (<code>update_score</code>, <code>update_best</code>, <code>show_message</code>, <code>show_game_over</code>) and two signals (<code>start_game</code>, <code>reset_best_requested</code>). It also owns the pause key, because it is the one node that keeps running while the game is paused. Points to notice:</p>
+  <ul>
+    <li><code>show_game_over()</code> uses <code>await _message_timer.timeout</code> and <code>await get_tree().create_timer(1.0).timeout</code>: the function suspends (without freezing the game) and resumes when the signal fires, so a three-step sequence reads top to bottom.</li>
+    <li>Messages are shown and hidden by animating <code>modulate:a</code> and <code>scale</code>, not by <code>hide()</code>/<code>show()</code>. A hidden control inside a container stops taking space; a transparent one does not, so the layout never jumps.</li>
+    <li>The class keeps a reference to its message tween and kills it before starting another, so quick successive messages never fight over the same property.</li>
+    <li>The Reset button needs two presses ("Really reset?") so a stray click does not wipe the best score.</li>
+  </ul>
+  <ol class="steps">
+    <li><strong>Attach the script.</strong> Right-click <code>HUD</code> in the Scene dock &gt; <kbd class="ui">Attach Script</kbd>, set <kbd class="ui">Path</kbd> to <code>res://hud.gd</code>, click <kbd class="ui">Create</kbd>. In the Script editor press <kbd>Ctrl</kbd>+<kbd>A</kbd>, paste the whole listing, then <kbd>Ctrl</kbd>+<kbd>S</kbd>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://hud.gd">
+extends CanvasLayer
+class_name HUD
+
+## Emitted when the player presses Start (button click or Enter).
+signal start_game
+## Emitted after the player confirms "Reset best score".
+signal reset_best_requested
+
+const TITLE_TEXT: String = "Dodge the Creeps!"
+const RESET_TEXT: String = "Reset best score"
+const RESET_CONFIRM_TEXT: String = "Really reset?"
+
+var _game_active: bool = false
+var _reset_armed: bool = false
+var _message_tween: Tween
+var _score_tween: Tween
+
+@onready var _score_label: Label = %ScoreLabel
+@onready var _best_label: Label = %BestLabel
+@onready var _message: Label = %Message
+@onready var _bottom_bar: MarginContainer = %BottomBar
+@onready var _reset_button: Button = %ResetButton
+@onready var _message_timer: Timer = %MessageTimer
+
+
+func _unhandled_input(event: InputEvent) -> void:
+    # The HUD keeps running while paused (Process Mode: Always), so it owns the pause key.
+    if _game_active and event.is_action_pressed("ui_cancel"):
+        _toggle_pause()
+
+
+## Shows the score and plays a small "pop" on the label.
+func update_score(score: int) -> void:
+    _score_label.text = str(score)
+    _score_label.pivot_offset = _score_label.size / 2.0
+    if _score_tween != null:
+        _score_tween.kill()
+    _score_tween = create_tween()
+    _score_tween.tween_property(_score_label, "scale", Vector2(1.4, 1.4), 0.08) \
+            .set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+    _score_tween.tween_property(_score_label, "scale", Vector2.ONE, 0.12)
+
+
+func update_best(best: int) -> void:
+    _best_label.text = "Best: %d" % best
+
+
+## Pops a message in and fades it out after `duration` seconds.
+func show_message(text: String, duration: float = 2.0) -> void:
+    _pop_in(text)
+    _message_timer.start(duration)
+
+
+## Game over sequence: message, back to the title, then the buttons.
+func show_game_over(is_new_best: bool = false) -> void:
+    _game_active = false
+    show_message("New best!" if is_new_best else "Game Over")
+    # Wait until the MessageTimer has counted down.
+    await _message_timer.timeout
+    _pop_in(TITLE_TEXT)
+    # Make a one-shot timer and wait for it to finish.
+    await get_tree().create_timer(1.0).timeout
+    _bottom_bar.show()
+
+
+func _pop_in(text: String) -> void:
+    _kill_message_tween()
+    _message.text = text
+    _message.pivot_offset = _message.size / 2.0
+    _message.modulate.a = 0.0
+    _message.scale = Vector2(0.6, 0.6)
+    _message_tween = create_tween().set_parallel(true)
+    _message_tween.tween_property(_message, "modulate:a", 1.0, 0.25)
+    _message_tween.tween_property(_message, "scale", Vector2.ONE, 0.35) \
+            .set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+func _fade_out_message() -> void:
+    _kill_message_tween()
+    _message_tween = create_tween()
+    _message_tween.tween_property(_message, "modulate:a", 0.0, 0.4)
+
+
+func _kill_message_tween() -> void:
+    if _message_tween != null:
+        _message_tween.kill()
+
+
+func _toggle_pause() -> void:
+    var tree: SceneTree = get_tree()
+    tree.paused = not tree.paused
+    if tree.paused:
+        _message_timer.stop()
+        _pop_in("Paused")
+    else:
+        _fade_out_message()
+
+
+func _disarm_reset() -> void:
+    _reset_armed = false
+    _reset_button.text = RESET_TEXT
+
+
+func _on_start_button_pressed() -> void:
+    _disarm_reset()
+    _bottom_bar.hide()
+    _game_active = true
+    start_game.emit()
+
+
+func _on_reset_button_pressed() -> void:
+    if not _reset_armed:
+        _reset_armed = true
+        _reset_button.text = RESET_CONFIRM_TEXT
+        return
+    _disarm_reset()
+    reset_best_requested.emit()
+
+
+func _on_message_timer_timeout() -> void:
+    _fade_out_message()
+      </script>
+    </li>
+    <li><strong>Back to 2D.</strong> Click <kbd class="ui">2D</kbd> in the Workspace buttons.</li>
+    <li><strong>Connect the Start button (editor way).</strong> Select <code>StartButton</code>. <kbd class="ui">Node</kbd> tab &gt; <kbd class="ui">Signals</kbd>. Double-click <code>pressed()</code>. In the dialog the receiver is <code>HUD</code> and the method <code>_on_start_button_pressed</code>. Click <kbd class="ui">Connect</kbd>.</li>
+    <li><strong>Connect the reset button and the timer.</strong> Select <code>ResetButton</code>, double-click <code>pressed()</code> (method <code>_on_reset_button_pressed</code>), <kbd class="ui">Connect</kbd>. Select <code>MessageTimer</code>, double-click <code>timeout()</code> (method <code>_on_message_timer_timeout</code>), <kbd class="ui">Connect</kbd>. Check that the gutter in <code>hud.gd</code> shows green icons next to all three functions. Save with <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+  </ol>
+  <div class="checkpoint"><p>The script has no red errors (look at the editor's bottom-right error/warning counters), the Signals list on <code>StartButton</code>, <code>ResetButton</code> and <code>MessageTimer</code> each shows a green connection, and F6 on <code>hud.tscn</code> still shows the layout. Clicking <kbd class="ui">Start</kbd> hides the buttons and does nothing else yet (nobody listens to <code>start_game</code>). <em>If you get <code>Node not found: "%ScoreLabel"</code>:</em> that node does not have <kbd class="ui">Access as Unique Name</kbd> ticked or was renamed.</p></div>
+
+  <h2 id="build-2">Block 3: Plug the HUD into Main</h2>
+  <p>This block makes every change that <code>Main</code> needs for the rest of the day in one pass: the HUD instance, a background, a camera, two audio players, the <code>mobs</code> group, a tiny save helper and the complete new <code>main.gd</code>. The script contains the difficulty ramp, the screen shake and the high-score logic, which Block 4 then explains and tunes feature by feature. Because the code is shown only once and in full, do <em>all</em> of Block 3 before pressing F5.</p>
+
+  <h3>The mobs group</h3>
+  <ol class="steps">
+    <li><strong>Open the Mob scene.</strong> In the FileSystem dock double-click <code>mob.tscn</code>. Select the root node <code>Mob</code> in the Scene dock.</li>
+    <li><strong>Add it to a group.</strong> In the right dock click the <kbd class="ui">Node</kbd> tab, then the <kbd class="ui">Groups</kbd> sub-tab (next to <kbd class="ui">Signals</kbd>). Click the <kbd class="ui">+</kbd> button; in the <kbd class="ui">Create New Group</kbd> dialog type <code>mobs</code> and click <kbd class="ui">Add</kbd> (or <kbd class="ui">OK</kbd>). The group appears in the list with <code>mobs</code> marked as a scene group. A group is a tag on a node; <code>get_tree().call_group("mobs", "queue_free")</code> will call <code>queue_free()</code> on every node that carries it, without Main needing a list of them. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+  </ol>
+  <div class="callout docs"><span class="callout-title">The code way</span>
+    <p>You can also tag a node from code: <code>add_to_group("mobs")</code> in <code>Mob._ready()</code>. The editor way is visible in the Groups tab, which is why we use it here. Do not use both: a node cannot be in the same group twice, so it would simply be redundant.</p></div>
+
+  <h3>The save helper</h3>
+  <p>The best score lives in a small script with only <code>static</code> functions, so nothing needs to be instanced or autoloaded: <code>HighScore.load_best()</code> works from anywhere. It extends <code>RefCounted</code> because it never needs to be in the scene tree.</p>
+  <ol class="steps">
+    <li><strong>Create the script file.</strong> In the FileSystem dock right-click an empty area &gt; <kbd class="ui">New</kbd> &gt; <kbd class="ui">Script...</kbd>. In the dialog set <kbd class="ui">Path</kbd> to <code>res://high_score.gd</code> (any <kbd class="ui">Inherits</kbd> value is fine, you replace the file) and click <kbd class="ui">Create</kbd>. Select all and paste:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://high_score.gd">
+extends RefCounted
+class_name HighScore
+
+## Where the best score is stored. user:// is writable in editor runs and in exported games.
+const SAVE_PATH: String = "user://dodger.cfg"
+const SECTION: String = "scores"
+const KEY_BEST: String = "best"
+
+
+## Returns the saved best score, or 0 if nothing was saved yet.
+static func load_best() -> int:
+    var config := ConfigFile.new()
+    if config.load(SAVE_PATH) != OK:
+        return 0
+    return int(config.get_value(SECTION, KEY_BEST, 0))
+
+
+## Writes the best score to disk.
+static func save_best(value: int) -> void:
+    var config := ConfigFile.new()
+    config.load(SAVE_PATH)  # keep other keys if the file exists; a missing file is fine
+    config.set_value(SECTION, KEY_BEST, value)
+    var err: Error = config.save(SAVE_PATH)
+    if err != OK:
+        push_warning("Could not save the best score: %s" % error_string(err))
+
+
+## Forgets the best score.
+static func reset() -> void:
+    save_best(0)
+      </script>
+      Press <kbd>Ctrl</kbd>+<kbd>S</kbd>.
+    </li>
+  </ol>
+  <div class="callout note"><span class="callout-title">Why <code>int(...)</code> around <code>get_value</code>?</span>
+    <p><code>get_value()</code> returns a <code>Variant</code>. The cast documents that we expect an integer and makes the function's return type honest. (With JSON saves, which you meet on later days, the cast is <em>essential</em> because JSON stores every number as a float.) <code>ConfigFile</code> itself would keep an <code>int</code> as an <code>int</code>.</p></div>
+
+  <h3>Extend the Main scene</h3>
+  <ol class="steps">
+    <li><strong>Open Main.</strong> In the FileSystem dock double-click <code>main.tscn</code>.</li>
+    <li><strong>Instance the HUD.</strong> Select <code>Main</code>, click the chain-link <kbd class="ui">Instantiate Child Scene</kbd> icon at the top of the Scene dock, double-click <code>hud.tscn</code>. A node named <code>HUD</code> appears under <code>Main</code>.</li>
+    <li><strong>Add the background.</strong> Select <code>Main</code>, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>ColorRect</code>, click <kbd class="ui">Create</kbd>, rename it <code>Background</code>. In the Inspector: <kbd class="ui">Color</kbd> &rarr; click the swatch and in the popup type <code>1B2A41</code> into the <kbd class="ui">Hex</kbd> field (a dark navy; pick any color you like). Under <kbd class="ui">Layout &gt; Transform</kbd> set <kbd class="ui">Position</kbd> to <code>-60</code>, <code>-60</code> and <kbd class="ui">Size</kbd> to <code>600</code>, <code>840</code>. The rectangle is deliberately <em>larger</em> than the 480x720 window by 60 px on every side, so the screen shake never reveals the empty edge behind it.</li>
+    <li><strong>Draw it behind everything.</strong> With <code>Background</code> selected, scroll to <kbd class="ui">CanvasItem &gt; Ordering</kbd> and set <kbd class="ui">Z Index</kbd> to <code>-10</code>. Z Index is a draw order independent of tree order: higher values draw on top. (The other way is to drag the node to the top of the Scene dock, since earlier siblings draw first.) The HUD is on its own CanvasLayer, so it is unaffected.</li>
+    <li><strong>Add the camera.</strong> Select <code>Main</code>, add a <code>Camera2D</code> (keep its name). Set <kbd class="ui">Transform &gt; Position</kbd> to <code>240</code>, <code>360</code>, the center of the 480x720 field. A <code>Camera2D</code> that is <em>enabled</em> (the default) becomes the view of the world; with it centered like this the picture is identical to before, but now we can nudge its <code>offset</code> property to shake the screen. Leave <kbd class="ui">Position Smoothing</kbd> off.</li>
+    <li><strong>Set up the music file.</strong> In the FileSystem dock open <code>art</code> and click <code>House In a Forest Loop.ogg</code>. At the top of the left dock click the <kbd class="ui">Import</kbd> tab (it sits next to the <kbd class="ui">Scene</kbd> tab). Tick <kbd class="ui">Loop</kbd> and click <kbd class="ui">Reimport</kbd>. Why: imported audio does not loop by default, and a music track that stops after 40 seconds is not music. Click the <kbd class="ui">Scene</kbd> tab to go back.</li>
+    <li><strong>Add the music player.</strong> Select <code>Main</code>, add an <code>AudioStreamPlayer</code>, rename it <code>Music</code>. Drag <code>House In a Forest Loop.ogg</code> from the FileSystem dock onto its <kbd class="ui">Stream</kbd> property. Set <kbd class="ui">Volume dB</kbd> to <code>-8</code> so the track sits under the sound effect. Leave <kbd class="ui">Autoplay</kbd> off; code starts it.</li>
+    <li><strong>Add the death sound.</strong> Select <code>Main</code>, add another <code>AudioStreamPlayer</code>, rename it <code>DeathSound</code>, drag <code>gameover.wav</code> onto its <kbd class="ui">Stream</kbd>. Leave the volume at 0.</li>
+    <li><strong>Save</strong> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) and open <code>main.gd</code> by clicking the script icon next to <code>Main</code> in the Scene dock.</li>
+  </ol>
+  <div class="callout docs"><span class="callout-title">Docs: the other way to loop</span>
+    <p>The official tutorial loops the stream in the node instead: expand the <code>Stream</code> property, choose <kbd class="ui">Make Unique</kbd>, click the stream and tick <kbd class="ui">Loop</kbd>. Both work; the import setting applies to every use of the file (see <a href="https://docs.godotengine.org/en/stable/getting_started/first_2d_game/07.finishing-up.html" target="_blank" rel="noopener">Finishing up</a>).</p></div>
+
+  <pre class="scene-tree">Main (Node)                     [main.gd]
+├── Background (ColorRect)      Position (-60, -60), Size (600, 840), Z Index -10
+├── Camera2D                    Position (240, 360)
+├── Player                      (instance of player.tscn)
+├── MobTimer (Timer)            Wait Time 0.5
+├── ScoreTimer (Timer)          Wait Time 1
+├── StartTimer (Timer)          Wait Time 2, One Shot
+├── StartPosition (Marker2D)    Position (240, 450)
+├── MobPath (Path2D)
+│   └── MobSpawnLocation (PathFollow2D)
+├── HUD                         (instance of hud.tscn)
+├── Music (AudioStreamPlayer)   House In a Forest Loop.ogg, -8 dB
+└── DeathSound (AudioStreamPlayer)   gameover.wav</pre>
+
+  <h3>main.gd (final version)</h3>
+  <p>Replace the entire file. Differences from Day 3: no auto-start, no <kbd>Enter</kbd> restart hack (the HUD's Start button replaces both); <code>new_game()</code> clears old mobs and talks to the HUD and the music; <code>game_over()</code> plays the sound, shakes the camera and saves a new best score; and the spawn rate and mob speed now depend on the score.</p>
+  <ol class="steps">
+    <li><strong>Replace <code>main.gd</code>.</strong> Click in the code, <kbd>Ctrl</kbd>+<kbd>A</kbd>, paste, <kbd>Ctrl</kbd>+<kbd>S</kbd>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://main.gd">
+extends Node
+
+## Difficulty ramp: every RAMP_EVERY points the mobs spawn faster and fly faster.
+const MOB_WAIT_START: float = 0.5
+const MOB_WAIT_MIN: float = 0.2
+const MOB_WAIT_STEP: float = 0.03
+const SPEED_MIN: float = 150.0
+const SPEED_MAX: float = 250.0
+const SPEED_STEP: float = 12.0
+const SPEED_BONUS_MAX: float = 150.0
+const RAMP_EVERY: int = 5
+
+## Screen shake when the player dies.
+const SHAKE_STRENGTH: float = 16.0
+const SHAKE_TIME: float = 0.4
+const SHAKE_STEPS: int = 8
+
+## The mob scene to spawn. Assigned in the Inspector.
+@export var mob_scene: PackedScene
+
+var score: int = 0
+var best_score: int = 0
+
+var _speed_bonus: float = 0.0
+
+@onready var _player: Player = $Player
+@onready var _hud: HUD = $HUD
+@onready var _camera: Camera2D = $Camera2D
+@onready var _music: AudioStreamPlayer = $Music
+@onready var _death_sound: AudioStreamPlayer = $DeathSound
+@onready var _mob_timer: Timer = $MobTimer
+@onready var _score_timer: Timer = $ScoreTimer
+@onready var _start_timer: Timer = $StartTimer
+@onready var _start_position: Marker2D = $StartPosition
+@onready var _spawn_location: PathFollow2D = $MobPath/MobSpawnLocation
+
+
+func _ready() -> void:
+    best_score = HighScore.load_best()
+    _hud.update_best(best_score)
+
+
+func new_game() -> void:
+    # Remove every mob left over from the previous game.
+    get_tree().call_group("mobs", "queue_free")
+    score = 0
+    _speed_bonus = 0.0
+    _mob_timer.wait_time = MOB_WAIT_START
+    _player.start(_start_position.position)
+    _start_timer.start()
+    _hud.update_score(score)
+    _hud.show_message("Get Ready")
+    _music.play()
+
+
+func game_over() -> void:
+    _score_timer.stop()
+    _mob_timer.stop()
+    _music.stop()
+    _death_sound.play()
+    _shake_camera()
+
+    var is_new_best: bool = score > best_score
+    if is_new_best:
+        best_score = score
+        HighScore.save_best(best_score)
+        _hud.update_best(best_score)
+    _hud.show_game_over(is_new_best)
+
+
+func _apply_difficulty() -> void:
+    var level: int = floori(float(score) / RAMP_EVERY)
+    _mob_timer.wait_time = maxf(MOB_WAIT_START - MOB_WAIT_STEP * level, MOB_WAIT_MIN)
+    _speed_bonus = minf(SPEED_STEP * level, SPEED_BONUS_MAX)
+
+
+func _shake_camera() -> void:
+    var tween: Tween = create_tween()
+    for i in range(SHAKE_STEPS):
+        var strength: float = SHAKE_STRENGTH * (1.0 - float(i) / SHAKE_STEPS)
+        var target := Vector2(randf_range(-strength, strength), randf_range(-strength, strength))
+        tween.tween_property(_camera, "offset", target, SHAKE_TIME / SHAKE_STEPS)
+    tween.tween_property(_camera, "offset", Vector2.ZERO, 0.05)
+
+
+func _on_start_timer_timeout() -> void:
+    _mob_timer.start()
+    _score_timer.start()
+
+
+func _on_score_timer_timeout() -> void:
+    score += 1
+    _hud.update_score(score)
+    _apply_difficulty()
+
+
+func _on_mob_timer_timeout() -> void:
+    var mob := mob_scene.instantiate() as Mob
+
+    # Pick a random point on the path. Its rotation follows the path direction.
+    _spawn_location.progress_ratio = randf()
+    mob.position = _spawn_location.position
+
+    # Perpendicular to the (clockwise) path = pointing into the screen, plus some wobble.
+    var direction: float = _spawn_location.rotation + PI / 2.0
+    direction += randf_range(-PI / 4.0, PI / 4.0)
+    mob.rotation = direction
+
+    var speed: float = randf_range(SPEED_MIN, SPEED_MAX) + _speed_bonus
+    mob.linear_velocity = Vector2(speed, 0.0).rotated(direction)
+
+    add_child(mob)
+
+
+func _on_hud_reset_best_requested() -> void:
+    best_score = 0
+    HighScore.reset()
+    _hud.update_best(best_score)
+      </script>
+    </li>
+    <li><strong>Back to 2D</strong> and select <code>Main</code>. In the Inspector check <kbd class="ui">Mob Scene</kbd> still shows <code>mob.tscn</code> (it survives the script replacement; if it shows <code>[empty]</code>, drag <code>mob.tscn</code> in again).</li>
+    <li><strong>Connect the HUD's Start signal.</strong> Select the <code>HUD</code> node (the instance under <code>Main</code>). <kbd class="ui">Node</kbd> tab &gt; <kbd class="ui">Signals</kbd>: you see <code>start_game()</code> and <code>reset_best_requested()</code> at the top (custom signals). Double-click <code>start_game()</code>. In the dialog make sure <code>Main</code> is the receiver, and type <code>new_game</code> as the <kbd class="ui">Receiver Method</kbd> (the function already exists), then <kbd class="ui">Connect</kbd>.</li>
+    <li><strong>Connect the reset signal.</strong> Still on <code>HUD</code>, double-click <code>reset_best_requested()</code>, check receiver <code>Main</code>, method <code>_on_hud_reset_best_requested</code>, <kbd class="ui">Connect</kbd>.</li>
+    <li><strong>Verify the older connections survived.</strong> Select <code>Player</code> &gt; Signals: <code>hit()</code> is connected to <code>Main.game_over</code>. Select each timer: <code>timeout()</code> is connected to <code>_on_..._timeout</code>. If any is missing, redo it as in Day 3. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+  </ol>
+
+  <h3>First full run</h3>
+  <ol class="steps">
+    <li><strong>Run the project.</strong> Press <kbd>F5</kbd>. The title screen shows <code>Dodge the Creeps!</code>, the score and best score at the top, and the Start / Reset buttons at the bottom.</li>
+    <li><strong>Start.</strong> Click <kbd class="ui">Start</kbd> (or press <kbd>Enter</kbd> thanks to the shortcut). The buttons disappear, <code>Get Ready</code> pops in and fades, music starts, and after two seconds creeps arrive. The score counts up with a little pop on every change.</li>
+    <li><strong>Die.</strong> Get hit. The screen shakes, the game-over sound plays, the music stops, <code>Game Over</code> (or <code>New best!</code>) pops in, then the title returns and the buttons come back about one second later.</li>
+    <li><strong>Play again.</strong> Press <kbd>Enter</kbd>. All old creeps are gone immediately (the <code>mobs</code> group at work) and a fresh game starts.</li>
+  </ol>
+  <div class="checkpoint"><p>One complete game cycle works: Start, play, die with shake and sound, title returns, Start again with a clean field. The Output panel has no red errors. <em>If clicking Start does nothing:</em> <code>HUD.start_game</code> is not connected to <code>Main.new_game</code>. <em>If you see <code>Invalid access to property or key 'update_score'</code> or <code>null instance</code> errors:</em> the HUD instance is not named exactly <code>HUD</code> or its script has an error. <em>If old creeps stay after restarting:</em> the <code>mobs</code> group was not added to the Mob scene root (and saved). <em>If there is no music:</em> check the <code>Stream</code> of <code>Music</code> and your speaker; the node names must be exactly <code>Music</code> and <code>DeathSound</code>. <em>If creeps do not appear:</em> the <code>Mob Scene</code> property of <code>Main</code> is empty.</p></div>
+
+  <h2 id="build-3">Block 4: Juice and game feel</h2>
+  <p><em>Juice</em> is the small feedback that makes a game feel alive: things pop, shake, fade, sparkle and make noise when something happens. Most of today's juice is already in your scripts; here you add the one remaining visual piece (a particle trail), then tune every feature once so you know exactly which number controls which feeling.</p>
+
+  <h3>A particle trail behind the player</h3>
+  <p>A <code>GPUParticles2D</code> node emits many tiny sprites ("particles"). It does nothing by itself: it needs a <code>ParticleProcessMaterial</code> that describes how each particle starts and evolves. We want a short, fading dust trail that stays <em>in the world</em> where the player was, so it looks like a trail rather than something glued to the character.</p>
+  <ol class="steps">
+    <li><strong>Open the Player scene.</strong> Double-click <code>player.tscn</code> in the FileSystem dock. Select the <code>Player</code> root node.</li>
+    <li><strong>Add the emitter.</strong> Press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>GPUParticles2D</code>, click <kbd class="ui">Create</kbd>, rename the node <code>Trail</code>. It shows a yellow warning triangle: it still needs a material.</li>
+    <li><strong>Create the process material.</strong> In the Inspector open <kbd class="ui">Process Material</kbd> and click the empty <kbd class="ui">Material</kbd> field &gt; <kbd class="ui">New ParticleProcessMaterial</kbd>. White dots start to fall downwards from the player's center in the viewport; the warning disappears.</li>
+    <li><strong>Emitter settings.</strong> Still on <code>Trail</code>, set <kbd class="ui">Amount</kbd> to <code>24</code> (how many particles exist at once) and <kbd class="ui">Time &gt; Lifetime</kbd> to <code>0.5</code> (seconds each lives). Under <kbd class="ui">Drawing</kbd> make sure <kbd class="ui">Local Coords</kbd> is <em>off</em> (<code>local_coords = false</code>, the default). With it off, particles keep their world position after they are born, which is exactly what makes a trail. Turn it on and the particles would follow the player rigidly.</li>
+    <li><strong>Draw it behind the sprite.</strong> Scroll to <kbd class="ui">CanvasItem &gt; Ordering</kbd> and set <kbd class="ui">Z Index</kbd> to <code>-1</code>. It is relative to <code>Player</code>, so the trail draws under the sprite but above the <code>Background</code> (Z -10).</li>
+    <li><strong>Find the material properties fast.</strong> The material has dozens of properties. Click the material to expand it and use the <kbd class="ui">Filter Properties</kbd> box at the top of the Inspector: typing <code>gravity</code> shows only the gravity row, and so on. Set the following one by one:
+      <table>
+        <thead><tr><th>Inspector label (script name)</th><th>Value</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td><kbd class="ui">Spread</kbd> (<code>spread</code>)</td><td><code>180</code></td><td>particles may start in any direction</td></tr>
+          <tr><td><kbd class="ui">Initial Velocity &gt; Velocity Min / Max</kbd> (<code>initial_velocity_min/max</code>)</td><td><code>10</code> / <code>40</code></td><td>a small random drift so the dust scatters a bit</td></tr>
+          <tr><td><kbd class="ui">Gravity</kbd> (<code>gravity</code>, a Vector3)</td><td><code>0</code>, <code>0</code>, <code>0</code></td><td>the default pulls particles down; a trail should not fall</td></tr>
+          <tr><td><kbd class="ui">Scale &gt; Scale Min / Max</kbd> (<code>scale_min/max</code>)</td><td><code>5</code> / <code>9</code></td><td>with no texture a particle is a 1-pixel square, so we scale it up</td></tr>
+          <tr><td><kbd class="ui">Color</kbd> (<code>color</code>)</td><td><code>8BE9FD</code> (hex)</td><td>a light cyan; click the swatch and type the hex value</td></tr>
+        </tbody>
+      </table>
+    </li>
+    <li><strong>Make the particles shrink away.</strong> In the material find <kbd class="ui">Scale &gt; Scale Curve</kbd> (<code>scale_curve</code>). Click the empty field and choose <kbd class="ui">New CurveTexture</kbd>. Click the new <code>CurveTexture</code> to expand it; if its <kbd class="ui">Curve</kbd> field is empty, click it and choose <kbd class="ui">New Curve</kbd>. A small graph appears: the X axis is the particle's age from birth (left) to death (right), the Y axis the multiplier applied to the scale. You want a line from <strong>1.0 at the left to 0.0 at the right</strong>. If the graph is empty, left-click once near the top-left corner and once near the bottom-right corner to add two points; if it already shows two points, drag the left point up and the right point down. (Right-click a point to delete it.) The viewport now shows dots that shrink to nothing.</li>
+    <li><strong>Stop the preview emission.</strong> The script will turn emission on and off, so untick <kbd class="ui">Emitting</kbd> on the <code>Trail</code> node (Inspector, top of the <code>GPUParticles2D</code> section). Save with <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+  </ol>
+  <div class="callout tip"><span class="callout-title">Optional polish</span>
+    <p>The material also has an <kbd class="ui">Alpha Curve</kbd> (<code>alpha_curve</code>) that fades transparency over the particle's life, and a <kbd class="ui">Color Ramp</kbd> for gradients. Add an Alpha Curve the same way as the Scale Curve for a softer fade. A <code>Texture</code> on the <code>Trail</code> node (for example one of the art images) replaces the squares with sprites.</p></div>
+
+  <p>Now update <code>player.gd</code>: the trail should emit only while the player is moving. The only changes are the new <code>_trail</code> reference and the <code>_trail.emitting</code> line; the file is shown whole so you can replace it in one go.</p>
+  <ol class="steps">
+    <li><strong>Replace <code>player.gd</code>.</strong> Open it (click the script icon next to <code>Player</code> in the Scene dock), <kbd>Ctrl</kbd>+<kbd>A</kbd>, paste, <kbd>Ctrl</kbd>+<kbd>S</kbd>:
+      <script type="text/x-code" data-lang="gdscript" data-file="res://player.gd">
+extends Area2D
+class_name Player
+
+## Emitted when a mob touches the player. Main listens and ends the game.
+signal hit
+
+## Movement speed in pixels per second.
+@export var speed: float = 400.0
+
+## Size of the game window; the player is kept inside this rectangle.
+var screen_size: Vector2
+
+@onready var _sprite: AnimatedSprite2D = $AnimatedSprite2D
+@onready var _shape: CollisionShape2D = $CollisionShape2D
+@onready var _trail: GPUParticles2D = $Trail
+
+
+func _ready() -> void:
+    screen_size = get_viewport_rect().size
+    hide()
+
+
+func _process(delta: float) -> void:
+    var direction: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+    var velocity: Vector2 = direction * speed
+    var is_moving: bool = velocity.length() > 0.0
+
+    if is_moving:
+        _sprite.play()
+    else:
+        _sprite.stop()
+    _trail.emitting = is_moving
+
+    position += velocity * delta
+    position = position.clamp(Vector2.ZERO, screen_size)
+
+    if velocity.x != 0.0:
+        _sprite.animation = &"walk"
+        _sprite.flip_v = false
+        _sprite.flip_h = velocity.x < 0.0
+    elif velocity.y != 0.0:
+        _sprite.animation = &"up"
+        _sprite.flip_v = velocity.y > 0.0
+
+
+## Called by Main at the start of every game.
+func start(pos: Vector2) -> void:
+    position = pos
+    show()
+    _shape.disabled = false
+
+
+func _on_body_entered(_body: Node2D) -> void:
+    hide()
+    hit.emit()
+    # Cannot change physics state inside a physics callback: defer it.
+    _shape.set_deferred("disabled", true)
+      </script>
+    </li>
+    <li><strong>Test it.</strong> Press <kbd>F5</kbd>, start a game, and move around. A cyan, shrinking dust trail is left in your wake; when you stand still it stops emitting and the remaining particles fade out. Tune it: select <code>Trail</code> and change <kbd class="ui">Lifetime</kbd> to <code>0.9</code> for a longer trail, then back to <code>0.5</code>.</li>
+  </ol>
+  <div class="checkpoint"><p>A fading trail follows you, stays where you have been, and appears only while you move. <em>If the particles move with the player as a rigid cloud:</em> <kbd class="ui">Local Coords</kbd> is on. <em>If you see only a white dot or nothing:</em> check the material is assigned, <code>Scale Min/Max</code> are 5/9 and the scale curve is not flat at 0. <em>If the trail is hidden behind the background:</em> <code>Trail</code> Z Index must be -1 and <code>Background</code> Z Index -10. <em>If the editor reports a null error for <code>$Trail</code>:</em> the node must be named exactly <code>Trail</code> and be a direct child of <code>Player</code>.</p></div>
+
+  <h3>Tune the tweens (score pop and messages)</h3>
+  <ol class="steps">
+    <li><strong>Feel the score pop.</strong> In <code>hud.gd</code>, in <code>update_score()</code>, change <code>Vector2(1.4, 1.4)</code> to <code>Vector2(2.0, 2.0)</code> and press <kbd>F5</kbd>: a huge bounce on every point. Change it back to <code>1.4</code>. Two chained <code>tween_property</code> calls (grow, then shrink) run one after another because the tween is sequential by default; <code>Tween.TRANS_BACK</code> with <code>EASE_OUT</code> adds the overshoot.</li>
+    <li><strong>Feel the message animation.</strong> In <code>_pop_in()</code> the tween is <code>set_parallel(true)</code>, so the fade-in (<code>modulate:a</code>) and the scale-up run <em>together</em>. Try changing the starting scale <code>Vector2(0.6, 0.6)</code> to <code>Vector2(2.0, 2.0)</code>: the text now shrinks into place instead of growing. Revert it.</li>
+  </ol>
+
+  <h3>Screen shake</h3>
+  <p><code>_shake_camera()</code> in <code>main.gd</code> builds a sequential tween of eight short steps. Each step moves the <code>Camera2D.offset</code> to a random point within a radius that decreases linearly from <code>SHAKE_STRENGTH</code> to zero, and a final step eases back to <code>Vector2.ZERO</code>. Changing <code>offset</code> moves what the camera sees without moving the camera node, so the world appears to shake while the HUD (a CanvasLayer) stays still.</p>
+  <ol class="steps">
+    <li><strong>Exaggerate it.</strong> Change <code>SHAKE_STRENGTH</code> from <code>16.0</code> to <code>48.0</code> and die once: a violent shake. Because the <code>Background</code> is 60 px bigger than the window on each side, you never see the edge, even at 48. Set it back to <code>16.0</code> (a comfortable value for a 480x720 field).</li>
+    <li><strong>Why a tween and not <code>_process</code>?</strong> A tween needs no state variable, no per-frame timer and cleans itself up. The shake would have taken 10 lines of timer logic otherwise.</li>
+  </ol>
+
+  <h3>Sound</h3>
+  <p>Two <code>AudioStreamPlayer</code> nodes (non-positional audio) do all the work: <code>Music.play()</code> in <code>new_game()</code>, <code>Music.stop()</code> and <code>DeathSound.play()</code> in <code>game_over()</code>. The music loops because of the import setting. Both play on the <code>Master</code> audio bus. Later games add separate Music and SFX buses with volume sliders. For now: play a game, then change the <kbd class="ui">Volume dB</kbd> of <code>Music</code> in the Inspector to <code>-20</code> and listen to the mix. Decibels are logarithmic: every <code>-6 dB</code> halves the amplitude. Set it back to <code>-8</code>.</p>
+
+  <h3>The difficulty ramp</h3>
+  <p>Every second <code>ScoreTimer</code> adds a point and calls <code>_apply_difficulty()</code>. The <em>level</em> is the score divided by five, rounded down. Each level shortens the spawn interval by 0.03 s (never below 0.2 s) and adds 12 px/s to the mob speed (never more than +150). The numbers are constants at the top of <code>main.gd</code>, so balancing the game means editing numbers, not logic.</p>
+  <table>
+    <thead><tr><th>Score</th><th>Level</th><th><code>MobTimer.wait_time</code></th><th>Speed bonus</th><th>Mob speed (px/s)</th></tr></thead>
+    <tbody>
+      <tr><td>0-4</td><td>0</td><td>0.50 s</td><td>+0</td><td>150-250</td></tr>
+      <tr><td>10-14</td><td>2</td><td>0.44 s</td><td>+24</td><td>174-274</td></tr>
+      <tr><td>25-29</td><td>5</td><td>0.35 s</td><td>+60</td><td>210-310</td></tr>
+      <tr><td>40-44</td><td>8</td><td>0.26 s</td><td>+96</td><td>246-346</td></tr>
+      <tr><td>50-54</td><td>10</td><td>0.20 s (minimum reached)</td><td>+120</td><td>270-370</td></tr>
+      <tr><td>65+</td><td>13+</td><td>0.20 s</td><td>+150 (cap)</td><td>300-400</td></tr>
+    </tbody>
+  </table>
+  <p>Note the player's speed is 400 px/s: at the cap the fastest creeps are as fast as you, which is intentionally the end of the game's difficulty curve. <code>new_game()</code> resets both numbers, so every game starts easy.</p>
+  <ol class="steps">
+    <li><strong>See the ramp quickly.</strong> In <code>main.gd</code> temporarily change <code>RAMP_EVERY</code> from <code>5</code> to <code>1</code>, run, and survive 10 seconds: creeps visibly get denser and faster. Set <code>RAMP_EVERY</code> back to <code>5</code> afterwards. This is the standard way to test a "later in the game" mechanic: shrink the time scale of the test, do not wait.</li>
+  </ol>
+
+  <h3>The saved best score</h3>
+  <p>Flow: on startup <code>Main._ready()</code> loads the best score and hands it to the HUD. In <code>game_over()</code>, if the score beats the best, <code>HighScore.save_best()</code> writes <code>user://dodger.cfg</code> immediately (saving at the moment of change, not at quit, means a crash or <kbd>F8</kbd> cannot lose it) and the HUD shows <code>New best!</code>. The <kbd class="ui">Reset best score</kbd> button, after its confirmation press, calls <code>HighScore.reset()</code>.</p>
+  <ol class="steps">
+    <li><strong>Set a record.</strong> Press <kbd>F5</kbd>, start, survive at least 3 seconds and die. The message says <code>New best!</code> and the top-right label now reads <code>Best: N</code>.</li>
+    <li><strong>Prove it persists.</strong> Stop the game (<kbd>F8</kbd>) and run it again. The title screen already shows <code>Best: N</code>.</li>
+    <li><strong>Look at the file.</strong> In the Menu bar choose <kbd class="menu">Project &gt; Open User Data Folder</kbd> (it opens the folder behind <code>user://</code> in Explorer; if you cannot find it, use the PowerShell command in the next step). Open <code>dodger.cfg</code> with Notepad.</li>
+    <li><strong>Or read it from PowerShell.</strong> Run:
+      <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+Get-Content "$env:APPDATA\Godot\app_userdata\g01-dodger\dodger.cfg"
+      </script>
+      The output is a tiny INI file:
+      <script type="text/x-code" data-lang="cfg" data-file="dodger.cfg">
+[scores]
+
+best=12
+      </script>
+    </li>
+    <li><strong>Test the reset.</strong> On the title screen click <kbd class="ui">Reset best score</kbd>: its text changes to <code>Really reset?</code>. Click it again: <code>Best: 0</code>. (Clicking <kbd class="ui">Start</kbd> instead cancels the confirmation.)</li>
+  </ol>
+  <div class="callout docs"><span class="callout-title">The FileAccess alternative</span>
+    <p>You could write the number with <code>FileAccess.open("user://best.txt", FileAccess.WRITE)</code> and <code>store_string(str(score))</code>, and read it with <code>FileAccess.file_exists()</code>, <code>FileAccess.open(..., FileAccess.READ)</code> and <code>get_as_text().to_int()</code>. For one number that is just as short, but <code>ConfigFile</code> already handles sections, missing keys and defaults. On Day 15 the Ship Kit's <code>SaveManager</code> uses <code>FileAccess</code> with JSON for bigger saves. See <a href="https://docs.godotengine.org/en/stable/tutorials/io/saving_games.html" target="_blank" rel="noopener">Saving games</a>.</p></div>
+
+  <h3>Pause with <kbd>Esc</kbd></h3>
+  <p>The HUD handles <code>ui_cancel</code> (Esc, a built-in action you did not have to create) in <code>_unhandled_input()</code>. <code>_toggle_pause()</code> flips <code>get_tree().paused</code> and shows <code>Paused</code>. Everything that is <code>Pausable</code> freezes: <code>Main</code>, the player, the mobs, the timers, the Music stream and the particles. The HUD is <code>Always</code>, so it still gets the second Esc press and can unpause. The pause only works while a game is running (<code>_game_active</code>).</p>
+  <ol class="steps">
+    <li><strong>Pause mid-game.</strong> Press <kbd>F5</kbd>, start, and press <kbd>Esc</kbd> while creeps are flying: everything freezes, the music pauses, and <code>Paused</code> stays on screen. The player does not move when you press the arrows.</li>
+    <li><strong>Resume.</strong> Press <kbd>Esc</kbd> again: the text fades and the game continues from the same state (music resumes mid-track).</li>
+    <li><strong>Check the guards.</strong> On the title screen, <kbd>Esc</kbd> does nothing (no game is active). During the "Get Ready" countdown it pauses the start timer too.</li>
+  </ol>
+  <div class="callout warn"><span class="callout-title">Common mistake</span>
+    <p>Do not set <code>Main</code>'s <kbd class="ui">Process &gt; Mode</kbd> to <code>Always</code> to "make pause work". Its children (timers, the player, every mob) inherit <code>Always</code> and would keep running while the tree is paused. Put the pause logic on a small node that is <code>Always</code> (here the HUD) and leave the game <code>Pausable</code>.</p></div>
+
+  <div class="checkpoint"><p>You can: see the trail, feel the score pop and message animations, shake the screen on death, hear music and the death sound, notice mobs getting faster and denser (try <code>RAMP_EVERY = 1</code> if unsure), see a persistent <code>Best: N</code> that survives restarts, reset it with two clicks, and pause/resume with <kbd>Esc</kbd>. If the pause message appears but the game keeps running, a node under <code>Main</code> has <kbd class="ui">Process &gt; Mode</kbd> = <code>Always</code>; set it back to <code>Inherit</code>. If <kbd>Esc</kbd> does nothing, <code>HUD.process_mode</code> must be <code>Always</code> and you must have pressed Start first.</p></div>
+
+  <h2 id="build-4">Block 5: First Windows export</h2>
+  <p>Running with <kbd>F5</kbd> uses the editor. An export builds a game people can start without Godot: a small runtime (the export template) plus your resources in a <code>.pck</code>. You install templates once per Godot version, then make one Windows preset for this project.</p>
+
+  <h3>Install the Windows export templates</h3>
+  <ol class="steps">
+    <li><strong>Open the template manager.</strong> In the Menu bar choose <kbd class="menu">Editor &gt; Manage Export Templates...</kbd>. The Export Template Manager window opens. It lists platforms you have and have not installed.</li>
+    <li><strong>Select Windows x86_64.</strong> Tick the Windows template whose architecture is <code>x86_64</code>. That is the default in the Windows export docs and the one a normal Windows 11 PC runs. Leave <code>x86_32</code> and <code>arm64</code> unticked. Leave <kbd class="ui">ICU Data</kbd> unticked too: that pack is for emoji and for languages such as Chinese, Japanese and Korean, which this game does not use.</li>
+    <li><strong>Download them.</strong> Click <kbd class="ui">Install Selected Templates</kbd> and wait until the manager shows that version as installed. The download is large; a progress indicator stays up while it runs. Close the manager when it finishes.</li>
+  </ol>
+  <div class="callout external"><span class="callout-title">If the manager cannot download</span>
+    <p>The same window has a button in the upper right that installs templates from a <code>.tpz</code> file. The docs say you can download that archive from the official download page, <a href="https://www.godotengine.org/download" target="_blank" rel="noopener">godotengine.org/download</a> (verify the file name there; it changes with the version). Pick the TPZ that matches your editor version exactly. A TPZ for every platform is the same templates, just larger. External resource: verify on the official page, steps change.</p></div>
+  <div class="checkpoint"><p>Re-open <kbd class="menu">Editor &gt; Manage Export Templates...</kbd>. The Windows x86_64 row for your editor version is marked installed. <em>If Install Selected Templates does nothing:</em> no box is ticked, or there is no internet. <em>If a later export says the templates are missing:</em> the installed version does not match the editor (a 4.3 template will not export from a 4.5 editor).</p></div>
+
+  <h3>Create the Windows Desktop preset</h3>
+  <ol class="steps">
+    <li><strong>Open the export dialog.</strong> Menu bar: <kbd class="menu">Project &gt; Export...</kbd>. The dialog is empty until a preset exists. (The export docs also mention an <kbd class="ui">Export</kbd> button that opens this same dialog.)</li>
+    <li><strong>Add the preset.</strong> Click <kbd class="ui">Add…</kbd> at the top of the dialog. A platform list opens. Choose <kbd class="ui">Windows Desktop</kbd>. A preset named <code>Windows Desktop</code> appears in the list on the left, and its options fill the right side. That name is the one the docs pass to <code>--export-release "Windows Desktop"</code>.</li>
+    <li><strong>Set the export path outside the project.</strong> On the right, find <kbd class="ui">Export Path</kbd> and click its folder icon. In the save dialog go to <code>C:\GodotProjects</code> (not inside <code>g01-dodger</code>), create a folder named <code>g01-dodger-export</code>, and save the file as <code>Dodger.exe</code>. The field must end in <code>Dodger.exe</code>. Exporting inside <code>res://</code> makes the editor try to import the exe.</li>
+    <li><strong>Check the architecture.</strong> In the options, under <kbd class="ui">Binary Format</kbd>, set <kbd class="ui">Architecture</kbd> (<code>binary_format/architecture</code>) to <code>x86_64</code> if it is not already. An <code>arm64</code> exe will not start on a typical Intel or AMD PC.</li>
+  </ol>
+  <div class="callout version"><span class="callout-title">If Add… does not say Windows Desktop</span>
+    <p>The Windows tutorial and the command-line example both use the preset name <code>Windows Desktop</code>. The class reference on the docs <code>master</code> branch describes the same entry as adding a "Windows" preset. If your list shows <kbd class="ui">Windows</kbd> and not <kbd class="ui">Windows Desktop</kbd>, choose <kbd class="ui">Windows</kbd>. Then set the preset's name, shown above its options, to <code>Windows Desktop</code> so the command later on this page matches.</p></div>
+
+  <h3>Icon, product name, and Embed PCK</h3>
+  <ol class="steps">
+    <li><strong>Leave the icon on the project default.</strong> Still in the preset, open <kbd class="ui">Application</kbd> and look at <kbd class="ui">Icon</kbd> (<code>application/icon</code>). Leave it empty. The docs say an empty icon falls back to the project icon (<kbd class="menu">Project &gt; Project Settings &gt; Application &gt; Config &gt; Icon</kbd>, <code>application/config/icon</code>), which is already <code>icon.svg</code>. Godot turns that image into the Windows <code>.ico</code> for you. Since Godot 4.1 you do not build an ICO by hand and you do not install a separate tool.</li>
+    <li><strong>Keep resource editing on.</strong> In the same <kbd class="ui">Application</kbd> group, <kbd class="ui">Modify Resources</kbd> (<code>application/modify_resources</code>) must stay enabled. When it is on, the exporter writes the icon and the product name into the exe. When it is off, Windows keeps the template's own icon and name.</li>
+    <li><strong>Set the product name.</strong> Set <kbd class="ui">Product Name</kbd> (<code>application/product_name</code>) to <code>Dodge the Creeps</code>. The property is required. This is the name in the exe's file properties. It does <em>not</em> change <code>user://</code>: that folder follows <kbd class="ui">Application &gt; Config &gt; Name</kbd> (<code>application/config/name</code>), which is still <code>g01-dodger</code>.</li>
+    <li><strong>Leave Embed PCK off for this first build.</strong> Under <kbd class="ui">Binary Format</kbd>, leave <kbd class="ui">Embed Pck</kbd> (<code>binary_format/embed_pck</code>) unticked. Off means the resources are a separate <code>.pck</code> next to the exe, so you can see both files. On means they are stored inside the exe (the docs limit that to about 3.89 GB for the exe and the data together). You will try the ticked version in a minute; do the unticked export first.</li>
+  </ol>
+  <div class="callout version"><span class="callout-title">About rcedit</span>
+    <p>The version note at the top of this day mentioned <em>rcedit</em> for changing the exe icon on older editors. The current Windows icon page does not use that tool: from Godot 4.1 the exporter builds the ICO from <kbd class="ui">Application &gt; Icon</kbd> or from the project icon. If an old editor still pops up a rcedit error, export anyway. The game runs; only the file icon stays the default Godot logo. A hand-made ICO is optional and is documented on the icon page linked at the end.</p></div>
+
+  <h3>Release export, then the exe</h3>
+  <ol class="steps">
+    <li><strong>Export a release build.</strong> At the bottom of the dialog, make sure <kbd class="ui">Export With Debug</kbd> is <em>unchecked</em>. Click <kbd class="ui">Export Project</kbd> (not <kbd class="ui">Export PCK/ZIP</kbd>, which writes only the data, and not <kbd class="ui">Export All</kbd>). If a confirm dialog appears, confirm. Wait until the progress bar finishes, then close the export dialog.</li>
+    <li><strong>Look at the two files.</strong> In Explorer open <code>C:\GodotProjects\g01-dodger-export</code>. You should see <code>Dodger.exe</code> and <code>Dodger.pck</code> side by side. The Windows export page describes this package as a PCK bundled with a trimmed binary (it uses the phrase "data.pck" for that package). With your export path, the file next to the exe is named from the exe: <code>Dodger.pck</code>. Both files have to stay in that folder. Copying only the exe produces a window that cannot load the game.</li>
+    <li><strong>Run it.</strong> Double-click <code>Dodger.exe</code>. The portrait window opens with no editor around it. Click <kbd class="ui">Start</kbd>, survive a few seconds, die, and confirm <code>Best:</code> updates. Close the window.</li>
+    <li><strong>Confirm the save is the same folder as in the editor.</strong> Press <kbd>Win</kbd>+<kbd>R</kbd>, paste <code>%APPDATA%\Godot\app_userdata\g01-dodger</code>, and press <kbd>Enter</kbd>. <code>dodger.cfg</code> is there, and its <code>best</code> value matches the exe. Then press <kbd>F5</kbd> in the editor: the title already shows that same best score. <code>user://</code> is per project name, not per "editor vs exe".</li>
+  </ol>
+  <div class="callout warn"><span class="callout-title">Windows SmartScreen</span>
+    <p>The first time you start your own unsigned exe, Windows may say it protected your PC. That is normal for an export you have not code-signed. Choose <kbd class="ui">More info</kbd>, then <kbd class="ui">Run anyway</kbd>. Signing needs a certificate and is covered in the Windows export docs under code signing; skip it today.</p></div>
+  <div class="checkpoint"><p><code>Dodger.exe</code> starts from Explorer, you can play a full round, and the best score is the same number the editor shows on the next <kbd>F5</kbd>. <em>If the exe opens and immediately complains it cannot find the data:</em> <code>Dodger.pck</code> is not in the same folder, or <kbd class="ui">Embed Pck</kbd> was on and you then moved only part of the output. <em>If Export Project is greyed out:</em> templates are missing or <kbd class="ui">Export Path</kbd> is empty. <em>If you see a second exe such as a console wrapper:</em> that comes from <kbd class="ui">Debug &gt; Export Console Wrapper</kbd>. Launch <code>Dodger.exe</code>.</p></div>
+
+  <h3>Debug export versus release export</h3>
+  <p><kbd class="ui">Export With Debug</kbd> picks which template is copied into the exe. Unchecked (what you just did) is a <em>release</em> export: smaller, no editor, no remote debugger. <code>OS.is_debug_build()</code> is <code>false</code> in that binary. Checked is a <em>debug</em> export: the debug template, which can talk to the editor's debugger. <code>OS.is_debug_build()</code> is <code>true</code> for a debug export and also while you press <kbd>F5</kbd>. The Android export page uses the same checkbox and tells you to leave it unchecked for a build you ship. Release is the file you would zip and send to someone.</p>
+  <ol class="steps">
+    <li><strong>Export once with the checkbox on.</strong> <kbd class="menu">Project &gt; Export...</kbd>, select <kbd class="ui">Windows Desktop</kbd>, tick <kbd class="ui">Export With Debug</kbd>, and click <kbd class="ui">Export Project</kbd>. Save as <code>C:\GodotProjects\g01-dodger-export\Dodger-debug.exe</code> so you do not overwrite the release exe. Untick <kbd class="ui">Export With Debug</kbd> again before you close the dialog, so the next export is a release.</li>
+    <li><strong>Compare.</strong> In Explorer, <code>Dodger-debug.exe</code> is larger than <code>Dodger.exe</code>. Run <code>Dodger-debug.exe</code>: the game plays the same. The difference is the binary (debugger present), not your scenes. You can delete <code>Dodger-debug.exe</code> and its pck afterwards; keep the release pair.</li>
+    <li><strong>The same switch exists on the command line.</strong> The export docs use <code>--export-release</code> and <code>--export-debug</code>. The preset must already exist. The output path is relative to the project, or absolute; it ignores the folder your shell happens to be in. From PowerShell, quoting the preset name because it contains a space:
+      <pre class="plain">godot --path C:\GodotProjects\g01-dodger --export-release "Windows Desktop" C:\GodotProjects\g01-dodger-export\Dodger.exe
+godot --path C:\GodotProjects\g01-dodger --export-debug "Windows Desktop" C:\GodotProjects\g01-dodger-export\Dodger-debug.exe</pre>
+      <code>godot</code> here means the editor executable (the same one you start the editor with). You do not need to run this if the dialog export already worked.</li>
+  </ol>
+
+  <h3>One file instead of two (Embed PCK)</h3>
+  <ol class="steps">
+    <li><strong>Turn embedding on.</strong> <kbd class="menu">Project &gt; Export...</kbd>, select the preset, tick <kbd class="ui">Binary Format &gt; Embed Pck</kbd>, leave <kbd class="ui">Export With Debug</kbd> unchecked, and <kbd class="ui">Export Project</kbd> to <code>C:\GodotProjects\g01-dodger-export\Dodger-single.exe</code>.</li>
+    <li><strong>Check the folder.</strong> There is no <code>Dodger-single.pck</code>. Double-click <code>Dodger-single.exe</code>. It plays, and the best score is still the one in <code>user://</code>, because embedding changes where <code>res://</code> is packed, not where <code>user://</code> lives.</li>
+    <li><strong>Put the preset back.</strong> Untick <kbd class="ui">Embed Pck</kbd> and set <kbd class="ui">Export Path</kbd> back to <code>C:\GodotProjects\g01-dodger-export\Dodger.exe</code>. The two-file release is the one the official "finishing up" page tells you to zip (the exe and the pck, not the project folder). Save happens when you export or close the dialog; <code>export_presets.cfg</code> appears in the project and is safe to keep.</li>
+  </ol>
+  <div class="checkpoint"><p>You have a release <code>Dodger.exe</code> plus <code>Dodger.pck</code> that runs from Explorer, a debug exe you can tell apart by size, and a single-file exe from Embed Pck that also runs. <kbd class="ui">Export With Debug</kbd> is unchecked and <kbd class="ui">Embed Pck</kbd> is unchecked in the preset you left behind. <em>If the single-file exe is missing resources:</em> you exported with <kbd class="ui">Export PCK/ZIP</kbd> instead of <kbd class="ui">Export Project</kbd>.</p></div>
+
+  <h2 id="build-5">Block 6: Portrait-window preview</h2>
+  <p>The game is already a tall 480×720 window (Day 3): stretch mode <code>canvas_items</code>, aspect <code>keep</code>. <code>keep</code> means the 2:3 picture is scaled to fit and the engine adds black bars rather than squashing the art. On a wide window those bars are on the left and right (pillarboxing); on a window taller than 2:3 they are on the top and bottom (letterboxing). The HUD stays on the screen edges because its bars use anchor presets, and it does not shake with the world because it is a <code>CanvasLayer</code>.</p>
+  <ol class="steps">
+    <li><strong>Run and resize.</strong> Press <kbd>F5</kbd>. The window opens taller than it is wide. Drag an edge until the window is much wider than 2:3. Black bars appear on the sides. The creeps and the score do not stretch. Drag it back, or close it with <kbd>F8</kbd>.</li>
+    <li><strong>Use the Game workspace size menu.</strong> In the Workspace buttons click <kbd class="ui">Game</kbd>, then press <kbd>F5</kbd> if the game is not already running. The Game bar has a size menu on the right. <kbd class="ui">Fixed Size</kbd> uses the 480×720 viewport (or the window-size override below, if both overrides are greater than 0). <kbd class="ui">Keep Aspect Ratio</kbd> fills the area you give it but stays 2:3, so you still see bars. <kbd class="ui">Stretch to Fit</kbd> may change the aspect; that option only affects this embedded preview, not <kbd class="ui">Project Settings</kbd>.</li>
+    <li><strong>Optional phone-sized override.</strong> <kbd class="menu">Project &gt; Project Settings... &gt; Display &gt; Window &gt; Size</kbd>. Set <kbd class="ui">Window Width Override</kbd> to <code>390</code> and <kbd class="ui">Window Height Override</kbd> to <code>844</code> (both must be above 0 or Fixed Size ignores them). Run again: a narrower portrait window, still 2:3 inside the bars if the window shape does not match. Set both overrides back to <code>0</code> before you stop, so the next <kbd>F5</kbd> is 480×720 again. The indigo rectangle in the 2D viewport is the viewport size, not the override.</li>
+  </ol>
+  <div class="callout version"><span class="callout-title">Godot older than 4.4</span>
+    <p>The Game workspace and its size menu exist since 4.4. On 4.3, skip step 2 and only resize the floating game window. Stretch mode and aspect still behave the same way.</p></div>
+  <div class="checkpoint"><p>A wide window shows side bars, the play field stays portrait, and the score stays in the top corners. After the optional override test, both window overrides are <code>0</code> again. <em>If the art stretches instead of showing bars:</em> <kbd class="ui">Display &gt; Window &gt; Stretch &gt; Aspect</kbd> is not <code>keep</code>, or the Game bar is on <kbd class="ui">Stretch to Fit</kbd>.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Export Project stays disabled.</strong> Templates are not installed, or they are for a different Godot version than the editor. Re-open <kbd class="menu">Editor &gt; Manage Export Templates...</kbd> and match the version.</li>
+    <li><strong>The exe starts and cannot find the game.</strong> <kbd class="ui">Embed Pck</kbd> is off and <code>Dodger.pck</code> is not in the same folder as <code>Dodger.exe</code>. Send both, or export again with Embed Pck on and send only that exe.</li>
+    <li><strong>You shipped a debug build by accident.</strong> <kbd class="ui">Export With Debug</kbd> was still ticked, so the exe is the larger debug template. Untick it and export again. The game looks the same; the binary is what changes.</li>
+    <li><strong>The export landed inside the project.</strong> Godot then imports <code>Dodger.exe</code> as a resource and the FileSystem dock shows a mess. Delete those imported files and export to <code>C:\GodotProjects\g01-dodger-export</code>.</li>
+    <li><strong>The best score "disappeared" after a rename.</strong> <code>user://</code> follows <code>application/config/name</code>. Changing the project name points <code>user://</code> at a new folder. The old <code>dodger.cfg</code> is still under the old name in <code>%APPDATA%\Godot\app_userdata</code>.</li>
+    <li><strong>Pause freezes the HUD too, or pauses nothing.</strong> The HUD's <kbd class="ui">Process &gt; Mode</kbd> must be <code>Always</code>. If you set <code>Main</code> to <code>Always</code>, every child inherits it and Esc does not freeze the creeps. Children should stay <code>Inherit</code>.</li>
+    <li><strong>A renamed node crashes the next run.</strong> <code>$HUD</code>, <code>$Trail</code>, <code>%ScoreLabel</code> and the rest are literal names. Unique-name access still needs <kbd class="ui">Access as Unique Name</kbd> on that node.</li>
+    <li><strong>The file icon did not change.</strong> <kbd class="ui">Modify Resources</kbd> is off, or Windows is showing a cached icon. The game itself is fine. The icon page linked below mentions clearing the icon cache; do that only if you care about the logo on the exe.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, 20-30 min)</h2>
+  <div class="challenge">
+    <h3>An on-screen pause button</h3>
+    <p>Esc is awkward on a tall phone window. Add a <kbd class="ui">Pause</kbd> button on the HUD that pauses and resumes the same way Esc does. Do not give the button its own copy of the pause rules.</p>
+    <ul>
+      <li>Put the button under <code>HUD</code>, not under <code>BottomBar</code>. <code>BottomBar</code> is hidden while you play, so a pause control inside it would vanish at the moment you need it.</li>
+      <li>The HUD is already <code>Always</code>, so a button on it still receives clicks while <code>get_tree().paused</code> is true. A button parented under <code>Main</code> would not.</li>
+      <li>Connect <code>pressed</code> to a small function on <code>HUD</code> that calls the existing <code>_toggle_pause()</code>. You will need to allow that call from another function in the same script (it is already on <code>HUD</code>).</li>
+      <li>Show the button only while <code>_game_active</code> is true, and make the label switch between <code>Pause</code> and <code>Resume</code> from <code>get_tree().paused</code>.</li>
+      <li>Check three states: during play, while paused, and on the title screen (hidden or ignored).</li>
+    </ul>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>With <kbd class="ui">Binary Format &gt; Embed Pck</kbd> off, what does <kbd class="ui">Export Project</kbd> write, and what has to travel with the exe?</p>
+      <ul>
+        <li>Only <code>Dodger.exe</code>, with the project stored inside it</li>
+        <li><code>Dodger.exe</code> and a sibling <code>Dodger.pck</code>; the pck must stay in the same folder</li>
+        <li>A zip of the whole <code>g01-dodger</code> project folder</li>
+        <li>Only a pck, which Windows runs by itself</li>
+      </ul>
+      <p class="explain">Export Project writes the runtime and the resource pack. Embed Pck off keeps the pack as its own file, named from the exe. Export PCK/ZIP would write the pack alone, which is not a game you can double-click.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>You export with <kbd class="ui">Export With Debug</kbd> unchecked. Which statement matches the docs?</p>
+      <ul>
+        <li>The exe refuses to run unless the editor is open</li>
+        <li><code>print()</code> is stripped, so the Output panel is the only way to see logs</li>
+        <li>This is a release export: no remote debugger, and <code>OS.is_debug_build()</code> is false in that binary</li>
+        <li><code>user://</code> becomes read-only</li>
+      </ul>
+      <p class="explain"><code>OS.is_debug_build()</code> is true for a debug template and for the editor, and false for a release template. <kbd class="ui">Export With Debug</kbd> selects the template. <code>user://</code> stays writable either way.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>The camera shake moves <code>Camera2D.offset</code>, but the score text does not shake. Why?</p>
+      <ul>
+        <li>The HUD is a <code>CanvasLayer</code>, and that layer is not moved by the <code>Camera2D</code></li>
+        <li>Labels ignore their parent's transform</li>
+        <li><code>get_tree().paused</code> is true during the shake</li>
+        <li>The score label's anchor preset locks it to the camera</li>
+      </ul>
+      <p class="explain">A CanvasLayer draws on its own canvas. Anchors pin the HUD to the screen edges; they are not what separates it from the shake. Pause is a different feature.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>Where does <code>HighScore</code> store the best score, and why does the exported exe see the same number?</p>
+      <ul>
+        <li><code>res://dodger.cfg</code>, because an export can still write into the project</li>
+        <li>Inside <code>Dodger.pck</code>, rewritten every time you die</li>
+        <li>In an autoload that only exists in the editor</li>
+        <li><code>user://dodger.cfg</code>, which on Windows is <code>%APPDATA%\Godot\app_userdata\g01-dodger</code> for both the editor and the exe, because both use the project name</li>
+      </ul>
+      <p class="explain"><code>res://</code> is read-only in an export. <code>HighScore</code> is a <code>class_name</code> with static functions, not an autoload. <code>user://</code> follows <code>application/config/name</code> (<code>g01-dodger</code>), not the Windows product name.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>Esc freezes the creeps, the timers and the music, but a second Esc still unpauses. What makes that possible?</p>
+      <ul>
+        <li><code>ui_cancel</code> is delivered only to <code>CanvasLayer</code> nodes</li>
+        <li>The HUD's process mode is <code>Always</code>, and the game nodes stay <code>Pausable</code> through <code>Inherit</code></li>
+        <li><code>get_tree().paused</code> pauses timers only, so the HUD was never going to stop</li>
+        <li>The pause logic lives in an autoload, which cannot be paused</li>
+      </ul>
+      <p class="explain">Pausing stops nodes whose mode resolves to Pausable. The HUD is set to Always so it keeps reading <code>ui_cancel</code>. Setting Main to Always would be inherited by the creeps and they would not freeze.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_projects.html" target="_blank" rel="noopener">Exporting projects</a>: Manage Export Templates, Add…, Export Project, and <code>--export-release</code> / <code>--export-debug</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_windows.html" target="_blank" rel="noopener">Exporting for Windows</a>: x86_64, the pck, and <kbd class="menu">Project &gt; Export...</kbd>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/export/changing_application_icon_for_windows.html" target="_blank" rel="noopener">Manually changing application icon for Windows</a>: project icon, <kbd class="ui">Application &gt; Icon</kbd>, and when you would bother with an ICO.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_editorexportplatformwindows.html" target="_blank" rel="noopener">EditorExportPlatformWindows</a>: <code>binary_format/embed_pck</code>, <code>application/product_name</code>, <code>application/modify_resources</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/editor/game_embedding.html" target="_blank" rel="noopener">Game embedding</a>: the Game bar and Fixed Size / Keep Aspect Ratio / Stretch to Fit.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/rendering/multiple_resolutions.html" target="_blank" rel="noopener">Multiple resolutions</a>: stretch aspect <code>keep</code>, letterboxing and pillarboxing.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/io/data_paths.html" target="_blank" rel="noopener">File paths in Godot projects</a> (data paths): <code>res://</code> versus <code>user://</code> on Windows.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_configfile.html" target="_blank" rel="noopener">ConfigFile</a>: <code>load</code>, <code>get_value</code>, <code>set_value</code>, <code>save</code>.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <p>Dodger is done. The scenes and scripts below are the end state later pages should assume if they mention this project. <code>HighScore</code> is a <code>class_name</code> with static functions in <code>high_score.gd</code>. It is not an autoload.</p>
+  <table>
+    <thead><tr><th>Path</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td><code>res://project.godot</code></td><td>480×720, <code>canvas_items</code> / <code>keep</code>, Mobile, main scene <code>main.tscn</code>, theme <code>game_theme.tres</code></td></tr>
+      <tr><td><code>res://player.tscn</code> / <code>player.gd</code></td><td><code>Player</code> (Area2D): sprite, capsule, <code>Trail</code></td></tr>
+      <tr><td><code>res://mob.tscn</code> / <code>mob.gd</code></td><td><code>Mob</code> (RigidBody2D), group <code>mobs</code></td></tr>
+      <tr><td><code>res://hud.tscn</code> / <code>hud.gd</code></td><td><code>HUD</code> (CanvasLayer, process mode Always)</td></tr>
+      <tr><td><code>res://main.tscn</code> / <code>main.gd</code></td><td>Director: spawns, score, shake, music</td></tr>
+      <tr><td><code>res://high_score.gd</code></td><td><code>HighScore</code> → <code>user://dodger.cfg</code></td></tr>
+      <tr><td><code>res://art/</code>, <code>res://fonts/</code></td><td>Official starter zip (images, <code>House In a Forest Loop.ogg</code>, <code>gameover.wav</code>, Xolonium)</td></tr>
+      <tr><td><code>res://export_presets.cfg</code></td><td>Windows Desktop preset (written by the export dialog)</td></tr>
+    </tbody>
+  </table>
+  <ul class="checklist">
+    <li><kbd>F5</kbd> still plays a full round: move, trail, creeps, score pop, music, death shake and sound, game over, restart with a clean field.</li>
+    <li>Best score survives <kbd>F8</kbd> and also survives closing <code>Dodger.exe</code>. <code>dodger.cfg</code> is in <code>%APPDATA%\Godot\app_userdata\g01-dodger</code>.</li>
+    <li>Esc pauses and resumes only during a game. The HUD process mode is Always; Main is not.</li>
+    <li>Release export: <code>C:\GodotProjects\g01-dodger-export\Dodger.exe</code> plus <code>Dodger.pck</code> runs from Explorer with <kbd class="ui">Export With Debug</kbd> unchecked.</li>
+    <li>Widening the game window adds side bars (aspect <code>keep</code>) and the HUD stays on the edges. Window size overrides are back at 0.</li>
+    <li>I zipped <code>C:\GodotProjects\g01-dodger</code> (the project) and, separately, the release exe plus pck. Day 5 does not need this project, but do not throw it away.</li>
+  </ul>
+  <p><strong>Tomorrow:</strong> Day 5 starts a new project, Cave Runner (<code>C:\GodotProjects\g02-cave-runner</code>): tiles, a TileMapLayer, and a platformer controller. You do not copy Dodger into it.</p>
+
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>

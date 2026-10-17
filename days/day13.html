@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 13 - Torchlight Dungeon II: shots, enemies, doors, minimap | Godot 4: Zero to Published</title>
+  <link rel="stylesheet" href="../assets/css/course.css">
+</head>
+<body data-page="day" data-id="day13" data-root="../">
+<main>
+
+  <header class="lesson-head">
+    <div class="eyebrow">Part 1 · Day 13 · Game 5</div>
+    <h1>Torchlight Dungeon II: shots, enemies, doors, minimap</h1>
+    <p class="lead">Same project as yesterday. You add a hitscan pistol, two navigating enemies, keys and doors, a top-down minimap, and a win/lose flow that remembers your best time.</p>
+    <div class="chips" id="auto-chips"></div>
+  </header>
+
+  <h2 id="timebox">Today's time box</h2>
+  <table class="timebox">
+    <tr><td>0:00 – 0:20</td><td><strong>Concepts and the number sheet.</strong> Rays in the physics frame, navigation agents, shared-world viewports.</td></tr>
+    <tr><td>0:20 – 1:20</td><td><strong>Weapon and HUD skeleton.</strong> Health, hitscan, magazine, reload, on-screen ammo.</td></tr>
+    <tr><td>1:20 – 1:30</td><td><strong>Break.</strong></td></tr>
+    <tr><td>1:30 – 2:25</td><td><strong>Enemies.</strong> Health, NavigationAgent3D, line of sight, touch damage.</td></tr>
+    <tr><td>2:25 – 3:25</td><td><strong>Keys, doors, minimap, ending.</strong> Interact ray, orthogonal SubViewport, best time.</td></tr>
+    <tr><td>3:25 – 4:00</td><td><strong>Full clear, challenge, quiz.</strong></td></tr>
+    <tr class="total"><td>Total</td><td>4 h</td></tr>
+  </table>
+
+  <h2 id="objectives">By the end of today you will…</h2>
+  <ul class="objectives">
+    <li>Fire a hitscan shot from the camera with PhysicsDirectSpaceState3D inside <code>_physics_process</code>, using a magazine of 8 and a reserve of 24.</li>
+    <li>Spawn two enemies that chase on the GridMap navigation mesh only while they can see you, and that die in three hits.</li>
+    <li>Pick up two keys and open the matching doors with a RayCast3D interact query.</li>
+    <li>Show an orthogonal minimap from a SubViewport that shares the main world.</li>
+    <li>Lose on 0 health, win at the exit with both keys, and write a best time to <code>user://torchlight_best.json</code>.</li>
+  </ul>
+
+  <h2 id="before-you-start">Before you start</h2>
+  <ul class="checklist">
+    <li>Day 12 is done: <code>C:\GodotProjects\g05-torchlight-dungeon</code> runs, the ASCII grid is painted, pause releases the mouse.</li>
+    <li>Open that project. Do not create a second one.</li>
+    <li>If the folder is missing, build Day 12 first. Today only adds scenes and scripts on top of that end state.</li>
+  </ul>
+
+  <h2 id="concepts">Concepts you need first</h2>
+  <h3>Query rays from the physics frame</h3>
+  <p>A hitscan weapon is a single segment test: "what is the first collider between the camera and a point 28 m along its look?" <code>PhysicsDirectSpaceState3D.intersect_ray</code> does that query immediately. <code>RayCast3D</code> stores the same kind of result, but it updates on the physics tick. The ray-casting tutorial runs both from <code>_physics_process</code>. Do not cast from <code>_process</code>. The physics state there can be a frame behind, and a RayCast3D read from <code>_process</code> is the previous tick's hit.</p>
+  <p>The shot uses the space state so you can set the mask and the exclude list per click. The interact beam is a RayCast3D under the head because its length, mask, and area-collision flag are easier to see in the Inspector. Call <code>force_raycast_update</code> before reading it so the hit matches the head's pose after <code>move_and_slide</code>.</p>
+  <div class="callout docs"><span class="callout-title">Exclude the shooter</span>
+    <p>The camera sits inside the player capsule. Pass <code>[get_rid()]</code> as the exclude list. The class reference wants RIDs from <code>CollisionObject3D.get_rid</code>. The returned dictionary is empty when nothing is hit. On a hit, <code>collider</code> is the body, not the CollisionShape3D.</p>
+  </div>
+  <h3>NavigationAgent3D</h3>
+  <p>The floor cells already carry a baked NavigationMesh, and the GridMap has Bake Navigation on. An agent does not move itself. Each physics frame you call <code>get_next_path_position</code>, point <code>velocity</code> at that point, and <code>move_and_slide</code>. The 3D navigation introduction waits one <code>physics_frame</code> before the first <code>target_position</code> so the map has synced. Copy that. These enemies also require line of sight: a second ray on mask <code>world | player</code>. A closed door is on the world layer, so it blocks sight and they do not path through it. The baked mesh still connects the doorway. Sight is what keeps them honest. They are not searchers. Lose sight and they stop.</p>
+  <h3>One world, two cameras</h3>
+  <p>A SubViewport is a second render target. By default <code>own_world_3d</code> is false, so its camera sees the same GridMap as the main window. A Camera3D registers with the nearest Viewport ancestor, so the minimap camera can have Current on without stealing the first-person view. Orthogonal projection keeps a meter a meter, which is what you want on a map. <code>size</code> is the vertical extent in meters.</p>
+
+  <h3>Numbers you will type</h3>
+  <table>
+    <tr><th>Stat</th><th>Value</th></tr>
+    <tr><td>Player health</td><td>100</td></tr>
+    <tr><td>Shot damage</td><td>14, range 28 m, mask world + enemies (value 5)</td></tr>
+    <tr><td>Magazine / reserve</td><td>8 / 24</td></tr>
+    <tr><td>Fire interval / reload</td><td>0.32 s / 1.15 s</td></tr>
+    <tr><td>Enemy health / speed</td><td>40 / 2.6 m/s (three shots kill: 42 damage)</td></tr>
+    <tr><td>Touch damage</td><td>12 every 0.9 s</td></tr>
+    <tr><td>Aggro</td><td>12 m and a clear ray. They stop if the ray hits a door or wall.</td></tr>
+    <tr><td>Interact ray</td><td>2.2 m, mask world + pickups (value 33), areas on</td></tr>
+    <tr><td>Keys to win</td><td>2, ids <code>brass</code> and <code>iron</code></td></tr>
+  </table>
+
+  <h2 id="build-1">Block 1: Health, the pistol, and the HUD</h2>
+  <p class="steps-hint">Click "Mark done" on a step to track where you stopped.</p>
+  <p>Create <code>enemies</code>, <code>props</code>, and <code>components</code> under <code>res://</code> the same way as yesterday (FileSystem, right-click, New Folder).</p>
+  <ol class="steps">
+    <li><strong>Health script.</strong> Right-click <code>components</code> in the FileSystem dock and choose <kbd class="ui">New &gt; Script…</kbd> (some builds say <kbd class="ui">Create New &gt; Script</kbd>). Set Path to <code>res://components/health.gd</code>, then click <kbd class="ui">Create</kbd>. Replace the whole file. <code>class_name Health</code> lets the player and the enemies share one component.</li>
+  </ol>
+<script type="text/x-code" data-lang="gdscript" data-file="res://components/health.gd">
+class_name Health
+extends Node
+
+signal died
+signal health_changed(current: int, maximum: int)
+
+@export var maximum: int = 100
+
+var current: int = 100
+
+
+func _ready() -> void:
+    current = maximum
+    health_changed.emit(current, maximum)
+
+
+func take_damage(amount: int) -> void:
+    if current <= 0:
+        return
+    current = maxi(current - amount, 0)
+    health_changed.emit(current, maximum)
+    if current == 0:
+        died.emit()
+
+
+func is_alive() -> bool:
+    return current > 0
+</script>
+  <ol class="steps">
+    <li><strong>Player health and mask.</strong> Open <code>player.tscn</code>. In the Scene dock, select <code>Player</code>. Set <kbd class="ui">Collision &gt; Mask</kbd> to <code>world</code> and <code>enemies</code> (layers 1 and 3). Press <kbd>Ctrl</kbd>+<kbd>A</kbd>, search <code>Node</code>, click <kbd class="ui">Create</kbd>, and rename it <code>Health</code>. Drag <code>health.gd</code> from the FileSystem dock onto that <code>Health</code> node. In the Inspector, set <kbd class="ui">Maximum</kbd> to <code>100</code>.</li>
+    <li><strong>Interact ray.</strong> Select <code>Head</code>, add a <code>RayCast3D</code>, rename it <code>InteractRay</code>. Set <kbd class="ui">Target Position</kbd> to <code>0, 0, -2.2</code> (forward is <code>-Z</code>). Enable <kbd class="ui">Collide With Areas</kbd>. Leave <kbd class="ui">Collide With Bodies</kbd> on. Leave <kbd class="ui">Exclude Parent</kbd> on. Set <kbd class="ui">Collision &gt; Mask</kbd> to <code>world</code> and <code>pickups</code> only. That mask value is <code>1 + 32 = 33</code>.</li>
+    <li><strong>Replace the player script.</strong> Open <code>player.gd</code>. Select all and paste the full file below. It keeps yesterday's move, look, torch, and footsteps, and adds the gun plus interact.</li>
+  </ol>
+<script type="text/x-code" data-lang="gdscript" data-file="res://player/player.gd">
+extends CharacterBody3D
+
+signal ammo_changed(in_mag: int, reserve: int, reloading: bool)
+signal prompt_changed(text: String)
+
+const WALK_SPEED: float = 4.2
+const SPRINT_SPEED: float = 7.0
+const MOUSE_SENS: float = 0.0025
+const PITCH_MIN: float = -1.15
+const PITCH_MAX: float = 1.15
+const STEP_WALK: float = 0.48
+const STEP_SPRINT: float = 0.32
+const RAY_LENGTH: float = 28.0
+const GUN_DAMAGE: int = 14
+const MAG_SIZE: int = 8
+const FIRE_INTERVAL: float = 0.32
+const RELOAD_TIME: float = 1.15
+const HIT_MASK: int = 1 | 4
+
+var ammo_in_mag: int = 8
+var ammo_reserve: int = 24
+var _gravity: float = 9.8
+var _pitch: float = 0.0
+var _step_wait: float = 0.0
+var _flicker_time: float = 0.0
+var _fire_wait: float = 0.0
+var _reload_wait: float = 0.0
+var _reloading: bool = false
+
+@onready var _head: Node3D = $Head
+@onready var _camera: Camera3D = $Head/Camera3D
+@onready var _spot: SpotLight3D = $Head/SpotLight3D
+@onready var _omni: OmniLight3D = $Head/OmniLight3D
+@onready var _steps: AudioStreamPlayer = $Footsteps
+@onready var _interact: RayCast3D = $Head/InteractRay
+@onready var _health: Health = $Health
+
+
+func _ready() -> void:
+    add_to_group("player")
+    _gravity = float(ProjectSettings.get_setting("physics/3d/default_gravity"))
+    Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+    _steps.stream = _make_step_stream()
+    _steps.volume_db = -8.0
+    _health.died.connect(_on_health_died)
+    ammo_changed.emit(ammo_in_mag, ammo_reserve, false)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+    if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+        return
+    if event is InputEventMouseMotion:
+        var motion := event as InputEventMouseMotion
+        rotate_y(-motion.screen_relative.x * MOUSE_SENS)
+        _pitch = clampf(_pitch - motion.screen_relative.y * MOUSE_SENS, PITCH_MIN, PITCH_MAX)
+        _head.rotation.x = _pitch
+
+
+func _physics_process(delta: float) -> void:
+    if not _health.is_alive():
+        return
+    var wish := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+    var speed: float = SPRINT_SPEED if Input.is_action_pressed("sprint") else WALK_SPEED
+    var dir: Vector3 = global_transform.basis * Vector3(wish.x, 0.0, wish.y)
+    dir.y = 0.0
+    if dir.length_squared() > 0.0001:
+        dir = dir.normalized()
+    velocity.x = dir.x * speed
+    velocity.z = dir.z * speed
+    if not is_on_floor():
+        velocity.y -= _gravity * delta
+    else:
+        velocity.y = -0.1
+    move_and_slide()
+    var moving: bool = wish.length() > 0.1 and is_on_floor()
+    _update_steps(delta, moving, speed > WALK_SPEED)
+    _tick_weapon(delta)
+    _update_interact()
+
+
+func _process(delta: float) -> void:
+    _flicker_time += delta
+    var wobble: float = 0.82 + 0.14 * sin(_flicker_time * 17.0) + 0.06 * sin(_flicker_time * 43.0)
+    _spot.light_energy = 5.0 * wobble
+    _omni.light_energy = 1.4 * wobble
+
+
+func _tick_weapon(delta: float) -> void:
+    _fire_wait = maxf(_fire_wait - delta, 0.0)
+    if _reloading:
+        _reload_wait -= delta
+        if _reload_wait <= 0.0:
+            _finish_reload()
+        return
+    if Input.is_action_just_pressed("reload"):
+        _start_reload()
+    elif Input.is_action_just_pressed("attack"):
+        _fire()
+
+
+func _fire() -> void:
+    if _fire_wait > 0.0:
+        return
+    if ammo_in_mag <= 0:
+        _start_reload()
+        return
+    ammo_in_mag -= 1
+    _fire_wait = FIRE_INTERVAL
+    var origin: Vector3 = _camera.global_position
+    var forward: Vector3 = -_camera.global_transform.basis.z
+    var end: Vector3 = origin + forward * RAY_LENGTH
+    var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+    var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin, end, HIT_MASK, [get_rid()])
+    var result: Dictionary = space.intersect_ray(query)
+    if not result.is_empty():
+        var hit: Object = result["collider"]
+        if hit is Node and (hit as Node).is_in_group("enemies"):
+            var hp := (hit as Node).get_node_or_null("Health") as Health
+            if hp != null:
+                hp.take_damage(GUN_DAMAGE)
+    ammo_changed.emit(ammo_in_mag, ammo_reserve, false)
+
+
+func _start_reload() -> void:
+    if _reloading or ammo_in_mag == MAG_SIZE or ammo_reserve <= 0:
+        return
+    _reloading = true
+    _reload_wait = RELOAD_TIME
+    ammo_changed.emit(ammo_in_mag, ammo_reserve, true)
+
+
+func _finish_reload() -> void:
+    var need: int = MAG_SIZE - ammo_in_mag
+    var take: int = mini(need, ammo_reserve)
+    ammo_reserve -= take
+    ammo_in_mag += take
+    _reloading = false
+    ammo_changed.emit(ammo_in_mag, ammo_reserve, false)
+
+
+func _update_interact() -> void:
+    _interact.force_raycast_update()
+    var text := ""
+    if _interact.is_colliding():
+        var hit := _interact.get_collider() as Node
+        if hit != null and hit.is_in_group("pickups"):
+            text = "E  Take key"
+            if Input.is_action_just_pressed("interact") and hit.has_method("take"):
+                hit.call("take")
+        elif hit != null and hit.is_in_group("doors"):
+            var needed := str(hit.get("key_id"))
+            if _held_keys().has(needed):
+                text = "E  Open door"
+                if Input.is_action_just_pressed("interact"):
+                    hit.call("try_open", _held_keys())
+            else:
+                text = "Locked. Need the " + needed + " key."
+    prompt_changed.emit(text)
+
+
+func _held_keys() -> Array[String]:
+    var held: Array[String] = []
+    var raw: Variant = get_parent().get("keys")
+    if raw is Array:
+        for entry in raw:
+            held.append(str(entry))
+    return held
+
+
+func _on_health_died() -> void:
+    velocity = Vector3.ZERO
+    set_physics_process(false)
+
+
+func _update_steps(delta: float, moving: bool, sprinting: bool) -> void:
+    if not moving:
+        _step_wait = 0.0
+        return
+    _step_wait -= delta
+    if _step_wait > 0.0:
+        return
+    _step_wait = STEP_SPRINT if sprinting else STEP_WALK
+    _steps.pitch_scale = randf_range(0.92, 1.12)
+    _steps.play()
+
+
+func _make_step_stream() -> AudioStreamWAV:
+    var wav := AudioStreamWAV.new()
+    wav.format = AudioStreamWAV.FORMAT_8_BITS
+    wav.mix_rate = 22050
+    wav.stereo = false
+    var count: int = 700
+    var data := PackedByteArray()
+    data.resize(count)
+    for i in count:
+        var env: float = 1.0 - (float(i) / float(count))
+        var tone: float = sin(float(i) * 0.55) * env
+        var sample: int = int(tone * 70.0)
+        if sample < 0:
+            sample = 0
+        data[i] = sample
+    wav.data = data
+    return wav
+</script>
+
+  <ol class="steps">
+    <li><strong>HUD layer.</strong> Open <code>main.tscn</code>. Select <code>Main</code>, add a <code>CanvasLayer</code> named <code>HUD</code>. You will set positions in the Inspector so you do not have to drag controls. Add these children of HUD. For each Label and for the TextureRect and EndPanel, right-click the node and choose <kbd class="ui">Access as Unique Name</kbd> (a percent sign appears). That is what <code>%HealthLabel</code> means in the script.</li>
+  </ol>
+  <table>
+    <tr><th>Node</th><th>Type</th><th>Position</th><th>Text or size</th></tr>
+    <tr><td>HealthLabel</td><td>Label</td><td>24, 16</td><td>HP 100 / 100</td></tr>
+    <tr><td>AmmoLabel</td><td>Label</td><td>24, 44</td><td>8 / 24</td></tr>
+    <tr><td>KeysLabel</td><td>Label</td><td>24, 72</td><td>Keys 0 / 2</td></tr>
+    <tr><td>TimeLabel</td><td>Label</td><td>24, 100</td><td>00:00</td></tr>
+    <tr><td>BestLabel</td><td>Label</td><td>24, 128</td><td>Best --:--</td></tr>
+    <tr><td>PromptLabel</td><td>Label</td><td>460, 620</td><td>empty text</td></tr>
+    <tr><td>CrossV</td><td>ColorRect</td><td>639, 352</td><td>size 2 x 16, color white</td></tr>
+    <tr><td>CrossH</td><td>ColorRect</td><td>632, 359</td><td>size 16 x 2, color white</td></tr>
+    <tr><td>Minimap</td><td>TextureRect</td><td>1088, 16</td><td>size 168 x 168</td></tr>
+  </table>
+  <ol class="steps">
+    <li><strong>End panel.</strong> Under HUD add a <code>PanelContainer</code> named <code>EndPanel</code>, unique name on. Position <code>440, 230</code>. Uncheck <kbd class="ui">Visible</kbd>. Add child <code>VBoxContainer</code> named <code>EndVBox</code>. Under it: <code>Label</code> <code>EndTitle</code> (unique, text <code>Run over</code>), <code>Label</code> <code>EndBody</code> (unique, text <code>...</code>), <code>Button</code> <code>RetryButton</code> (text <code>Play again</code>).</li>
+    <li><strong>HUD script.</strong> Select HUD, attach <code>res://ui/hud.gd</code>, replace the whole file. <code>class_name DungeonHUD</code> is how <code>main.gd</code> will call it.</li>
+  </ol>
+<script type="text/x-code" data-lang="gdscript" data-file="res://ui/hud.gd">
+class_name DungeonHUD
+extends CanvasLayer
+
+@onready var _health: Label = %HealthLabel
+@onready var _ammo: Label = %AmmoLabel
+@onready var _keys: Label = %KeysLabel
+@onready var _time: Label = %TimeLabel
+@onready var _best: Label = %BestLabel
+@onready var _prompt: Label = %PromptLabel
+@onready var _end: PanelContainer = %EndPanel
+@onready var _end_title: Label = %EndTitle
+@onready var _end_body: Label = %EndBody
+
+
+func _ready() -> void:
+    %EndPanel/EndVBox/RetryButton.pressed.connect(_on_retry_pressed)
+    call_deferred("_bind_player")
+
+
+func _bind_player() -> void:
+    var player := get_tree().get_first_node_in_group("player") as Node
+    if player == null:
+        return
+    var hp := player.get_node("Health") as Health
+    hp.health_changed.connect(_on_health_changed)
+    _on_health_changed(hp.current, hp.maximum)
+    if player.has_signal("ammo_changed"):
+        player.ammo_changed.connect(_on_ammo_changed)
+    if player.has_signal("prompt_changed"):
+        player.prompt_changed.connect(_on_prompt_changed)
+    var vp := get_node_or_null("../MinimapViewport") as SubViewport
+    if vp != null:
+        %Minimap.texture = vp.get_texture()
+
+
+func show_keys(count: int) -> void:
+    _keys.text = "Keys %d / 2" % count
+
+
+func show_time(msec: int) -> void:
+    _time.text = _format_msec(msec)
+
+
+func show_best(msec: int) -> void:
+    if msec <= 0:
+        _best.text = "Best --:--"
+    else:
+        _best.text = "Best " + _format_msec(msec)
+
+
+func show_prompt(text: String) -> void:
+    _prompt.text = text
+
+
+func show_end(won: bool, msec: int, best_msec: int) -> void:
+    _end.process_mode = Node.PROCESS_MODE_ALWAYS
+    _end.visible = true
+    if won:
+        _end_title.text = "You escaped"
+        _end_body.text = "Time %s\nBest %s" % [_format_msec(msec), _format_msec(best_msec)]
+    else:
+        _end_title.text = "You died"
+        _end_body.text = "Time %s" % _format_msec(msec)
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _on_health_changed(current: int, maximum: int) -> void:
+    _health.text = "HP %d / %d" % [current, maximum]
+
+
+func _on_ammo_changed(in_mag: int, reserve: int, reloading: bool) -> void:
+    if reloading:
+        _ammo.text = "Reloading  %d / %d" % [in_mag, reserve]
+    else:
+        _ammo.text = "%d / %d" % [in_mag, reserve]
+
+
+func _on_prompt_changed(text: String) -> void:
+    _prompt.text = text
+
+
+func _on_retry_pressed() -> void:
+    get_tree().paused = false
+    Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+    get_tree().reload_current_scene()
+
+
+func _format_msec(msec: int) -> String:
+    var total_seconds: int = int(float(msec) / 1000.0)
+    var minutes: int = int(float(total_seconds) / 60.0)
+    var seconds: int = total_seconds % 60
+    return "%02d:%02d" % [minutes, seconds]
+</script>
+  <div class="checkpoint"><p>Save and press <kbd>F5</kbd>. Top-left reads <code>HP 100 / 100</code> and <code>8 / 24</code>. Each left click drops the magazine by 1, down to 0, then the line says Reloading and returns to 8 with the reserve reduced (24, then 16, then 8, then 0). R starts a reload early. You still cannot see a projectile. That is the point of hitscan. If the parser says Health is not declared, <code>health.gd</code> is missing <code>class_name Health</code> or was not saved. If ammo never changes, the script on Player is still yesterday's file.</p></div>
+
+  <h2 id="build-2">Block 2: Two enemies</h2>
+  <pre class="scene-tree">Enemy (CharacterBody3D)           [enemy.gd]  group enemies
+├── CollisionShape3D              capsule radius 0.35, height 1.6
+├── MeshInstance3D                CapsuleMesh, same size, red material on the mesh
+├── NavigationAgent3D
+├── Health                        maximum 40
+└── OmniLight3D                   energy 0.6, range 2.2, shadows off</pre>
+  <ol class="steps">
+    <li><strong>Enemy scene.</strong> New scene, root <code>CharacterBody3D</code> named <code>Enemy</code>. Save as <code>res://enemies/enemy.tscn</code>. <kbd class="ui">Collision &gt; Layer</kbd> only <code>enemies</code>. <kbd class="ui">Collision &gt; Mask</kbd> <code>world</code> and <code>player</code>. Node tab, Groups, add <code>enemies</code>.</li>
+    <li><strong>Body.</strong> Child <code>CollisionShape3D</code>, <kbd class="ui">New CapsuleShape3D</kbd>, radius <code>0.35</code>, height <code>1.6</code>. Child <code>MeshInstance3D</code>, <kbd class="ui">New CapsuleMesh</kbd>, radius <code>0.35</code>, height <code>1.6</code>. On the CapsuleMesh, <kbd class="ui">Material</kbd> → <kbd class="ui">New StandardMaterial3D</kbd>, albedo RGB <code>0.65, 0.12, 0.10</code>.</li>
+    <li><strong>Agent and health.</strong> Add <code>NavigationAgent3D</code>. You can leave its Inspector distances alone. The script sets <kbd class="ui">Path Desired Distance</kbd> to <code>0.4</code> and <kbd class="ui">Target Desired Distance</kbd> to <code>0.5</code> so they walk into you instead of stopping short. Add child <code>Node</code> named <code>Health</code>, attach <code>health.gd</code>, set <kbd class="ui">Maximum</kbd> to <code>40</code>. Add <code>OmniLight3D</code>, color RGB <code>0.85, 0.15, 0.1</code>, energy <code>0.6</code>, range <code>2.2</code>, shadows off. That glow is how you see them beyond the torch.</li>
+    <li><strong>Enemy script.</strong> Attach <code>res://enemies/enemy.gd</code> to the root. Replace the whole file.</li>
+  </ol>
+<script type="text/x-code" data-lang="gdscript" data-file="res://enemies/enemy.gd">
+extends CharacterBody3D
+
+const SPEED: float = 2.6
+const TOUCH_DAMAGE: int = 12
+const TOUCH_COOLDOWN: float = 0.9
+const AGGRO_RANGE: float = 12.0
+const REPATH_TIME: float = 0.35
+const SIGHT_MASK: int = 1 | 2
+
+var _gravity: float = 9.8
+var _touch_wait: float = 0.0
+var _repath_wait: float = 0.0
+var _player: Node3D
+
+@onready var _agent: NavigationAgent3D = $NavigationAgent3D
+@onready var _health: Health = $Health
+
+
+func _ready() -> void:
+    add_to_group("enemies")
+    _gravity = float(ProjectSettings.get_setting("physics/3d/default_gravity"))
+    _agent.path_desired_distance = 0.4
+    _agent.target_desired_distance = 0.5
+    _health.died.connect(_on_health_died)
+    actor_setup.call_deferred()
+
+
+func actor_setup() -> void:
+    await get_tree().physics_frame
+    _player = get_tree().get_first_node_in_group("player") as Node3D
+
+
+func _physics_process(delta: float) -> void:
+    if not _health.is_alive():
+        return
+    if not is_on_floor():
+        velocity.y -= _gravity * delta
+    else:
+        velocity.y = -0.1
+    _touch_wait = maxf(_touch_wait - delta, 0.0)
+    _chase(delta)
+    move_and_slide()
+    _try_touch_player()
+
+
+func _chase(delta: float) -> void:
+    if _player == null or not _can_see_player():
+        velocity.x = 0.0
+        velocity.z = 0.0
+        return
+    _repath_wait -= delta
+    if _repath_wait <= 0.0:
+        _repath_wait = REPATH_TIME
+        _agent.target_position = _player.global_position
+    if _agent.is_navigation_finished():
+        velocity.x = 0.0
+        velocity.z = 0.0
+        return
+    var next_pos: Vector3 = _agent.get_next_path_position()
+    var dir: Vector3 = global_position.direction_to(next_pos)
+    dir.y = 0.0
+    if dir.length_squared() < 0.001:
+        velocity.x = 0.0
+        velocity.z = 0.0
+        return
+    dir = dir.normalized()
+    velocity.x = dir.x * SPEED
+    velocity.z = dir.z * SPEED
+    look_at(global_position + dir, Vector3.UP)
+
+
+func _can_see_player() -> bool:
+    var offset: Vector3 = _player.global_position - global_position
+    offset.y = 0.0
+    if offset.length() > AGGRO_RANGE:
+        return false
+    var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+    var origin: Vector3 = global_position + Vector3(0.0, 0.6, 0.0)
+    var aim: Vector3 = _player.global_position + Vector3(0.0, 0.6, 0.0)
+    var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin, aim, SIGHT_MASK, [get_rid()])
+    var result: Dictionary = space.intersect_ray(query)
+    if result.is_empty():
+        return false
+    var hit: Object = result["collider"]
+    return hit is Node and (hit as Node).is_in_group("player")
+
+
+func _try_touch_player() -> void:
+    if _touch_wait > 0.0 or _player == null:
+        return
+    for i in get_slide_collision_count():
+        var body: Object = get_slide_collision(i).get_collider()
+        if body is Node and (body as Node).is_in_group("player"):
+            var hp := (body as Node).get_node_or_null("Health") as Health
+            if hp != null:
+                hp.take_damage(TOUCH_DAMAGE)
+                _touch_wait = TOUCH_COOLDOWN
+            return
+
+
+func _on_health_died() -> void:
+    queue_free()
+</script>
+  <ol class="steps">
+    <li><strong>Place them.</strong> Open <code>main.tscn</code>. Drag <code>enemy.tscn</code> onto <code>Main</code> twice. Rename the instances <code>EnemyA</code> and <code>EnemyB</code>. EnemyA is the start-room foe, cell (3, 3): position <code>7, 1, 7</code>. EnemyB is the hall foe, cell (6, 5): position <code>13, 1, 11</code>. Feet math is the same as the player: cell bottom at y 0, floor top at 0.2, capsule half-height 0.8, so y = 1.</li>
+  </ol>
+  <div class="checkpoint"><p>Press <kbd>F5</kbd>. Walk toward the red glow in the start room (south-east of the spawn, not through the brass gap). Inside 12 m with a clear ray, that enemy walks the floor toward you. Three clicks remove it (14 damage, 40 health). Standing in contact drops your HP by 12 about every 0.9 s. The hall enemy should not cross into the start room while the doorway is still a wall of stone. If neither enemy moves, GridMap <kbd class="ui">Bake Navigation</kbd> is off, or the floor's NavigationMesh was baked after the last MeshLibrary export. Rebake, export the library again, overwrite <code>mesh_library.tres</code>.</p></div>
+
+  <h2 id="build-3">Block 3: Keys, doors, exit</h2>
+  <p>World positions use cell <code>(x, z)</code> at <code>(2x + 1, 2z + 1)</code> because Center X and Center Z are on and the cell size is 2. Door centers sit at y = 1 so a 2 m slab fills the cell. Keys sit at y = 0.5.</p>
+  <table>
+    <tr><th>Instance</th><th>Cell</th><th>Position</th><th>Extra</th></tr>
+    <tr><td>DoorBrass</td><td>(4, 2)</td><td>9, 1, 5</td><td>rotation 0, 0, 0. key id brass</td></tr>
+    <tr><td>DoorIron</td><td>(6, 6)</td><td>13, 1, 13</td><td>rotation 0, 90, 0. key id iron</td></tr>
+    <tr><td>KeyBrass</td><td>(7, 1)</td><td>15, 0.5, 3</td><td>key id brass</td></tr>
+    <tr><td>KeyIron</td><td>(2, 6)</td><td>5, 0.5, 13</td><td>key id iron</td></tr>
+    <tr><td>ExitZone</td><td>(7, 7)</td><td>15, 1, 15</td><td></td></tr>
+  </table>
+  <ol class="steps">
+    <li><strong>Door scene.</strong> New scene, root <code>StaticBody3D</code> named <code>Door</code>. Save <code>res://props/door.tscn</code>. Layer only <code>world</code>, mask empty. Groups: add <code>doors</code>. Child <code>MeshInstance3D</code>, BoxMesh size <code>0.3, 2, 2</code> (thin on X, so it blocks east-west travel). Material on the BoxMesh, albedo RGB <code>0.35, 0.22, 0.10</code>. Child <code>CollisionShape3D</code>, BoxShape3D size <code>0.3, 2, 2</code>. Attach <code>res://props/door.gd</code>.</li>
+  </ol>
+<script type="text/x-code" data-lang="gdscript" data-file="res://props/door.gd">
+extends StaticBody3D
+
+signal opened(key_id: String)
+
+@export var key_id: String = "brass"
+
+var _open: bool = false
+
+
+func _ready() -> void:
+    add_to_group("doors")
+
+
+func try_open(held_keys: Array[String]) -> bool:
+    if _open:
+        return false
+    if not held_keys.has(key_id):
+        return false
+    _open = true
+    opened.emit(key_id)
+    $CollisionShape3D.set_deferred("disabled", true)
+    visible = false
+    return true
+</script>
+  <ol class="steps">
+    <li><strong>Key scene.</strong> New scene, root <code>Area3D</code> named <code>Key</code>. Save <code>res://props/key.tscn</code>. <kbd class="ui">Collision &gt; Layer</kbd> only <code>pickups</code>. <kbd class="ui">Mask</kbd> only <code>player</code>. Enable <kbd class="ui">Monitoring</kbd>. Groups: <code>pickups</code>. Child <code>CollisionShape3D</code>, <kbd class="ui">New SphereShape3D</kbd>, radius <code>0.35</code>. Child <code>MeshInstance3D</code>, <kbd class="ui">New SphereMesh</kbd>, radius <code>0.22</code>, material albedo RGB <code>0.9, 0.7, 0.25</code>. Child <code>OmniLight3D</code>, same gold color, energy <code>0.8</code>, range <code>2.5</code>, shadows off. Attach <code>res://props/key.gd</code>.</li>
+  </ol>
+<script type="text/x-code" data-lang="gdscript" data-file="res://props/key.gd">
+extends Area3D
+
+signal collected(key_id: String)
+
+@export var key_id: String = "brass"
+
+var _taken: bool = false
+
+
+func _ready() -> void:
+    add_to_group("pickups")
+    body_entered.connect(_on_body_entered)
+
+
+func _on_body_entered(body: Node3D) -> void:
+    if body.is_in_group("player"):
+        take()
+
+
+func take() -> void:
+    if _taken:
+        return
+    _taken = true
+    collected.emit(key_id)
+    queue_free()
+</script>
+  <ol class="steps">
+    <li><strong>Exit scene.</strong> New scene, root <code>Area3D</code> named <code>ExitZone</code>. Save <code>res://props/exit_zone.tscn</code>. Layer only <code>triggers</code>, mask only <code>player</code>, Monitoring on. Child <code>CollisionShape3D</code>, BoxShape3D size <code>1.6, 2, 1.6</code>. Child <code>MeshInstance3D</code>, <kbd class="ui">New CylinderMesh</kbd>, top radius <code>0.45</code>, bottom radius <code>0.45</code>, height <code>0.12</code>. On that mesh's material enable <kbd class="ui">Emission &gt; Enabled</kbd>, emission color RGB <code>0.3, 0.9, 0.45</code>, energy <code>2</code>. Position the mesh at y <code>-0.7</code> so the disc sits near the floor when the area origin is at y 1. Attach <code>res://props/exit_zone.gd</code>.</li>
+  </ol>
+<script type="text/x-code" data-lang="gdscript" data-file="res://props/exit_zone.gd">
+extends Area3D
+
+signal reached
+
+
+func _ready() -> void:
+    body_entered.connect(_on_body_entered)
+
+
+func _on_body_entered(body: Node3D) -> void:
+    if body.is_in_group("player"):
+        reached.emit()
+</script>
+  <ol class="steps">
+    <li><strong>Instance them on Main</strong> at the positions in the table. Select the <code>DoorIron</code> instance and set its exported <kbd class="ui">Key Id</kbd> to <code>iron</code>. Select <code>KeyIron</code> and set <kbd class="ui">Key Id</kbd> to <code>iron</code>. Brass stays the scene default. DoorIron's rotation Y is 90 so the thin axis blocks north-south travel. A rotation of 90 degrees around Y turns the local X extent onto world Z.</li>
+  </ol>
+  <div class="callout warn"><span class="callout-title">Collision changes during a physics tick</span>
+    <p><code>try_open</code> runs from the player's <code>_physics_process</code> while the ray is resolving. Disabling the door shape is deferred with <code>set_deferred</code>. Turning the property off directly inside that callback is a classic one-frame glitch.</p></div>
+  <div class="checkpoint"><p>Press <kbd>F5</kbd>. Look at the brass doorway from the start room. The prompt says <code>Locked. Need the brass key.</code> You cannot walk through. The key counter still says 0, because nothing is recording pickups yet. That script is the next block. If the prompt stays empty, InteractRay's mask is missing <code>world</code>, or Collide With Areas is off and you are testing on a key instead of the door. If you look at a key and see no prompt, the key's layer is not <code>pickups</code>.</p></div>
+
+  <h2 id="build-4">Block 4: Minimap, best time, death and escape</h2>
+  <ol class="steps">
+    <li><strong>SubViewport.</strong> In <code>main.tscn</code>, select <code>Main</code>, add a <code>SubViewport</code> named <code>MinimapViewport</code>. Set <kbd class="ui">Size</kbd> to <code>256, 256</code>. Set <kbd class="ui">Render Target &gt; Update Mode</kbd> to <kbd class="ui">Always</kbd> so the map keeps rendering while the texture is on the HUD. Leave <kbd class="ui">Own World 3D</kbd> unchecked. A private world would not contain the GridMap.</li>
+    <li><strong>Map camera.</strong> Under MinimapViewport add <code>Camera3D</code> named <code>MinimapCamera</code>. Enable <kbd class="ui">Current</kbd>. Set <kbd class="ui">Projection</kbd> to <kbd class="ui">Orthogonal</kbd> and <kbd class="ui">Size</kbd> to <code>18</code> (18 m of vertical coverage). Attach <code>res://ui/minimap_camera.gd</code>.</li>
+  </ol>
+<script type="text/x-code" data-lang="gdscript" data-file="res://ui/minimap_camera.gd">
+extends Camera3D
+
+const MAP_HEIGHT: float = 22.0
+const MAP_SIZE: float = 18.0
+
+var _player: Node3D
+
+
+func _ready() -> void:
+    current = true
+    projection = Camera3D.PROJECTION_ORTHOGONAL
+    size = MAP_SIZE
+    _player = get_tree().get_first_node_in_group("player") as Node3D
+
+
+func _process(_delta: float) -> void:
+    if _player == null:
+        return
+    var p: Vector3 = _player.global_position
+    global_position = Vector3(p.x, MAP_HEIGHT, p.z)
+    rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+</script>
+  <p>The viewports tutorial also lets you assign <kbd class="ui">New ViewportTexture</kbd> on the TextureRect and drag <code>MinimapViewport</code> onto <kbd class="ui">Viewport Path</kbd>. <code>hud.gd</code> already calls <code>SubViewport.get_texture</code> in <code>_bind_player</code>, which is the same texture the tutorial assigns in code. You do not need a second manual assignment.</p>
+  <ol class="steps">
+    <li><strong>Guard the pause menu during the ending.</strong> Replace <code>res://ui/pause_menu.gd</code> with this file so Escape cannot unpause a finished run and hide the cursor while the end panel is up.</li>
+  </ol>
+<script type="text/x-code" data-lang="gdscript" data-file="res://ui/pause_menu.gd">
+extends CanvasLayer
+
+@onready var _panel: PanelContainer = $PausePanel
+
+
+func _ready() -> void:
+    process_mode = Node.PROCESS_MODE_ALWAYS
+    _panel.visible = false
+    $PausePanel/VBox/ResumeButton.pressed.connect(_resume)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+    if not event.is_action_pressed("pause"):
+        return
+    var end := get_parent().get_node_or_null("HUD/EndPanel") as CanvasItem
+    if end != null and end.visible:
+        get_viewport().set_input_as_handled()
+        return
+    if get_tree().paused:
+        _resume()
+    else:
+        _pause()
+    get_viewport().set_input_as_handled()
+
+
+func _pause() -> void:
+    get_tree().paused = true
+    _panel.visible = true
+    Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _resume() -> void:
+    get_tree().paused = false
+    _panel.visible = false
+    Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+</script>
+  <ol class="steps">
+    <li><strong>Main script.</strong> Select <code>Main</code>, attach <code>res://main.gd</code>, replace the whole file. This is the run timer, the key list, and the save. The timer lives in <code>_process</code>, which stops while the tree is paused, so Escape does not add time.</li>
+  </ol>
+<script type="text/x-code" data-lang="gdscript" data-file="res://main.gd">
+extends Node3D
+
+const BEST_PATH: String = "user://torchlight_best.json"
+const KEYS_TO_WIN: int = 2
+
+var keys: Array[String] = []
+var _elapsed_msec: int = 0
+var _ended: bool = false
+
+@onready var _player: CharacterBody3D = $Player
+@onready var _hud: DungeonHUD = $HUD
+
+
+func _ready() -> void:
+    _player.get_node("Health").died.connect(_on_player_died)
+    for node in get_tree().get_nodes_in_group("pickups"):
+        if node.has_signal("collected"):
+            node.collected.connect(_on_key_collected)
+    var exit_zone := get_node_or_null("ExitZone") as Area3D
+    if exit_zone != null:
+        exit_zone.reached.connect(_on_exit_reached)
+    _hud.show_keys(0)
+    _hud.show_best(_load_best_msec())
+
+
+func _process(delta: float) -> void:
+    if _ended:
+        return
+    _elapsed_msec += int(delta * 1000.0)
+    _hud.show_time(_elapsed_msec)
+
+
+func get_keys() -> Array[String]:
+    return keys
+
+
+func _on_key_collected(key_id: String) -> void:
+    if keys.has(key_id):
+        return
+    keys.append(key_id)
+    _hud.show_keys(keys.size())
+
+
+func _on_player_died() -> void:
+    if _ended:
+        return
+    _ended = true
+    _hud.show_end(false, _elapsed_msec, _load_best_msec())
+    get_tree().paused = true
+
+
+func _on_exit_reached() -> void:
+    if _ended:
+        return
+    if keys.size() < KEYS_TO_WIN:
+        _hud.show_prompt("The gate is shut. Both keys first.")
+        return
+    _ended = true
+    var best: int = _load_best_msec()
+    if best == 0 or _elapsed_msec < best:
+        best = _elapsed_msec
+        _save_best_msec(best)
+    _hud.show_end(true, _elapsed_msec, best)
+    get_tree().paused = true
+
+
+func _load_best_msec() -> int:
+    if not FileAccess.file_exists(BEST_PATH):
+        return 0
+    var file := FileAccess.open(BEST_PATH, FileAccess.READ)
+    if file == null:
+        return 0
+    var parsed: Variant = JSON.parse_string(file.get_as_text())
+    file.close()
+    if parsed is Dictionary:
+        var data: Dictionary = parsed
+        if data.has("best_msec"):
+            return int(data["best_msec"])
+    return 0
+
+
+func _save_best_msec(msec: int) -> void:
+    var file := FileAccess.open(BEST_PATH, FileAccess.WRITE)
+    if file == null:
+        return
+    var payload := {"best_msec": msec}
+    file.store_string(JSON.stringify(payload))
+    file.close()
+</script>
+  <div class="callout note"><span class="callout-title">JSON numbers come back as floats</span>
+    <p><code>JSON.parse_string</code> turns every number into a float, even <code>best_msec</code>. <code>int(...)</code> on load is required. The file lives under <code>user://</code>, which on Windows is <code>%APPDATA%\Godot\app_userdata\g05-torchlight-dungeon\</code>. It is not inside <code>res://</code>.</p></div>
+
+  <pre class="scene-tree">Main (Node3D)                     [main.gd]
+├── GridMap
+├── WorldEnvironment
+├── Player
+├── EnemyA
+├── EnemyB
+├── DoorBrass
+├── DoorIron
+├── KeyBrass
+├── KeyIron
+├── ExitZone
+├── MinimapViewport (SubViewport) own world off, update Always, 256
+│   └── MinimapCamera (Camera3D)  [minimap_camera.gd] orthogonal, size 18
+├── HUD (CanvasLayer)             [hud.gd]
+└── PauseMenu (CanvasLayer)       [pause_menu.gd]</pre>
+
+  <div class="checkpoint"><p>Press <kbd>F5</kbd> and clear the dungeon once. Expected order: start room enemy dies in three shots. Brass door refuses you. Brass key at the north-east cell, prompt <code>E  Take key</code> or just walk into the sphere. Keys read <code>1 / 2</code>. Brass door opens on E and disappears. Hall enemy aggros only after you can see it. Iron key in the west room. Iron door (rotated) opens. Green disc at the south-east corner shows <code>You escaped</code>, a time, and Best equal to that time. Play again, escape faster, and Best drops. Die on purpose (stand on an enemy) and the panel says <code>You died</code> with a working Play again button and a visible cursor. The top-right square shows the dungeon from above, including the yellow blip at your feet.</p>
+    <p>If the main view flips to top-down, MinimapCamera is not a child of the SubViewport. If the square is black, Own World 3D got checked, or Update Mode is not Always. If the door eats the key and stays shut, the key ids do not match (both must be the string <code>iron</code> or both <code>brass</code>). If Best never changes, you won with an equal or slower time. Delete <code>torchlight_best.json</code> in the user data folder to reset it.</p></div>
+
+  <h2 id="pitfalls">Common pitfalls</h2>
+  <ul>
+    <li><strong>Ray in <code>_process</code>.</strong> Both the shot and the sight check belong in <code>_physics_process</code>. The interact RayCast3D is also read there, after <code>force_raycast_update</code>.</li>
+    <li><strong>Forgot <code>get_rid</code> on the shot.</strong> The query starts inside the capsule. Without the exclude list the hit is you, and enemies never take damage.</li>
+    <li><strong>Areas ignored.</strong> <code>collide_with_areas</code> defaults to false on both RayCast3D and PhysicsRayQueryParameters3D. Keys are Area3D nodes. The interact ray turns the flag on. The gun does not, on purpose. It only hits bodies.</li>
+    <li><strong>Agent target set in <code>_ready</code> with no deferred wait.</strong> The navigation map is empty on the first frame. The introduction waits <code>physics_frame</code>. <code>actor_setup</code> does that.</li>
+    <li><strong><code>target_desired_distance</code> at 1.5 or more.</strong> The enemy decides it has arrived before the capsules touch, so HP never drops from contact. 0.5 keeps them walking into you.</li>
+    <li><strong>Minimap on its own world.</strong> <code>own_world_3d</code> must stay false. The GridMap lives in the root world.</li>
+    <li><strong>End button dead after death.</strong> A paused tree does not click controls unless that control's process mode is Always. <code>show_end</code> sets that on EndPanel before <code>main.gd</code> pauses.</li>
+    <li><strong>Saved float used as an int without a cast.</strong> A later comparison can look right and still fail a typed <code>int</code> assignment. The load path casts with <code>int()</code>.</li>
+  </ul>
+
+  <h2 id="challenge">Challenge (optional, about 25 min)</h2>
+  <div class="challenge">
+    <h3>A third enemy that patrols</h3>
+    <p>Duplicate EnemyB as EnemyC at position <code>5, 1, 11</code> (cell 2, 5, the west corridor). Add two <code>Marker3D</code> nodes, <code>PatrolA</code> and <code>PatrolB</code>, a few meters apart in that hall. Export two <code>NodePath</code> properties on a copy of the enemy script. While the player is outside 12 m or blocked by a wall, set <code>target_position</code> to the markers, swapping each time <code>is_navigation_finished</code> is true. When the sight ray hits the player, chase as now.</p>
+    <p>Hint: keep the sight ray in <code>_physics_process</code>. Do not bake a new nav mesh. The floor cells are already walkable. Do not raise touch damage. 12 is the number the HUD was balanced for (about eight seconds to die if you refuse to move).</p>
+  </div>
+
+  <h2 id="quiz">Check yourself</h2>
+  <div class="quiz">
+    <div class="q" data-correct="1">
+      <p>Where does the ray-casting tutorial say to run <code>intersect_ray</code>?</p>
+      <ul>
+        <li><code>_process</code>, because aiming is visual</li>
+        <li><code>_physics_process</code></li>
+        <li><code>_ready</code>, once</li>
+        <li>The pause menu, so the shot freezes the game</li>
+      </ul>
+      <p class="explain">The page repeats the query inside <code>_physics_process</code>. RayCast3D also refreshes on the physics tick. <code>force_raycast_update</code> is the escape hatch when you need a result in the same tick you moved the ray.</p>
+    </div>
+    <div class="q" data-correct="2">
+      <p>The pistol ray starts at the camera, which is inside the player capsule. What stops the shot from hitting the player?</p>
+      <ul>
+        <li>A collision layer named <code>player_attacks</code> on the camera</li>
+        <li>Calling <code>move_and_slide</code> first</li>
+        <li><code>PhysicsRayQueryParameters3D.create(..., [get_rid()])</code></li>
+        <li>Turning shadow casting off</li>
+      </ul>
+      <p class="explain">The exclude list takes RIDs. <code>get_rid</code> is the player's physics body. The mask <code>1 | 4</code> is world plus enemies, which also skips the player layer, and the exclude is the belt the tutorial shows for self-hits.</p>
+    </div>
+    <div class="q" data-correct="0">
+      <p>Why does <code>actor_setup</code> await <code>physics_frame</code> before setting a target?</p>
+      <ul>
+        <li>The navigation map is not synced on the first frame of <code>_ready</code></li>
+        <li>CharacterBody3D has no velocity until the second second</li>
+        <li>GridMap only collides after a redraw</li>
+        <li>Signals cannot connect in <code>_ready</code></li>
+      </ul>
+      <p class="explain">The 3D navigation introduction says not to await inside <code>_ready</code> itself, and to wait one physics frame in a deferred call before <code>set_target_position</code>.</p>
+    </div>
+    <div class="q" data-correct="3">
+      <p>The minimap square shows an empty color and no floor. Own World 3D is checked. Why is the dungeon missing?</p>
+      <ul>
+        <li>Orthogonal cameras cannot see MeshInstance3D</li>
+        <li>TextureRect ignores ViewportTexture</li>
+        <li>Bake Navigation hides meshes</li>
+        <li>The SubViewport is drawing a different World3D than the GridMap</li>
+      </ul>
+      <p class="explain">The viewports page: SubViewports share the parent world unless Own World 3D is on. The GridMap is in the root world. Leave the flag off. The minimap camera is current only for that SubViewport.</p>
+    </div>
+    <div class="q" data-correct="1">
+      <p>You store <code>best_msec</code> with <code>JSON.stringify</code> and read it back. What does the load code have to do?</p>
+      <ul>
+        <li>Nothing. JSON preserves ints</li>
+        <li>Cast with <code>int()</code>, because JSON numbers become floats</li>
+        <li>Store the file under <code>res://</code> so the type sticks</li>
+        <li>Use <code>File.new</code></li>
+      </ul>
+      <p class="explain"><code>JSON.parse_string</code> does not have an integer type. <code>int(data["best_msec"])</code> is the cast. The path is <code>user://torchlight_best.json</code>.</p>
+    </div>
+  </div>
+
+  <h2 id="docs">Read more in the official docs</h2>
+  <ul class="docs-links">
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/physics/ray-casting.html" target="_blank" rel="noopener">Ray-casting</a>: space state, exclude list, and why the query sits in <code>_physics_process</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_physicsdirectspacestate3d.html" target="_blank" rel="noopener">PhysicsDirectSpaceState3D</a> and <a href="https://docs.godotengine.org/en/stable/classes/class_physicsrayqueryparameters3d.html" target="_blank" rel="noopener">PhysicsRayQueryParameters3D</a>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_raycast3d.html" target="_blank" rel="noopener">RayCast3D</a>: <code>force_raycast_update</code>, areas, target position.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/navigation/navigation_introduction_3d.html" target="_blank" rel="noopener">Using navigation maps</a>: the 3D agent loop this enemy copies.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_navigationagent3d.html" target="_blank" rel="noopener">NavigationAgent3D</a>: call <code>get_next_path_position</code> every physics frame.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/tutorials/rendering/viewports.html" target="_blank" rel="noopener">Using Viewports</a>: SubViewport, shared world, <code>get_texture</code>.</li>
+    <li><a href="https://docs.godotengine.org/en/stable/classes/class_camera3d.html" target="_blank" rel="noopener">Camera3D</a>: orthogonal projection and <code>size</code>.</li>
+  </ul>
+
+  <h2 id="wrap-up">Wrap-up</h2>
+  <ul class="checklist">
+    <li>F5 from <code>main.tscn</code>: shoot, reload, kill both enemies, open both doors, escape.</li>
+    <li>Death shows the cursor and Play again reloads the level.</li>
+    <li>A faster clear updates Best. Pausing does not advance the clock.</li>
+    <li>The minimap tracks you and shows the painted grid, not an empty world.</li>
+    <li>Feature list on <a href="../games/g05-dungeon-crawler-3d.html">the game page</a> matches what you can do in the build.</li>
+  </ul>
+  <h3>File map</h3>
+  <table>
+    <tr><th>Path</th><th>Role</th></tr>
+    <tr><td><code>res://main.tscn</code> / <code>main.gd</code></td><td>Level, timer, keys, best time</td></tr>
+    <tr><td><code>res://library/mesh_library.tscn</code> / <code>.tres</code></td><td>Floor (nav) and Wall items</td></tr>
+    <tr><td><code>res://player/player.tscn</code> / <code>player.gd</code></td><td>First person, torch, gun, interact</td></tr>
+    <tr><td><code>res://components/health.gd</code></td><td><code>class_name Health</code></td></tr>
+    <tr><td><code>res://enemies/enemy.tscn</code> / <code>enemy.gd</code></td><td>Sight chase, touch damage</td></tr>
+    <tr><td><code>res://props/door.tscn</code> / <code>door.gd</code></td><td>Locked slab, exported <code>key_id</code></td></tr>
+    <tr><td><code>res://props/key.tscn</code> / <code>key.gd</code></td><td>Pickup area</td></tr>
+    <tr><td><code>res://props/exit_zone.tscn</code> / <code>exit_zone.gd</code></td><td>Win volume</td></tr>
+    <tr><td><code>res://ui/hud.gd</code></td><td><code>class_name DungeonHUD</code></td></tr>
+    <tr><td><code>res://ui/pause_menu.gd</code></td><td>Escape, mouse release</td></tr>
+    <tr><td><code>res://ui/minimap_camera.gd</code></td><td>Orthogonal follow cam</td></tr>
+    <tr><td><code>user://torchlight_best.json</code></td><td><code>best_msec</code> only</td></tr>
+  </table>
+  <p><strong>Tomorrow:</strong> a catch-up day. You will use the debugger, profiler, and monitors on this project, write down what the five training games taught, and put the dungeon folder under git. No new gameplay.</p>
+
+</main>
+<script src="../assets/js/course-data.js"></script>
+<script src="../assets/js/course.js"></script>
+</body>
+</html>
