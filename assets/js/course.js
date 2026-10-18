@@ -12,6 +12,7 @@
   var PAGE = body.getAttribute("data-page") || "reference";
   var ID = body.getAttribute("data-id") || "";
   var STORE_KEY = "godotcourse.v1";
+  var IN_APP = /GodotCourseApp/.test(navigator.userAgent || "");
 
   /* ------------------------------------------------------------------ */
   /* Storage                                                             */
@@ -43,6 +44,10 @@
   }
   function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
   function doneCount() { var c = 0; for (var k in memory.days) if (memory.days[k]) c++; return c; }
+  function progressHtml() {
+    return "<b>" + doneCount() + "</b><span class=\"progress-of\">/" + C.days.length + "</span><span class=\"progress-label\"> days done</span>";
+  }
+  function savedWhere() { return IN_APP ? "on this phone" : "in this browser"; }
   function totalHours() { var h = 0; (C.days || []).forEach(function (d) { h += d.hours || 0; }); return h; }
   function gameById(id) { for (var i = 0; i < C.games.length; i++) if (C.games[i].id === id) return C.games[i]; return null; }
 
@@ -327,28 +332,57 @@
     }
     input.addEventListener("input", run);
     input.addEventListener("focus", run);
-    document.addEventListener("click", function (e) { if (!wrap.contains(e.target)) results.classList.remove("open"); });
+    document.addEventListener("click", function (e) {
+      if (wrap.contains(e.target)) return;
+      if (e.target.closest && e.target.closest(".search-toggle")) return;
+      results.classList.remove("open");
+      var bar = wrap.closest(".topbar");
+      if (bar) bar.classList.remove("search-open");
+    });
     document.addEventListener("keydown", function (e) {
+      var bar = wrap.closest(".topbar");
       if (e.key === "/" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") {
-        e.preventDefault(); input.focus();
+        e.preventDefault();
+        if (bar) bar.classList.add("search-open");
+        input.focus();
       }
-      if (e.key === "Escape") { results.classList.remove("open"); input.blur(); }
+      if (e.key === "Escape") {
+        results.classList.remove("open");
+        if (bar) bar.classList.remove("search-open");
+        input.blur();
+      }
     });
     return wrap;
   }
 
-  function buildTopbar(sidebar) {
+  function buildTopbar(sidebar, setDrawer) {
     var tb = el("header", "topbar");
-    var toggle = el("button", "menu-toggle", "☰"); toggle.type = "button";
-    toggle.addEventListener("click", function () { sidebar.classList.toggle("open"); });
+    var toggle = el("button", "menu-toggle", "☰");
+    toggle.type = "button";
+    toggle.setAttribute("aria-label", "Open menu");
+    toggle.addEventListener("click", function () {
+      tb.classList.remove("search-open");
+      setDrawer(!sidebar.classList.contains("open"));
+    });
     tb.appendChild(toggle);
-    var brand = el("a", "brand", '<span class="logo">G</span><span>' + esc(C.title) + "</span>");
+    var brand = el("a", "brand", '<span class="logo">G</span><span class="brand-full">' + esc(C.title) + '</span><span class="brand-short">Course</span>');
     brand.href = ROOT + "index.html";
     tb.appendChild(brand);
     tb.appendChild(el("div", "spacer"));
-    var prog = el("div", "progress-mini", "<b>" + doneCount() + "</b> / " + C.days.length + " days done");
+    var prog = el("div", "progress-mini", progressHtml());
     prog.id = "progress-mini";
     tb.appendChild(prog);
+    var searchBtn = el("button", "search-toggle", "Search");
+    searchBtn.type = "button";
+    searchBtn.setAttribute("aria-label", "Search");
+    searchBtn.addEventListener("click", function () {
+      setDrawer(false);
+      var opening = !tb.classList.contains("search-open");
+      tb.classList.toggle("search-open", opening);
+      var input = tb.querySelector("input.search");
+      if (opening && input) input.focus();
+    });
+    tb.appendChild(searchBtn);
     tb.appendChild(buildSearch());
     return tb;
   }
@@ -389,14 +423,14 @@
       var link = document.querySelector('.sidebar a.nav-item.current');
       if (link) link.classList.toggle("done", d);
       var pm = document.getElementById("progress-mini");
-      if (pm) pm.innerHTML = "<b>" + doneCount() + "</b> / " + C.days.length + " days done";
+      if (pm) pm.innerHTML = progressHtml();
     }
     btn.addEventListener("click", function () {
       if (memory.days[ID]) delete memory.days[ID]; else memory.days[ID] = 1;
       save(); refresh();
     });
     row.appendChild(btn);
-    row.appendChild(el("span", "muted", "Your progress is stored in this browser only."));
+    row.appendChild(el("span", "muted", "Your progress is stored " + savedWhere() + " only."));
     foot.appendChild(row);
 
     var pager = el("div", "pager");
@@ -408,6 +442,33 @@
     main.appendChild(foot);
     refresh();
     memory.last = ID; save();
+  }
+
+  function buildReaderBar() {
+    if (PAGE !== "day") return;
+    var n = parseInt(ID.replace("day", ""), 10);
+    var prev = C.days.filter(function (d) { return d.n === n - 1; })[0];
+    var next = C.days.filter(function (d) { return d.n === n + 1; })[0];
+    var bar = el("nav", "reader-bar");
+    bar.setAttribute("aria-label", "Lesson pager");
+    function slot(cls, day, label) {
+      if (!day) { bar.appendChild(el("span", cls + " is-empty")); return; }
+      var a = el("a", cls, "<small>" + label + "</small><span>Day " + day.n + "</span>");
+      a.href = ROOT + dayFile(day.n);
+      bar.appendChild(a);
+    }
+    slot("prev", prev, "← Previous");
+    slot("next", next, "Next →");
+    body.appendChild(bar);
+  }
+
+  function makeTablesScroll(root) {
+    Array.prototype.forEach.call(root.querySelectorAll("table"), function (table) {
+      if (table.parentNode && table.parentNode.classList && table.parentNode.classList.contains("table-scroll")) return;
+      var wrap = el("div", "table-scroll");
+      table.parentNode.insertBefore(wrap, table);
+      wrap.appendChild(table);
+    });
   }
 
   /* ------------------------------------------------------------------ */
@@ -458,7 +519,7 @@
       "</div>" +
       '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
       '<div class="hero-actions">' +
-      (nextDay ? '<a class="btn" href="' + dayFile(nextDay.n) + '">' + (done ? "Continue: " : "Start: ") + "Day " + nextDay.n + " — " + esc(nextDay.title) + "</a>" : '<span class="btn done">All 30 days complete 🎉</span>') +
+      (nextDay ? '<a class="btn" href="' + dayFile(nextDay.n) + '"><span>' + (done ? "Continue" : "Start") + " · Day " + nextDay.n + "</span><span>" + esc(nextDay.title) + "</span></a>" : '<span class="btn done">All 30 days complete</span>') +
       '<a class="btn secondary" href="reference/editor-tour.html">Editor tour</a>' +
       '<a class="btn secondary" href="publishing/launch-checklist.html">Launch checklist</a>' +
       '<label class="muted" style="align-self:center;font-size:14px">Course start date: <input type="date" id="start-date" value="' + esc(memory.start) + '" style="background:var(--bg-2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 8px"></label>' +
@@ -493,7 +554,7 @@
     });
     html += "</div>";
 
-    html += '<hr><p class="muted">Tip: press <kbd>/</kbd> to search. Progress is saved in your browser (localStorage). ' +
+    html += '<hr><p class="muted">Tip: press <kbd>/</kbd> to search. Progress is saved ' + savedWhere() + '. ' +
       '<a href="#" id="reset-progress">Reset all progress</a></p>';
     main.innerHTML = html;
 
@@ -501,7 +562,7 @@
     sd.addEventListener("change", function () { memory.start = sd.value; save(); renderDashboard(main); });
     main.querySelector("#reset-progress").addEventListener("click", function (e) {
       e.preventDefault();
-      if (confirm("Reset ALL course progress in this browser?")) {
+      if (confirm("Reset ALL course progress " + savedWhere() + "?")) {
         memory = { days: {}, steps: {}, checks: {}, quiz: {}, last: "", start: "" }; save(); location.reload();
       }
     });
@@ -511,6 +572,13 @@
   /* Boot                                                                */
   /* ------------------------------------------------------------------ */
   function boot() {
+    var vp = document.querySelector('meta[name="viewport"]');
+    if (vp) {
+      var vpContent = vp.getAttribute("content") || "";
+      if (vpContent.indexOf("viewport-fit") < 0) vp.setAttribute("content", vpContent + ", viewport-fit=cover");
+    }
+    if (IN_APP) body.classList.add("in-app");
+
     var main = document.querySelector("main");
     if (!main) { main = el("main", "lesson"); while (body.firstChild) main.appendChild(body.firstChild); }
     if (PAGE === "dashboard") { main.classList.add("lesson", "wide"); renderDashboard(main); }
@@ -521,9 +589,21 @@
     processChecklists(main);
     processQuizzes(main);
     autoChips(main);
+    makeTablesScroll(main);
 
     var sidebar = buildSidebar();
-    var topbar = buildTopbar(sidebar);
+    var backdrop = el("div", "nav-backdrop");
+    function setDrawer(open) {
+      sidebar.classList.toggle("open", !!open);
+      backdrop.classList.toggle("open", !!open);
+      body.classList.toggle("drawer-open", !!open);
+    }
+    sidebar.addEventListener("click", function (e) {
+      if (e.target && e.target.closest && e.target.closest("a")) setDrawer(false);
+    });
+    backdrop.addEventListener("click", function () { setDrawer(false); });
+
+    var topbar = buildTopbar(sidebar, setDrawer);
     var layout = el("div", "layout");
     var content = el("div", "content");
     main.parentNode.insertBefore(layout, main);
@@ -532,8 +612,31 @@
     layout.appendChild(content);
     if (PAGE === "day") buildDayFooter(main);
     var toc = buildToc(main);
-    if (toc) layout.appendChild(toc);
+    if (toc) {
+      layout.appendChild(toc);
+      var tocBtn = el("button", "toc-toggle", "Contents");
+      tocBtn.type = "button";
+      tocBtn.setAttribute("aria-label", "On this page");
+      tocBtn.addEventListener("click", function () {
+        setDrawer(false);
+        topbar.classList.remove("search-open");
+        toc.classList.toggle("open");
+      });
+      var searchBtn = topbar.querySelector(".search-toggle");
+      topbar.insertBefore(tocBtn, searchBtn);
+      toc.addEventListener("click", function (e) {
+        if (e.target && e.target.closest && e.target.closest("a")) toc.classList.remove("open");
+      });
+    }
     body.insertBefore(topbar, layout);
+    body.appendChild(backdrop);
+    if (PAGE === "day") buildReaderBar();
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      setDrawer(false);
+      if (toc) toc.classList.remove("open");
+    });
 
     // keep current sidebar item visible
     var cur = sidebar.querySelector(".current");

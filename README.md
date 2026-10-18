@@ -16,6 +16,8 @@ Community documents:
 
 Node is only for this preview and for the page checker. The browser site has no server code.
 
+On Windows, double-click `preview.cmd` in this folder. It starts the preview and opens http://localhost:8765/. Close that window to stop it.
+
 ```bash
 node _authoring/serve.js 8765
 ```

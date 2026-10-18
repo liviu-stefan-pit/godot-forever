@@ -82,7 +82,12 @@
 
   <h2 id="build-3">SteamCMD upload</h2>
   <div class="callout external"><span class="callout-title">External resource</span>
-    <p>Search "SteamCMD" and "SteamPipe" on <a href="https://partner.steamgames.com" target="_blank" rel="noopener">partner.steamgames.com</a>. Install the tool the way that page says. The script shape below matches the samples those pages have used. Diff it against the sample you see today before you run it. Replace the zeros with your app id and depot id.</p></div>
+    <p>Search "SteamCMD" and "SteamPipe" on <a href="https://partner.steamgames.com" target="_blank" rel="noopener">partner.steamgames.com</a>. Install the tool the way that page says. The script shape below matches the samples those pages have used. Diff it against the sample you see today before you run it. Replace the zeros with your app id and depot id.</p>
+    <p>After <code>app_build.vdf</code> has your ids, the upload is two SteamCMD commands on one line: <code>+login</code> and <code>+run_app_build</code>. SteamCMD asks for the password and any Steam Guard code. Do not paste the password into a file. Diff these flags against the partner sample you see today.</p>
+    <script type="text/x-code" data-lang="shell" data-file="PowerShell">
+& "C:\GodotProjects\steamcmd\steamcmd.exe" +login yourname +run_app_build "C:\GodotProjects\steamcmd\app_build.vdf" +quit
+    </script>
+  </div>
   <ol class="steps">
     <li><strong>Install SteamCMD</strong> into <code>C:\GodotProjects\steamcmd</code> using the partner instructions. Do not put it inside a Godot project.</li>
     <li><strong>Write a build script</strong> next to it, <code>C:\GodotProjects\steamcmd\app_build.vdf</code>. A starting point:
@@ -109,7 +114,7 @@
       </script>
     </li>
     <li><strong>Set the two ids.</strong> Replace both <code>0</code> values. <code>ContentRoot</code> must be the folder you listed in the checkpoint, the one with the exe. Double the backslashes inside this file. SteamCMD's parser treats a single backslash as an escape.</li>
-    <li><strong>Log in and upload.</strong> From PowerShell, run <code>steamcmd.exe</code> the way the partner page shows for <code>login</code> and <code>run_app_build</code>. Use your partner login. If the page shows a guard or a Steam Guard code, that is expected. Do not paste your password into a script file in the Godot project.</li>
+    <li><strong>Log in and upload.</strong> Run the PowerShell line in the external callout above. Replace <code>yourname</code> with your partner login. SteamCMD asks for the password. If it asks for a Steam Guard code, that is expected. Do not paste your password into a script file in the Godot project.</li>
     <li><strong>Set the build on a beta branch first.</strong> Search "branches" in Steamworks. Put this build on a passworded beta, not on <code>default</code>. Install the beta in the Steam client. Launch from Steam. Play the menu. Then, and only then, consider default.</li>
   </ol>
   <div class="checkpoint"><p>SteamCMD's log says the depot was built. The Steam client's beta branch launches your menu. Double-clicking the exe and launching from Steam both work. If Steam launches a black window, the depot's content root was the project folder or an old debug export. Fix the VDF and upload again. Builds are cheap. A public default branch is not.</p></div>

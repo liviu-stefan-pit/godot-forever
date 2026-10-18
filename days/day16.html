@@ -122,8 +122,10 @@ UI_RIGHT,Right,Derecha,Rechts,Droite,Direita,Вправо,右
       <script type="text/x-code" data-lang="gdscript" data-file="res://ui/safe_area.gd">
 extends Control
 
-## Pads this Control's offsets so children stay inside DisplayServer.get_display_safe_area().
-## The node must use the Full Rect anchor preset. Desktop usually reports a full-window safe rect, so offsets stay 0.
+## Pads this Control's offsets so children stay inside the display safe area.
+## The node must use the Full Rect anchor preset.
+## get_display_safe_area() is screen pixels. Subtract the window position and
+## intersect with the window. A window inside the work area keeps offsets at 0.
 
 
 func _ready() -> void:
@@ -134,16 +136,21 @@ func _ready() -> void:
 
 func _apply() -> void:
     var safe: Rect2i = DisplayServer.get_display_safe_area()
+    var origin: Vector2i = DisplayServer.window_get_position()
     var win: Vector2i = DisplayServer.window_get_size()
     if win.x <= 0 or win.y <= 0:
         return
+    var window_rect: Rect2i = Rect2i(Vector2i.ZERO, win)
+    var local: Rect2i = Rect2i(safe.position - origin, safe.size).intersection(window_rect)
+    if local.size.x <= 0 or local.size.y <= 0:
+        local = window_rect
     var view: Rect2 = get_viewport().get_visible_rect()
     var sx: float = view.size.x / float(win.x)
     var sy: float = view.size.y / float(win.y)
-    var right_px: int = win.x - safe.end.x
-    var bottom_px: int = win.y - safe.end.y
-    offset_left = float(safe.position.x) * sx
-    offset_top = float(safe.position.y) * sy
+    var right_px: int = win.x - local.end.x
+    var bottom_px: int = win.y - local.end.y
+    offset_left = float(local.position.x) * sx
+    offset_top = float(local.position.y) * sy
     offset_right = -float(right_px) * sx
     offset_bottom = -float(bottom_px) * sy
       </script>
@@ -590,7 +597,7 @@ func _on_right_up() -> void:
     <li><strong>Install the Gradle build files.</strong> Menu bar <kbd class="menu">Project &gt; Setup Android Build...</kbd>. Confirm. Godot writes <code>res://android/build</code>. If your editor's Project menu instead says <kbd class="ui">Install Android Build Template</kbd>, that is the same step on older 4.x. Either item is the one that creates <code>res://android/build</code>. You need export templates installed first or the menu will offer to download them.</li>
     <li><strong>Add the Android preset.</strong> <kbd class="menu">Project &gt; Export...</kbd> &gt; <kbd class="ui">Add...</kbd> &gt; <kbd class="ui">Android</kbd>. In the options on the right, open <kbd class="ui">Gradle Build</kbd> and enable <kbd class="ui">Use Gradle Build</kbd>. Set <kbd class="ui">Export Format</kbd> to the Android App Bundle option. The label includes <code>aab</code>. Leave <code>apk</code> and <code>aar</code> alone. An App Bundle is what Play has required for new apps since August 2021.</li>
     <li><strong>Package name.</strong> In the preset options, find <kbd class="ui">Package &gt; Unique Name</kbd>. Set it to <code>com.yourname.shipkit</code>, with your own name in lowercase letters, replacing <code>yourname</code>. Only <code>a-z</code>, digits, underscores, and dots. Each segment must start with a letter. When you copy this project for a real game, you change this string and you never reuse it. Play rejects a name another app already published.</li>
-    <li><strong>Screen insets.</strong> In the same options, open <kbd class="ui">Screen</kbd>. Enable <kbd class="ui">Edge To Edge</kbd>. Leave <kbd class="ui">Immersive Mode</kbd> off. Edge-to-edge is why <code>safe_area.gd</code> exists: the status bar draws over your content, and the safe rect tells you the padding. If this checkbox is missing on an older editor, skip it. Desktop margins stay zero.</li>
+    <li><strong>Screen insets.</strong> In the same options, open <kbd class="ui">Screen</kbd>. Enable <kbd class="ui">Edge To Edge</kbd>. Leave <kbd class="ui">Immersive Mode</kbd> off. Edge-to-edge is why <code>safe_area.gd</code> exists: the status bar draws over your content, and the safe rect tells you the padding. If this checkbox is missing on an older editor, skip it. On desktop, a window that sits inside the work area keeps those margins at zero, because the script converts the screen rectangle into window coordinates first.</li>
     <li><strong>Create the keystore.</strong> In File Explorer, create <code>C:\GodotProjects\keystores</code>. Open PowerShell. The docs' command is <code>keytool -v -genkey -keystore ... -alias ... -keyalg RSA -validity 10000</code>. Use it with this path and alias:
       <script type="text/x-code" data-lang="shell" data-file="PowerShell">
 keytool -v -genkey -keystore C:\GodotProjects\keystores\ship-kit.keystore -alias shipkit -keyalg RSA -validity 10000
